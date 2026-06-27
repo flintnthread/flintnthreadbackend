@@ -1,0 +1,4 @@
+# Copy to application-local.properties and set your local MySQL password.
+# Run with: mvn spring-boot:run -Dspring-boot.run.arguments="--spring.profiles.active=local"
+# Or in IDE: Active profiles = local
+spring.datasource.password=YOUR_LOCAL_MYSQL_ROOT_PASSWORD

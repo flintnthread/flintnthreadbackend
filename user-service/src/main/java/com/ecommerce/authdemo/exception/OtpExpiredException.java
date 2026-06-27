@@ -1,0 +1,7 @@
+package com.ecommerce.authdemo.exception;
+
+public class OtpExpiredException extends RuntimeException {
+    public OtpExpiredException(String message) {
+        super(message);
+    }
+}

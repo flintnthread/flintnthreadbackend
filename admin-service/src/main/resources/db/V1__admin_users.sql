@@ -1,0 +1,3 @@
+-- admin_users already exists in flintandthread with:
+-- id, name, email, username, password, role, status, last_login, created_at, updated_at
+-- Admin-backend maps to this table. No migration required for admin_users.

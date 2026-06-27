@@ -1,0 +1,12 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+logs/
+uploads/
+application-local.properties
+.idea/
+*.iml
+.DS_Store
+data/
+__pycache__/
+*.pyc
+.venv/

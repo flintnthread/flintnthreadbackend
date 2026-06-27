@@ -1,0 +1,16 @@
+# Copy this file to application-local.properties (same folder).
+
+# --- Twilio OTP SMS ---
+# Get credentials from: https://console.twilio.com
+#
+# Option A — Auth Token (Account → API keys & tokens → Auth Token → Regenerate)
+twilio.account.sid=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+twilio.auth.token=your_primary_auth_token_here
+twilio.phone.number=+1xxxxxxxxxx
+#
+# Option B — API Key (instead of auth token; Account → API keys & tokens → Create API key)
+# twilio.api.key.sid=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# twilio.api.key.secret=your_api_key_secret_here
+#
+# Twilio error 20003 = wrong SID/token/key. Regenerate in console, paste here, restart backend.
+# Trial accounts: verify +91 numbers under Phone Numbers → Verified Caller IDs.

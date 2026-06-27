@@ -1,0 +1,35 @@
+package com.ecommerce.authdemo.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "invoices")
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Invoice {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @Column(name = "order_id", nullable = false)
+    private Integer orderId;
+
+    @Column(name = "invoice_number", nullable = false, unique = true, length = 50)
+    private String invoiceNumber;
+
+    @Column(name = "invoice_path", length = 255)
+    private String invoicePath;
+
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private LocalDateTime updatedAt;
+}

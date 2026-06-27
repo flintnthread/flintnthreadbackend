@@ -1,0 +1,10 @@
+# Optional local overrides — copy to application-local.properties in project root
+#
+# All 3 backends on one PC (default ports — seller uses profile "local" = 8083):
+#   User   = 8080
+#   Seller = 8083  (automatic via seller-service application-local.properties)
+#   Admin  = 8082
+#
+# Example overrides:
+# spring.datasource.password=your-mysql-password
+# SENDGRID_API_KEY=SG.your-sendgrid-key

@@ -1,0 +1,11 @@
+# Copy to application-local.properties and activate with:
+# spring.profiles.active=local
+
+spring.datasource.url=jdbc:mysql://localhost:3306/flintandthread
+spring.datasource.username=root
+spring.datasource.password=your-db-password
+
+app.jwt.secret=replace-with-a-long-random-secret-at-least-32-characters
+app.admin.bootstrap.enabled=true
+app.admin.bootstrap.email=admin@flintnthread.in
+app.admin.bootstrap.password=choose-a-strong-password

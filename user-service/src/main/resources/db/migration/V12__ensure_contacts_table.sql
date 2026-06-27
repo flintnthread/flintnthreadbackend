@@ -1,0 +1,13 @@
+-- Contact support messages (account page / public form)
+CREATE TABLE IF NOT EXISTS contacts (
+    id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(20) NULL,
+    subject VARCHAR(255) NULL,
+    message TEXT NOT NULL,
+    status TINYINT(1) NULL DEFAULT 0,
+    created_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
