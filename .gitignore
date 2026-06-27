@@ -3,6 +3,8 @@ target/
 logs/
 uploads/
 application-local.properties
+config/application.properties
+config/application-local.properties
 .idea/
 *.iml
 .DS_Store

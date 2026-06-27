@@ -20,16 +20,19 @@ exit /b 1
 
 :user
 cd /d "%~dp0user-service"
+set FLINT_CONFIG_DIR=%~dp0config
 call ..\mvnw.cmd spring-boot:run
 goto end
 
 :seller
 cd /d "%~dp0seller-service"
+set FLINT_CONFIG_DIR=%~dp0config
 call ..\mvnw.cmd spring-boot:run
 goto end
 
 :admin
 cd /d "%~dp0admin-service"
+set FLINT_CONFIG_DIR=%~dp0config
 call ..\mvnw.cmd spring-boot:run
 goto end
 
