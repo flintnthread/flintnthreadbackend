@@ -36,8 +36,15 @@ public class MailServiceImpl implements MailService {
     @Value("${app.auth.email-verification-otp-minutes:10}")
     private int emailOtpExpiryMinutes;
 
+    @Value("${app.mail.dev-mode:false}")
+    private boolean mailDevMode;
+
     @Override
     public void sendEmailVerificationLinkEmail(String toEmail, String recipientName, String verifyLink) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Verification link for {} -> {}", maskEmail(toEmail), verifyLink);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -61,6 +68,10 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public void sendEmailVerificationOtpEmail(String toEmail, String recipientName, String otp) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Verification OTP for {} -> {}", maskEmail(toEmail), otp);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -84,6 +95,10 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public void sendPasswordResetEmail(String toEmail, String recipientName, String resetLink) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Password reset for {} -> {}", maskEmail(toEmail), resetLink);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -114,6 +129,10 @@ public class MailServiceImpl implements MailService {
             String device,
             String location,
             String ipAddress) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Login security alert for {} (device={}, ip={})", maskEmail(toEmail), device, ipAddress);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -142,6 +161,11 @@ public class MailServiceImpl implements MailService {
             String paymentId,
             int amountInPaise,
             byte[] invoicePdf) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Registration payment email for {} (invoice={}, paymentId={})",
+                    maskEmail(toEmail), invoiceNumber, paymentId);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
