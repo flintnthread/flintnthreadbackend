@@ -62,3 +62,8 @@ sleep 8
 curl -sf "http://127.0.0.1:8080/api/categories/main" | head -c 80 || echo "user: check logs"
 curl -sf "http://127.0.0.1:8082/api/admin/health" || echo "admin: check logs"
 curl -sf "http://127.0.0.1:8083/api/public/marketplace-stats" || echo "seller: check logs"
+
+echo ""
+echo "==> Nginx (one domain for all 3 apps)"
+echo "Run on VPS: bash scripts/apply-nginx-flintnthread-online.sh"
+echo "Then add 'include snippets/flintnthread-api.conf;' in server { } before user catch-all."

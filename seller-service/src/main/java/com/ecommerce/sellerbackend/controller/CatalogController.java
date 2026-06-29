@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 
 @RestController
-@RequestMapping("/api/catalog")
+@RequestMapping("/api/seller/catalog")
 @RequiredArgsConstructor
 public class CatalogController {
 

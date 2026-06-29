@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.regex.Pattern;
 
 @RestController
-@RequestMapping("/api/util")
+@RequestMapping("/api/seller/util")
 @RequiredArgsConstructor
 public class UtilController {
 

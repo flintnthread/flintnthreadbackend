@@ -49,10 +49,10 @@ public class SecurityConfig {
                                 "/api/public/**",
                                 "/api/admin/**"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/locations/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/locations/enrich").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/locations").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/locations/pincodes").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/seller/locations/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/seller/locations/enrich").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/seller/locations").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/seller/locations/pincodes").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

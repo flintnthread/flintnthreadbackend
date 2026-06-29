@@ -55,16 +55,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/admin/")) {
             return true;
         }
-        if (HttpMethod.GET.matches(request.getMethod()) && path.startsWith("/api/locations/")) {
+        if (HttpMethod.GET.matches(request.getMethod()) && path.startsWith("/api/seller/locations/")) {
             return true;
         }
-        if (HttpMethod.POST.matches(request.getMethod()) && "/api/locations/enrich".equals(path)) {
+        if (HttpMethod.POST.matches(request.getMethod()) && "/api/seller/locations/enrich".equals(path)) {
             return true;
         }
-        if (HttpMethod.POST.matches(request.getMethod()) && "/api/locations".equals(path)) {
+        if (HttpMethod.POST.matches(request.getMethod()) && "/api/seller/locations".equals(path)) {
             return true;
         }
-        if (HttpMethod.POST.matches(request.getMethod()) && "/api/locations/pincodes".equals(path)) {
+        if (HttpMethod.POST.matches(request.getMethod()) && "/api/seller/locations/pincodes".equals(path)) {
             return true;
         }
         return PUBLIC_PREFIXES.stream().anyMatch(path::startsWith);
