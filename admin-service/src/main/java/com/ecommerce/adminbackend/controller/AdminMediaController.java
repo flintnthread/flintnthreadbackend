@@ -39,6 +39,28 @@ public class AdminMediaController {
     @Value("${app.upload.kyc-directory:../seller-service/uploads/kyc_images}")
     private String kycUploadDirectory;
 
+    @Value("${app.upload.categories-directory:uploads/categories}")
+    private String categoriesUploadDirectory;
+
+    @Value("${app.upload.subcategories-directory:uploads/subcategories}")
+    private String subcategoriesUploadDirectory;
+
+    @GetMapping("/uploads/categories/{filename:.+}")
+    public ResponseEntity<?> categoryMedia(@PathVariable String filename) {
+        return serveOrRedirect(
+                categoriesUploadDirectory,
+                "uploads/categories/" + filename,
+                filename);
+    }
+
+    @GetMapping("/uploads/subcategories/{filename:.+}")
+    public ResponseEntity<?> subcategoryMedia(@PathVariable String filename) {
+        return serveOrRedirect(
+                subcategoriesUploadDirectory,
+                "uploads/subcategories/" + filename,
+                filename);
+    }
+
     @GetMapping("/uploads/sellers/{filename:.+}")
     public ResponseEntity<?> sellerMedia(@PathVariable String filename) {
         if (mediaUrlHelper.isSellerDocumentFileName(filename)) {

@@ -41,3 +41,4 @@ MEDIA_PUBLIC_BASE_URL=https://flintnthread.in
 APP_BACKEND_PUBLIC_URL=https://flintnthread.online
 APP_FRONTEND_BASE_URL=https://your-seller-app-url
 ADMIN_FRONTEND_URL=https://your-admin-url
+ADMIN_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006,https://flintnthread.online,https://www.flintnthread.online
