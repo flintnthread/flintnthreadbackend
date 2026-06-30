@@ -80,4 +80,11 @@ public class GlobalExceptionHandler {
                 "Registration could not be completed. This email or mobile number may already be in use."
         ));
     }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, String>> handleUnexpected(Exception ex) {
+        log.error("Unhandled server error", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "message", "An unexpected error occurred. Please try again."));
+    }
 }

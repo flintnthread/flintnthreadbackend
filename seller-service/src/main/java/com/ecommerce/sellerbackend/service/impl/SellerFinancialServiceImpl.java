@@ -22,6 +22,7 @@ import com.ecommerce.sellerbackend.repository.SellerRepository;
 import com.ecommerce.sellerbackend.service.SellerFinancialService;
 import com.ecommerce.sellerbackend.service.ShiprocketService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SellerFinancialServiceImpl implements SellerFinancialService {
 
     private static final NumberFormat INR = NumberFormat.getCurrencyInstance(new Locale("en", "IN"));
@@ -285,7 +287,8 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
     @Override
     public Map<String, Object> getEarnings(Long sellerId) {
         Seller seller = requireSeller(sellerId);
-        double pending = computePendingBalance(loadContext(sellerId));
+        SellerContext ctx = loadContext(sellerId);
+        double pending = computePendingBalance(sellerId, ctx);
         List<Map<String, Object>> transactions = buildWalletTransactions(sellerId);
 
         Map<String, Object> bank = null;
@@ -301,7 +304,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("availableBalance", round2(pending));
-        out.put("totalCredits", round2(computeLifetimePaid(loadContext(sellerId))));
+        out.put("totalCredits", round2(computeLifetimePaid(ctx));
         out.put("totalDebits", round2(sumPaidOutPayouts(sellerId)));
         out.put("transactions", transactions);
         if (bank != null) out.put("bankAccount", bank);
@@ -310,7 +313,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
 
     @Override
     public List<Map<String, Object>> getEarningsPayouts(Long sellerId) {
-        return payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId).stream()
+        return loadPayoutRequests(sellerId).stream()
                 .map(this::toPayoutTransaction)
                 .toList();
     }
@@ -343,7 +346,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
             throw new IllegalArgumentException("Invalid payout amount.");
         }
         SellerContext ctx = loadContext(sellerId);
-        double available = computePendingBalance(ctx);
+        double available = computePendingBalance(sellerId, ctx);
         if (amount > available) {
             throw new IllegalArgumentException("Insufficient balance.");
         }
@@ -376,24 +379,23 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
 
     @Override
     public Map<String, Object> getPayoutSummary(Long sellerId) {
+        requireSeller(sellerId);
         SellerContext ctx = loadContext(sellerId);
         double lifetime = computeLifetimeEligible(ctx);
         double thisMonth = aggregate(ctx, periodWindow("month", null, null)).sales();
-        double pending = computePendingBalance(ctx);
-        double highest = payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId).stream()
-                .map(SellerPayoutRequest::getRequestedAmount)
-                .filter(Objects::nonNull)
-                .mapToDouble(BigDecimal::doubleValue)
+        double pending = computePendingBalance(sellerId, ctx);
+        double highest = listPayoutRequests(sellerId).stream()
+                .mapToDouble(this::safePayoutAmount)
                 .max()
                 .orElse(0);
 
-        return Map.of(
-                "sellerId", sellerId,
-                "lifetimeEarnings", round2(lifetime),
-                "thisMonthEarnings", round2(thisMonth),
-                "highestPayout", round2(highest),
-                "pendingAmount", round2(pending)
-        );
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("sellerId", sellerId);
+        out.put("lifetimeEarnings", round2(lifetime));
+        out.put("thisMonthEarnings", round2(thisMonth));
+        out.put("highestPayout", round2(highest));
+        out.put("pendingAmount", round2(pending));
+        return out;
     }
 
     @Override
@@ -458,13 +460,13 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
 
     @Override
     public List<SellerPayoutRequest> listPayoutRequests(Long sellerId) {
-        return payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId);
+        return loadPayoutRequests(sellerId);
     }
 
     @Override
     @Transactional(readOnly = true)
     public String exportPayoutRequestsCsv(Long sellerId) {
-        List<SellerPayoutRequest> rows = payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId);
+        List<SellerPayoutRequest> rows = loadPayoutRequests(sellerId);
         StringBuilder csv = new StringBuilder();
         csv.append("Transaction ID,Order ID,Amount (INR),Requested At,Status,Transaction Ref,Paid At,Seller Note,Admin Note\n");
         for (SellerPayoutRequest row : rows) {
@@ -524,10 +526,35 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
 
     private SellerContext loadContext(Long sellerId) {
         List<OrderItem> items = orderItemRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
-        Set<Long> orderIds = items.stream().map(OrderItem::getOrderId).collect(Collectors.toSet());
-        Map<Long, Order> orders = orderRepository.findByIdIn(orderIds).stream()
-                .collect(Collectors.toMap(Order::getId, o -> o));
+        Set<Long> orderIds = items.stream()
+                .map(OrderItem::getOrderId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, Order> orders = new HashMap<>();
+        if (!orderIds.isEmpty()) {
+            for (Order order : orderRepository.findByIdIn(orderIds)) {
+                if (order.getId() != null) {
+                    orders.put(order.getId(), order);
+                }
+            }
+        }
         return new SellerContext(items, orders);
+    }
+
+    private List<SellerPayoutRequest> loadPayoutRequests(Long sellerId) {
+        try {
+            return payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId);
+        } catch (Exception ex) {
+            log.warn("Could not load payout requests for seller {}: {}", sellerId, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    private double safePayoutAmount(SellerPayoutRequest row) {
+        if (row == null || row.getRequestedAmount() == null) {
+            return 0;
+        }
+        return row.getRequestedAmount().doubleValue();
     }
 
     private PeriodMetrics aggregate(SellerContext ctx, PeriodWindow window) {
@@ -590,7 +617,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
         return rows;
     }
 
-    private double computePendingBalance(SellerContext ctx) {
+    private double computePendingBalance(Long sellerId, SellerContext ctx) {
         double eligible = 0;
         for (OrderItem item : ctx.items()) {
             Order order = ctx.order(item.getOrderId());
@@ -598,11 +625,10 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
             if (!isSellerPaymentPending(order)) continue;
             eligible += itemTotal(item);
         }
-        Long sellerId = ctx.items().stream().map(OrderItem::getSellerId).filter(Objects::nonNull).findFirst().orElse(0L);
-        double reserved = payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId)
+        double reserved = loadPayoutRequests(sellerId)
                 .stream()
                 .filter(p -> "pending".equalsIgnoreCase(p.getStatus()))
-                .mapToDouble(p -> p.getRequestedAmount().doubleValue())
+                .mapToDouble(this::safePayoutAmount)
                 .sum();
         return Math.max(eligible - reserved, 0);
     }
@@ -623,14 +649,14 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
     }
 
     private double sumPaidOutPayouts(Long sellerId) {
-        return payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId).stream()
+        return loadPayoutRequests(sellerId).stream()
                 .filter(p -> "paid".equalsIgnoreCase(p.getStatus()))
-                .mapToDouble(p -> p.getRequestedAmount().doubleValue())
+                .mapToDouble(this::safePayoutAmount)
                 .sum();
     }
 
     private List<Map<String, Object>> buildWalletTransactions(Long sellerId) {
-        return payoutRequestRepository.findBySellerIdOrderByRequestedAtDesc(sellerId).stream()
+        return loadPayoutRequests(sellerId).stream()
                 .limit(20)
                 .map(this::toWalletTransaction)
                 .toList();
@@ -640,7 +666,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", row.getId());
         out.put("title", "Payout Request");
-        out.put("amount", "-" + formatInr(row.getRequestedAmount().doubleValue()));
+        out.put("amount", "-" + formatInr(safePayoutAmount(row)));
         out.put("date", row.getRequestedAt() != null ? DISPLAY_DATE.format(row.getRequestedAt()) : "");
         out.put("status", capitalize(row.getStatus()));
         out.put("type", "debit");
@@ -652,7 +678,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", String.valueOf(row.getId()));
         out.put("orderId", row.getOrderId() != null ? String.valueOf(row.getOrderId()) : "");
-        out.put("amount", row.getRequestedAmount().doubleValue());
+        out.put("amount", safePayoutAmount(row));
         out.put("date", row.getRequestedAt() != null ? row.getRequestedAt().toString() : "");
         out.put("status", capitalize(row.getStatus()));
         out.put("type", "Payout");
