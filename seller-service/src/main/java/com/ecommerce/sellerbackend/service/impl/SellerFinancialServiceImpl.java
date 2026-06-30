@@ -304,7 +304,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("availableBalance", round2(pending));
-        out.put("totalCredits", round2(computeLifetimePaid(ctx));
+        out.put("totalCredits", round2(computeLifetimePaid(ctx)));
         out.put("totalDebits", round2(sumPaidOutPayouts(sellerId)));
         out.put("transactions", transactions);
         if (bank != null) out.put("bankAccount", bank);

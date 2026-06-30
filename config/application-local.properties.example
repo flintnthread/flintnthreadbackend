@@ -1,11 +1,20 @@
-# Local dev secrets — copy to config/application-local.properties
-# Database password here applies to ALL 3 services automatically
+# Local dev secrets — copy to config/application-local.properties (gitignored)
+#
+#   copy config\application-local.properties.example config\application-local.properties
+#
+# Used automatically when FLINT_CONFIG_DIR defaults to ./config
 
-DB_PASSWORD=Kusuma@2003
+# --- Database ---
+DB_URL=jdbc:mysql://127.0.0.1:3306/flintandthread?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata
+DB_USERNAME=root
+DB_PASSWORD=YOUR_LOCAL_MYSQL_PASSWORD
 
-# Leave empty + seller uses app.mail.dev-mode=true (reset links logged in console).
-# Paste your key from https://app.sendgrid.com/settings/api_keys (never commit the real key)
-SENDGRID_API_KEY=
+# --- Mail (required for real emails; leave empty only if testing without mail) ---
+# https://app.sendgrid.com/settings/api_keys
+SENDGRID_API_KEY=REPLACE_WITH_YOUR_SENDGRID_API_KEY
+MAIL_FROM=support@flintnthread.in
+
+# --- Optional ---
 TWILIO_AUTH_TOKEN=
 TWILIO_ACCOUNT_SID=
 RAZORPAY_KEY_ID=

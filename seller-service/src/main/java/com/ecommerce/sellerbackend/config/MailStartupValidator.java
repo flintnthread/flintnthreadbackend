@@ -1,4 +1,4 @@
-package com.ecommerce.authdemo.config;
+package com.ecommerce.sellerbackend.config;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
