@@ -5,12 +5,11 @@ import com.ecommerce.authdemo.entity.DeliveryOption;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.ProductReview;
 import com.ecommerce.authdemo.entity.Seller;
+import com.ecommerce.authdemo.mapper.ProductMapper;
 import com.ecommerce.authdemo.repository.*;
-import com.ecommerce.authdemo.service.ProductService;
 import com.ecommerce.authdemo.service.SellerStoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -18,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -33,14 +31,34 @@ public class SellerStoreServiceImpl implements SellerStoreService {
     private final OrderItemRepository orderItemRepository;
     private final DeliveryOptionRepository deliveryOptionRepository;
     private final CategoryRepository categoryRepository;
-    private final ProductService productService;
+    private final ProductMapper productMapper;
+
+    @Override
+    public SellerProfileDTO getProfile(Long sellerId) {
+        Seller seller = sellerRepository.findById(sellerId).orElse(null);
+        long productCount = productRepository.countBySellerId(sellerId);
+        if (seller == null && productCount == 0) {
+            throw new RuntimeException("Seller not found");
+        }
+        List<ProductDTO> sampleProducts = loadSellerSampleProducts(sellerId, 8);
+        double sellerRating = averageSellerRating(sellerId);
+        long ordersCompleted = orderItemRepository.countBySellerId(sellerId);
+        return buildProfile(
+                seller != null ? seller : syntheticSeller(sellerId),
+                sampleProducts,
+                sellerRating,
+                ordersCompleted
+        );
+    }
 
     @Override
     public SellerStoreResponseDTO getStore(Long sellerId) {
-        Seller seller = sellerRepository.findById(sellerId)
-                .orElseThrow(() -> new RuntimeException("Seller not found"));
-
+        Seller seller = sellerRepository.findById(sellerId).orElse(null);
         long productCount = productRepository.countBySellerId(sellerId);
+        if (seller == null && productCount == 0) {
+            throw new RuntimeException("Seller not found");
+        }
+
         long reviewCount = reviewRepository.countActiveBySellerId(sellerId);
         long ordersCompleted = orderItemRepository.countBySellerId(sellerId);
         long fulfilledOrders = orderItemRepository.countFulfilledBySellerId(sellerId);
@@ -48,20 +66,23 @@ public class SellerStoreServiceImpl implements SellerStoreService {
         Double avgRating = reviewRepository.averageRatingBySellerId(sellerId);
         double sellerRating = avgRating != null ? roundOne(avgRating) : 0.0;
 
-        List<ProductDTO> sellerProducts = productService.getSellerProducts(sellerId);
-        List<ProductDTO> topProducts = sellerProducts.stream()
-                .sorted(Comparator.comparing(
-                        (ProductDTO p) -> p.getCreatedAt() != null ? p.getCreatedAt() : java.time.LocalDateTime.MIN
-                ).reversed())
-                .limit(8)
-                .toList();
+        List<ProductDTO> sampleProducts = loadSellerSampleProducts(sellerId, 20);
+        List<ProductDTO> topProducts = sampleProducts.stream().limit(8).toList();
 
         SellerStoreResponseDTO response = new SellerStoreResponseDTO();
-        response.setProfile(buildProfile(seller, sellerProducts, sellerRating, ordersCompleted));
-        response.setStats(buildStats(sellerRating, ordersCompleted, fulfilledOrders, sellerProducts));
-        response.setAboutText(buildAboutText(seller, sellerProducts));
+        response.setProfile(buildProfile(
+                seller != null ? seller : syntheticSeller(sellerId),
+                sampleProducts,
+                sellerRating,
+                ordersCompleted
+        ));
+        response.setStats(buildStats(sellerRating, ordersCompleted, fulfilledOrders, sampleProducts));
+        response.setAboutText(buildAboutText(
+                seller != null ? seller : syntheticSeller(sellerId),
+                sampleProducts
+        ));
         response.setHighlights(defaultHighlights());
-        response.setPolicies(buildPolicies(sellerId, sellerProducts));
+        response.setPolicies(buildPolicies(sellerId, sampleProducts));
         response.setTopProducts(topProducts);
         response.setProductCount(productCount);
         response.setReviewCount(reviewCount);
@@ -71,18 +92,15 @@ public class SellerStoreServiceImpl implements SellerStoreService {
 
     @Override
     public Page<ProductDTO> getProducts(Long sellerId, int page, int size) {
-        if (!sellerRepository.existsById(sellerId)) {
+        long productCount = productRepository.countBySellerId(sellerId);
+        if (productCount == 0 && !sellerRepository.existsById(sellerId)) {
             throw new RuntimeException("Seller not found");
         }
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        List<ProductDTO> all = productService.getSellerProducts(sellerId);
-        int from = safePage * safeSize;
-        if (from >= all.size()) {
-            return new PageImpl<>(List.of(), PageRequest.of(safePage, safeSize), all.size());
-        }
-        int to = Math.min(from + safeSize, all.size());
-        return new PageImpl<>(all.subList(from, to), PageRequest.of(safePage, safeSize), all.size());
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+        Page<Product> productPage = productRepository.findBySellerId(sellerId, pageable);
+        return productPage.map(productMapper::toDTO);
     }
 
     @Override
@@ -316,6 +334,25 @@ public class SellerStoreServiceImpl implements SellerStoreService {
 
     private double roundOne(double value) {
         return Math.round(value * 10.0) / 10.0;
+    }
+
+    private double averageSellerRating(Long sellerId) {
+        Double avgRating = reviewRepository.averageRatingBySellerId(sellerId);
+        return avgRating != null ? roundOne(avgRating) : 0.0;
+    }
+
+    private List<ProductDTO> loadSellerSampleProducts(Long sellerId, int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 20);
+        return productRepository.findTop20BySellerIdOrderByCreatedAtDesc(sellerId).stream()
+                .limit(safeLimit)
+                .map(productMapper::toDTO)
+                .toList();
+    }
+
+    private Seller syntheticSeller(Long sellerId) {
+        Seller seller = new Seller();
+        seller.setId(sellerId);
+        return seller;
     }
 
     private String trim(String value) {

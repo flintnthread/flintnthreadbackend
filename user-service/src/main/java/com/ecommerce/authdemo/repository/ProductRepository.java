@@ -45,6 +45,10 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     List<Product> findBySellerId(Long sellerId);
 
+    Page<Product> findBySellerId(Long sellerId, Pageable pageable);
+
+    List<Product> findTop20BySellerIdOrderByCreatedAtDesc(Long sellerId);
+
     long countBySellerId(Long sellerId);
 
 
