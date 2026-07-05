@@ -4,6 +4,7 @@ import com.ecommerce.adminbackend.logging.LogFactory;
 import org.slf4j.Logger;
 import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.dto.common.NoteRequest;
+import com.ecommerce.adminbackend.dto.seller.SellerStatusUpdateRequest;
 import com.ecommerce.adminbackend.service.SellerAdminService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -98,13 +99,29 @@ public class SellerAdminController {
     }
 
     @PostMapping("/{id}/block")
-    public Map<String, Object> block(@PathVariable Long id) {
-        return sellerAdminService.blockSeller(id);
+    public Map<String, Object> block(
+            @PathVariable Long id,
+            @RequestBody(required = false) NoteRequest request) {
+        String reason = request != null
+                ? (request.getReason() != null ? request.getReason() : request.getNote())
+                : null;
+        return sellerAdminService.blockSeller(id, reason);
     }
 
     @PostMapping("/{id}/unblock")
     public Map<String, Object> unblock(@PathVariable Long id) {
         return sellerAdminService.unblockSeller(id);
+    }
+
+    @PostMapping("/{id}/status")
+    public Map<String, Object> updateStatus(
+            @PathVariable Long id,
+            @RequestBody SellerStatusUpdateRequest request) {
+        return sellerAdminService.updateSellerStatus(
+                id,
+                request != null ? request.getStatus() : null,
+                request != null ? request.getKycVerificationStatus() : null,
+                request != null ? request.getKycRemarks() : null);
     }
 
     @GetMapping("/bank/pending")
@@ -155,5 +172,10 @@ public class SellerAdminController {
     public Map<String, Object> rejectBank(@PathVariable Long id, @RequestBody(required = false) NoteRequest request) {
         String note = request != null ? (request.getNote() != null ? request.getNote() : request.getReason()) : null;
         return sellerAdminService.rejectBank(id, note);
+    }
+
+    @PostMapping("/{id}/resend-verification")
+    public Map<String, Object> resendVerification(@PathVariable Long id) {
+        return sellerAdminService.resendEmailVerification(id);
     }
 }

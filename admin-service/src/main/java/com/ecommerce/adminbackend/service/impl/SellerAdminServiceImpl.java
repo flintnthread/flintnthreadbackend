@@ -8,12 +8,15 @@ import com.ecommerce.adminbackend.repository.OrderItemRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.SellerKycImageRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
+import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.SellerAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
+import com.ecommerce.adminbackend.util.SellerEmailVerificationUrlHelper;
 import com.ecommerce.adminbackend.util.SellerGraphPeriodUtil;
 import com.ecommerce.adminbackend.util.TextUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -28,9 +31,11 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SellerAdminServiceImpl extends BaseAdminService implements SellerAdminService {
 
     private static final DateTimeFormatter DISPLAY_DATE_TIME = DateTimeFormatter.ofPattern("dd MMM, yyyy hh:mm a");
@@ -40,6 +45,8 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
     private final OrderItemRepository orderItemRepository;
     private final SellerKycImageRepository sellerKycImageRepository;
     private final MediaUrlHelper mediaUrlHelper;
+    private final MailService mailService;
+    private final SellerEmailVerificationUrlHelper sellerEmailVerificationUrlHelper;
 
     @Override
     @Transactional(readOnly = true)
@@ -55,8 +62,9 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         Map<Long, java.math.BigDecimal> revenueBySeller = loadRevenueForSellers(sellerIds);
         Map<Long, Long> orderCounts = loadOrderCounts(sellerIds);
         Map<Long, String> kycImageFallbacks = loadKycImageFallbacks(sellerIds);
+        Map<Long, Long> kycImageCounts = loadKycImageCounts(sellerIds);
         return PageResponse.from(result.map(seller ->
-                toSellerSummary(seller, revenueBySeller, productCounts, orderCounts, kycImageFallbacks)));
+                toSellerSummary(seller, revenueBySeller, productCounts, orderCounts, kycImageFallbacks, kycImageCounts)));
     }
 
     @Override
@@ -69,8 +77,9 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         Map<Long, java.math.BigDecimal> revenueBySeller = loadRevenueForSellers(sellerIds);
         Map<Long, Long> orderCounts = loadOrderCounts(sellerIds);
         Map<Long, String> kycImageFallbacks = loadKycImageFallbacks(sellerIds);
+        Map<Long, Long> kycImageCounts = loadKycImageCounts(sellerIds);
         return PageResponse.from(result.map(seller ->
-                toSellerSummary(seller, revenueBySeller, productCounts, orderCounts, kycImageFallbacks)));
+                toSellerSummary(seller, revenueBySeller, productCounts, orderCounts, kycImageFallbacks, kycImageCounts)));
     }
 
     @Override
@@ -273,11 +282,19 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
 
     @Override
     @Transactional
-    public Map<String, Object> blockSeller(Long id) {
+    public Map<String, Object> blockSeller(Long id, String reason) {
         Seller seller = requireSeller(id);
         seller.setStatus(SellerAccountStatus.suspended);
+        if (reason != null && !reason.isBlank()) {
+            seller.setAdminRemarks(reason.trim());
+        }
         sellerRepository.save(seller);
-        return Map.of("sellerId", id, "status", "suspended", "message", "Seller blocked.");
+        notifySellerAccountStatus(seller, "Inactive", reason);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sellerId", id);
+        response.put("status", "suspended");
+        response.put("message", "Seller deactivated.");
+        return response;
     }
 
     @Override
@@ -287,6 +304,75 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         seller.setStatus(SellerAccountStatus.active);
         sellerRepository.save(seller);
         return Map.of("sellerId", id, "status", "active", "message", "Seller unblocked.");
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> updateSellerStatus(
+            Long id,
+            String status,
+            String kycVerificationStatus,
+            String kycRemarks) {
+        Seller seller = requireSeller(id);
+        LocalDateTime now = LocalDateTime.now();
+
+        SellerAccountStatus nextStatus = parseAccountStatus(status);
+        if (nextStatus != null) {
+            seller.setStatus(nextStatus);
+        }
+
+        applyKycVerificationStatus(seller, kycVerificationStatus, now);
+
+        if (kycRemarks != null) {
+            seller.setKycRemarks(kycRemarks.isBlank() ? null : kycRemarks.trim());
+        }
+
+        seller.setUpdatedAt(now);
+        sellerRepository.save(seller);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sellerId", id);
+        response.put("status", seller.getStatus() != null ? seller.getStatus().name() : null);
+        response.put("kycVerificationStatus", resolveKycVerificationStatus(seller));
+        response.put("kycRemarks", seller.getKycRemarks());
+        response.put("message", "Seller status updated.");
+        return response;
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> resendEmailVerification(Long id) {
+        Seller seller = requireSeller(id);
+
+        if (Boolean.TRUE.equals(seller.getEmailVerified())) {
+            throw new IllegalArgumentException("This seller's email is already verified.");
+        }
+        if (seller.getEmail() == null || seller.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Seller does not have an email address on file.");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        String token = UUID.randomUUID().toString().replace("-", "");
+        seller.setEmailVerificationToken(token);
+        seller.setOtp(null);
+        seller.setOtpExpiresAt(null);
+        seller.setOtpSentAt(now);
+        seller.setEmailVerified(false);
+        seller.setStatus(SellerAccountStatus.email_pending);
+        seller.setUpdatedAt(now);
+        sellerRepository.save(seller);
+
+        String verifyLink = sellerEmailVerificationUrlHelper.buildEmailLinkClickUrl(token);
+        mailService.sendEmailVerificationLinkEmail(
+                seller.getEmail(),
+                seller.getFullName(),
+                verifyLink);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sellerId", id);
+        response.put("email", seller.getEmail());
+        response.put("message", "Verification email sent successfully.");
+        return response;
     }
 
     @Override
@@ -365,6 +451,16 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
                 ? sellerRepository.findBankVerified(pageable)
                 : sellerRepository.findPendingBankVerification(pageable);
         return PageResponse.from(result.map(this::toBankSummary));
+    }
+
+    private boolean isResendVerificationEligible(Seller seller) {
+        if (Boolean.TRUE.equals(seller.getEmailVerified())) {
+            return false;
+        }
+        if (seller.getStatus() == SellerAccountStatus.email_pending) {
+            return true;
+        }
+        return seller.getStatus() == SellerAccountStatus.pending;
     }
 
     private Seller requireSeller(Long id) {
@@ -488,7 +584,8 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
                 loadRevenueForSellers(List.of(sellerId)),
                 loadProductCounts(List.of(sellerId)),
                 loadOrderCounts(List.of(sellerId)),
-                loadKycImageFallbacks(List.of(sellerId)));
+                loadKycImageFallbacks(List.of(sellerId)),
+                loadKycImageCounts(List.of(sellerId)));
     }
 
     private Map<String, Object> toSellerSummary(
@@ -496,10 +593,13 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
             Map<Long, java.math.BigDecimal> revenueBySeller,
             Map<Long, Long> productCounts,
             Map<Long, Long> orderCounts,
-            Map<Long, String> kycImageFallbacks) {
+            Map<Long, String> kycImageFallbacks,
+            Map<Long, Long> kycImageCounts) {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("id", seller.getId());
         summary.put("fullName", seller.getFullName());
+        summary.put("firstName", seller.getFirstName());
+        summary.put("lastName", seller.getLastName());
         summary.put("email", seller.getEmail());
         summary.put("mobile", seller.getMobile());
         summary.put("businessName", seller.getBusinessName());
@@ -523,6 +623,32 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         summary.put("state", resolveSellerState(seller));
         summary.put("businessType", seller.getBusinessType());
         summary.put("country", seller.getCountry());
+        summary.put("area", seller.getArea());
+        summary.put("pincode", seller.getPincode());
+        summary.put("address", seller.getAddress());
+        summary.put("panNumber", seller.getPanNumber());
+        summary.put("gstNumber", seller.getGstNumber());
+        summary.put("hasGst", seller.getHasGst());
+        summary.put("bankName", seller.getBankName());
+        summary.put("branchName", seller.getBranchName());
+        summary.put("accountHolder", seller.getAccountHolder());
+        summary.put("accountNumber", seller.getAccountNumber());
+        summary.put("ifscCode", seller.getIfscCode());
+        summary.put("warehouseAddress", seller.getWarehouseAddress());
+        summary.put("warehouseArea", seller.getWarehouseArea());
+        summary.put("warehouseCity", seller.getWarehouseCity());
+        summary.put("warehouseState", seller.getWarehouseState());
+        summary.put("warehouseCountry", seller.getWarehouseCountry());
+        summary.put("kycSubmittedAt", seller.getKycSubmittedAt());
+        summary.put("kycVerifiedAt", seller.getKycVerifiedAt());
+        summary.put("kycRemarks", seller.getKycRemarks());
+        summary.put("adminRemarks", seller.getAdminRemarks());
+        summary.put("kycStatusLabel", resolveKycStatusLabel(seller));
+        summary.put("kycVerificationStatus", resolveKycVerificationStatus(seller));
+        summary.put("kycImageCount", kycImageCounts.getOrDefault(seller.getId(), 0L));
+        summary.put("emailVerified", seller.getEmailVerified());
+        summary.put("mobileVerified", seller.getMobileVerified());
+        summary.put("resendVerificationEligible", isResendVerificationEligible(seller));
         java.math.BigDecimal revenue = revenueBySeller.getOrDefault(seller.getId(), java.math.BigDecimal.ZERO);
         summary.put("totalRevenue", revenue);
         return summary;
@@ -546,6 +672,25 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         }
         for (Long sellerId : sellerIds) {
             counts.putIfAbsent(sellerId, 0L);
+        }
+        return counts;
+    }
+
+    private Map<Long, Long> loadKycImageCounts(List<Long> sellerIds) {
+        if (sellerIds == null || sellerIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Long> counts = new HashMap<>();
+        for (Long sellerId : sellerIds) {
+            counts.put(sellerId, 0L);
+        }
+        for (Object[] row : sellerKycImageRepository.countGroupedBySellerIds(sellerIds)) {
+            if (row[0] == null) {
+                continue;
+            }
+            Long sellerId = ((Number) row[0]).longValue();
+            Long count = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+            counts.put(sellerId, count);
         }
         return counts;
     }
@@ -642,11 +787,14 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         detail.put("firstName", seller.getFirstName());
         detail.put("lastName", seller.getLastName());
         detail.put("businessType", seller.getBusinessType());
+        detail.put("sellerCategory", seller.getSellerCategory() != null ? seller.getSellerCategory().name() : null);
         detail.put("emailVerified", seller.getEmailVerified());
         detail.put("mobileVerified", seller.getMobileVerified());
         detail.put("lastLoginAt", seller.getLastLoginAt());
         detail.put("profileUpdatedAt", seller.getProfileUpdatedAt());
+        detail.put("registeredOn", seller.getCreatedAt());
         detail.put("address", seller.getAddress());
+        detail.put("area", seller.getArea());
         detail.put("city", seller.getCity());
         detail.put("state", seller.getState());
         detail.put("pincode", seller.getPincode());
@@ -666,7 +814,17 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         detail.put("warehouseArea", seller.getWarehouseArea());
         detail.put("adminRemarks", seller.getAdminRemarks());
         detail.put("kycRemarks", seller.getKycRemarks());
+        detail.put("kycSubmittedAt", seller.getKycSubmittedAt());
+        detail.put("kycVerifiedAt", seller.getKycVerifiedAt());
+        detail.put("kycCompleted", seller.getKycCompleted());
+        detail.put("kycVerified", seller.getKycVerified());
+        detail.put("kycStatusLabel", resolveKycStatusLabel(seller));
+        detail.put("kycVerificationStatus", resolveKycVerificationStatus(seller));
+        detail.put("kycImageCount", sellerKycImageRepository.countBySellerId(seller.getId()));
+        detail.put("verifiedBy", null);
         detail.put("profileNeedsVerification", seller.getProfileNeedsVerification());
+        detail.put("liveSelfieUrl", mediaUrlHelper.toPublicUrl(seller.getLiveSelfie()));
+        detail.put("liveSelfieImages", buildLiveSelfieImages(seller));
         detail.put("bankProofPath", blankToNull(seller.getBankProof()));
         detail.put("cancelledChequePath", blankToNull(seller.getCancelledCheque()));
         detail.put("bankProofUrl", mediaUrlHelper.toPublicUrl(seller.getBankProof()));
@@ -675,6 +833,122 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         detail.put("productStatusDistribution", buildProductStatusDistribution(seller.getId()));
         detail.put("orderStatusDistribution", buildOrderStatusDistribution(seller.getId()));
         return detail;
+    }
+
+    private String resolveKycStatusLabel(Seller seller) {
+        if (Boolean.TRUE.equals(seller.getKycVerified())) {
+            return "Completed";
+        }
+        if (Boolean.TRUE.equals(seller.getKycCompleted())) {
+            return "Submitted";
+        }
+        return "Not Completed";
+    }
+
+    private String resolveKycVerificationStatus(Seller seller) {
+        if (Boolean.TRUE.equals(seller.getKycVerified())) {
+            return "Verified";
+        }
+        if (seller.getStatus() == SellerAccountStatus.rejected) {
+            return "Rejected";
+        }
+        if (Boolean.TRUE.equals(seller.getKycCompleted())) {
+            return "Pending Verification";
+        }
+        return "Pending Verification";
+    }
+
+    private SellerAccountStatus parseAccountStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        String normalized = status.trim().toLowerCase().replace(' ', '_');
+        return switch (normalized) {
+            case "active" -> SellerAccountStatus.active;
+            case "pending" -> SellerAccountStatus.pending;
+            case "rejected" -> SellerAccountStatus.rejected;
+            case "inactive", "blocked", "suspended" -> SellerAccountStatus.suspended;
+            default -> TextUtils.parseEnum(normalized, SellerAccountStatus.class, "seller status");
+        };
+    }
+
+    private void applyKycVerificationStatus(Seller seller, String kycVerificationStatus, LocalDateTime now) {
+        if (kycVerificationStatus == null || kycVerificationStatus.isBlank()) {
+            return;
+        }
+        String normalized = kycVerificationStatus.trim().toLowerCase().replace(' ', '_');
+        switch (normalized) {
+            case "verified", "active", "approved" -> {
+                seller.setKycCompleted(true);
+                seller.setKycVerified(true);
+                if (seller.getKycVerifiedAt() == null) {
+                    seller.setKycVerifiedAt(now);
+                }
+            }
+            case "rejected" -> {
+                seller.setKycCompleted(false);
+                seller.setKycVerified(false);
+                seller.setKycVerifiedAt(null);
+            }
+            case "pending_verification", "pending", "inactive" -> {
+                seller.setKycCompleted(true);
+                seller.setKycVerified(false);
+                seller.setKycVerifiedAt(null);
+            }
+            default -> throw new IllegalArgumentException("Unsupported KYC verification status: " + kycVerificationStatus);
+        }
+    }
+
+    private void notifySellerAccountStatus(Seller seller, String statusLabel, String reason) {
+        if (seller.getEmail() == null || seller.getEmail().isBlank()) {
+            return;
+        }
+        try {
+            mailService.sendSellerAccountStatusEmail(
+                    seller.getEmail(),
+                    seller.getFullName(),
+                    statusLabel,
+                    reason);
+        } catch (RuntimeException ex) {
+            log.error("Seller status updated but notification email failed for sellerId={}", seller.getId(), ex);
+        }
+    }
+
+    private List<Map<String, Object>> buildLiveSelfieImages(Seller seller) {
+        List<Map<String, Object>> images = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        if (isPresent(seller.getLiveSelfie())) {
+            addLiveSelfieImage(images, seen, seller.getLiveSelfie(), "Live Selfie");
+        }
+        for (SellerKycImage image : sellerKycImageRepository.findBySellerIdOrderByCapturedAtDesc(seller.getId())) {
+            boolean isLiveSelfie = "live_selfie".equalsIgnoreCase(image.getDocType())
+                    || "face".equalsIgnoreCase(image.getImageType());
+            if (!isLiveSelfie) {
+                continue;
+            }
+            String path = resolveKycImagePath(seller.getId(), image);
+            if (!isPresent(path)) {
+                continue;
+            }
+            addLiveSelfieImage(images, seen, path, formatKycDocumentName(image));
+        }
+        return images;
+    }
+
+    private void addLiveSelfieImage(
+            List<Map<String, Object>> images,
+            java.util.Set<String> seen,
+            String path,
+            String name) {
+        String normalizedPath = path.trim();
+        if (!seen.add(normalizedPath.toLowerCase())) {
+            return;
+        }
+        Map<String, Object> image = new LinkedHashMap<>();
+        image.put("name", name);
+        image.put("path", normalizedPath);
+        image.put("url", mediaUrlHelper.toPublicUrl(normalizedPath));
+        images.add(image);
     }
 
     private Map<String, Object> buildProductStatusDistribution(Long sellerId) {
