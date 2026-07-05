@@ -39,6 +39,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -299,6 +300,7 @@ public class ProductServiceImpl implements ProductService {
                         .stock(v.getStock())
                         .sellingPrice(v.getSellingPrice())
                         .finalPrice(v.getFinalPrice())
+                        .metroMetroDeliveryCharge(v.getMetroMetroDeliveryCharge())
                         .image(resolveVariantImage(images, v.getId()))
                         .build())
                 .toList();
@@ -307,8 +309,8 @@ public class ProductServiceImpl implements ProductService {
                 .id(product.getId())
                 .name(product.getName())
                 .sku(firstNonBlank(
-                        product.getSku(),
-                        primaryVariant != null ? primaryVariant.getSku() : null))
+                        primaryVariant != null ? primaryVariant.getSku() : null,
+                        product.getSku()))
                 .price(price)
                 .mrpInclGst(mrpInclGst)
                 .image(image)
@@ -351,18 +353,18 @@ public class ProductServiceImpl implements ProductService {
         if (variant == null) {
             return BigDecimal.ZERO;
         }
-        if (variant.getTotalPriceMetroMetro() != null
-                && variant.getTotalPriceMetroMetro().compareTo(BigDecimal.ZERO) > 0) {
-            return variant.getTotalPriceMetroMetro();
+        BigDecimal sellingWithGst = variant.getFinalPrice();
+        if (sellingWithGst == null || sellingWithGst.compareTo(BigDecimal.ZERO) <= 0) {
+            sellingWithGst = variant.getMrpPrice();
         }
-        if (variant.getFinalPrice() != null) {
-            return variant.getFinalPrice();
+        if (sellingWithGst != null && sellingWithGst.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal metroMetro = variant.getMetroMetroDeliveryCharge() != null
+                    ? variant.getMetroMetroDeliveryCharge()
+                    : BigDecimal.ZERO;
+            return sellingWithGst.add(metroMetro).setScale(2, RoundingMode.HALF_UP);
         }
         if (variant.getSellingPrice() != null) {
             return variant.getSellingPrice();
-        }
-        if (variant.getMrpPrice() != null) {
-            return variant.getMrpPrice();
         }
         if (variant.getBasePrice() != null) {
             return variant.getBasePrice();

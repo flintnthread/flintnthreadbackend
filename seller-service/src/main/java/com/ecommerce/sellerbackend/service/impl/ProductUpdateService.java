@@ -113,8 +113,18 @@ public class ProductUpdateService {
             }
 
             String clientKey = firstNonBlank(variantReq.getClientKey(), "v" + variantIndex);
-            String colorId = catalogResolver.resolveColorId(sellerId, variantReq);
-            String sizeId = catalogResolver.resolveSizeId(sellerId, variantReq);
+
+            ProductVariant existingVariant = null;
+            if (variantReq.getId() != null) {
+                existingVariant = productVariantRepository.findByIdAndProductId(variantReq.getId(), productId)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Variant not found: " + variantReq.getId()));
+            }
+
+            String existingColor = existingVariant != null ? existingVariant.getColor() : null;
+            String existingSize = existingVariant != null ? existingVariant.getSize() : null;
+            String colorId = catalogResolver.resolveColorId(sellerId, variantReq, existingColor);
+            String sizeId = catalogResolver.resolveSizeId(sellerId, variantReq, existingSize);
             VariantPricing pricing = ProductVariantPricingCalculator.calculate(
                     variantReq.getMrp(),
                     variantReq.getSellingPrice(),
@@ -128,10 +138,8 @@ public class ProductUpdateService {
             String generatedSku = ProductSkuGenerator.generateVariantSku(request.getName(), colorName, sizeName);
 
             ProductVariant variant;
-            if (variantReq.getId() != null) {
-                variant = productVariantRepository.findByIdAndProductId(variantReq.getId(), productId)
-                        .orElseThrow(() -> new IllegalArgumentException(
-                                "Variant not found: " + variantReq.getId()));
+            if (existingVariant != null) {
+                variant = existingVariant;
             } else {
                 variant = new ProductVariant();
                 variant.setProductId(productId);
@@ -142,6 +150,7 @@ public class ProductUpdateService {
             variant.setSize(sizeId);
             variant.setSku(firstNonBlank(variantReq.getSku(), generatedSku));
             variant.setStock(variantReq.getStock());
+            variant.setMinQuantity(variantReq.getMinQuantity());
             variant.setBasePrice(variantReq.getSellingPrice());
             variant.setMrpExclGst(variantReq.getMrp());
             variant.setMrpPrice(pricing.finalPrice());
@@ -194,6 +203,15 @@ public class ProductUpdateService {
                     .filter(img -> img.getVariantId() == null)
                     .forEach(img -> productImageRepository.deleteById(img.getId()));
             saveProductImages(productId, request.getImages(), variantIdsByClientKey);
+        }
+
+        List<ProductVariant> remaining = productVariantRepository.findByProductIdOrderByIdAsc(productId);
+        if (!remaining.isEmpty()) {
+            ProductVariant primary = remaining.get(0);
+            if (primary.getSku() != null && !primary.getSku().isBlank()) {
+                product.setSku(primary.getSku());
+                productRepository.save(product);
+            }
         }
 
         return CreateProductResponse.builder()

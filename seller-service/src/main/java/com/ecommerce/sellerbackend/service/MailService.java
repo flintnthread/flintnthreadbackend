@@ -28,4 +28,11 @@ public interface MailService {
             int amountInPaise,
             byte[] invoicePdf
     );
+
+    void sendSubscriptionRenewalReminderEmail(
+            String toEmail,
+            String recipientName,
+            String expiryDate,
+            int renewalAmountInr
+    );
 }

@@ -40,6 +40,12 @@ private String companyGstin;
     @Value("${invoice.company.state:Telangana}")
 private String companyState;
 
+    @Value("${app.registration.fee.inr:899}")
+    private int registrationFeeInr;
+
+    @Value("${app.registration.gst.percent:18}")
+    private int registrationGstPercent;
+
     @Value("${app.invoice.logo-url:}")
     private String invoiceLogoUrl;
 
@@ -201,14 +207,9 @@ document.add(new Paragraph(
         table.addCell(headerCell("Description"));
         table.addCell(headerCell("Qty"));
         table.addCell(headerCell("Amount"));
-        double totalAmount = amountInPaise / 100.0;
-
-double registrationFee =
-        totalAmount / 1.18;
-
-
-
-double gstAmount = totalAmount - registrationFee;
+        double registrationFee = registrationFeeInr;
+        double gstAmount = registrationFeeInr * registrationGstPercent / 100.0;
+        double totalAmount = registrationFee + gstAmount;
  String sellerState =
         seller.getState() != null
                 ? seller.getState().trim()
@@ -231,7 +232,7 @@ if (sameState) {
     igst = gstAmount;
 }
 
-table.addCell(bodyCell("Seller Registration Fee"));
+table.addCell(bodyCell("Annual Seller Registration Fee (per annum)"));
 table.addCell(bodyCell("1"));
 table.addCell(bodyCell(
         "Rs " +
@@ -268,7 +269,7 @@ document.add(table);
         document.add(new Paragraph(" "));
 
 document.add(new Paragraph(
-        "Registration Fee : Rs "
+        "Registration Fee (per annum) : Rs "
                 + String.format("%.2f", registrationFee),
         headingFont));
 
@@ -300,7 +301,7 @@ Font totalFont =
 
 document.add(new Paragraph(
         "TOTAL PAID : Rs "
-                + formatMoney(amountInPaise),
+                + String.format(Locale.ENGLISH, "%.2f", totalAmount),
         totalFont));
         document.add(new Paragraph("Status: PAID", headingFont));
         document.add(new Paragraph(" "));
@@ -309,7 +310,7 @@ document.add(new Paragraph(
         bodyFont));
 
 document.add(new Paragraph(
-        "This invoice serves as proof of registration payment.",
+        "This invoice serves as proof of annual seller subscription payment.",
         bodyFont));
         document.close();
         return out.toByteArray();

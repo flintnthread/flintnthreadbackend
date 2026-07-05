@@ -95,7 +95,7 @@ public class ProductDetailAssembler {
                 .subcategoryId(product.getSubcategoryId())
                 .sizeChartId(product.getSizeChartId())
                 .name(product.getName())
-                .sku(firstNonBlank(product.getSku(), primary != null ? primary.getSku() : null, "—"))
+                .sku(resolveDisplaySku(product, primary))
                 .price(price)
                 .mrp(mrpExclGst)
                 .mrpExclGst(mrpExclGst)
@@ -185,12 +185,12 @@ public class ProductDetailAssembler {
 
         BigDecimal taxPct = variant.getTaxPercentage() != null ? variant.getTaxPercentage() : BigDecimal.ZERO;
         BigDecimal taxAmt = variant.getTaxAmount() != null ? variant.getTaxAmount() : BigDecimal.ZERO;
-        BigDecimal commissionPct = variant.getCommissionPercentage() != null ? variant.getCommissionPercentage() : BigDecimal.ZERO;
-        BigDecimal commissionAmt = variant.getCommissionAmount() != null ? variant.getCommissionAmount() : BigDecimal.ZERO;
         BigDecimal intraCity = variant.getIntraCityDeliveryCharge() != null ? variant.getIntraCityDeliveryCharge() : BigDecimal.ZERO;
         BigDecimal metroMetro = variant.getMetroMetroDeliveryCharge() != null ? variant.getMetroMetroDeliveryCharge() : BigDecimal.ZERO;
-        BigDecimal totalIntra = variant.getTotalPriceIntraCity() != null ? variant.getTotalPriceIntraCity() : BigDecimal.ZERO;
-        BigDecimal totalMetro = variant.getTotalPriceMetroMetro() != null ? variant.getTotalPriceMetroMetro() : BigDecimal.ZERO;
+        BigDecimal commissionPct = BigDecimal.ZERO;
+        BigDecimal commissionAmt = BigDecimal.ZERO;
+        BigDecimal totalIntra = priceWithGst.add(intraCity).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalMetro = priceWithGst.add(metroMetro).setScale(2, RoundingMode.HALF_UP);
 
         int discount = variant.getDiscountPercentage() != null
                 ? variant.getDiscountPercentage().setScale(0, RoundingMode.HALF_UP).intValue()
@@ -205,9 +205,12 @@ public class ProductDetailAssembler {
                 .productId(variant.getProductId())
                 .color(colorName)
                 .colorHex(colorHex)
+                .colorId(parseCatalogId(variant.getColor()).orElse(null))
                 .size(resolveSizeName(variant.getSize(), sizeById))
+                .sizeId(parseCatalogId(variant.getSize()).orElse(null))
                 .sku(firstNonBlank(variant.getSku(), "—"))
                 .stock(variant.getStock() != null ? variant.getStock() : 0)
+                .minQuantity(variant.getMinQuantity())
                 .basePrice(variant.getBasePrice())
                 .mrpExclGst(mrpExclGst)
                 .mrpPrice(mrpPriceDb)
@@ -264,16 +267,28 @@ public class ProductDetailAssembler {
         return value != null ? value : BigDecimal.ZERO;
     }
 
-    /** Customer-facing list/detail price — total metro-metro (selling + commission + delivery). */
+    /** Customer-facing list/detail price — total metro-metro (selling + delivery, no commission). */
     private BigDecimal resolveTotalMetroMetro(ProductVariant variant) {
         if (variant == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal totalMetro = firstDecimal(variant.getTotalPriceMetroMetro());
-        if (totalMetro != null && totalMetro.compareTo(BigDecimal.ZERO) > 0) {
-            return totalMetro;
+        BigDecimal sellingWithGst = firstDecimal(variant.getFinalPrice(), variant.getMrpPrice());
+        if (sellingWithGst == null || sellingWithGst.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
         }
-        return resolveSellingPrice(variant);
+        BigDecimal metroMetro = variant.getMetroMetroDeliveryCharge() != null
+                ? variant.getMetroMetroDeliveryCharge()
+                : BigDecimal.ZERO;
+        return sellingWithGst.add(metroMetro).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String resolveDisplaySku(Product product, ProductVariant primary) {
+        String variantSku = primary != null ? primary.getSku() : null;
+        String productSku = product.getSku();
+        if (variantSku != null && !variantSku.isBlank()) {
+            return variantSku;
+        }
+        return firstNonBlank(productSku, "—");
     }
 
     /** MRP shown with strikethrough — always from mrp_excl_gst (fallback base_price). */
