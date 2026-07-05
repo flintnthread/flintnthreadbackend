@@ -2,6 +2,7 @@ package com.ecommerce.adminbackend.service.impl;
 
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.util.OrderStatusUpdateEmailBuilder;
+import com.ecommerce.adminbackend.util.SellerAccountStatusEmailBuilder;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +75,49 @@ public class MailServiceImpl implements MailService {
         } catch (Exception ex) {
             log.error("Failed to send order status email for {}", maskEmail(toEmail), ex);
             throw new IllegalStateException("Unable to send customer notification email.");
+        }
+    }
+
+    @Override
+    public void sendSellerAccountStatusEmail(
+            String toEmail,
+            String sellerName,
+            String statusLabel,
+            String reason) {
+        if (toEmail == null || toEmail.isBlank()) {
+            log.warn("[MAIL] Skipping seller account status email — recipient missing");
+            return;
+        }
+
+        String subject = SellerAccountStatusEmailBuilder.buildSubject(statusLabel);
+        String html = SellerAccountStatusEmailBuilder.buildHtml(
+                sellerName,
+                statusLabel,
+                reason,
+                supportEmail,
+                supportPhone);
+
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Seller account status for {} -> {} ({})",
+                    maskEmail(toEmail), statusLabel, reason);
+            return;
+        }
+
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail.trim());
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            mailSender.send(message);
+            log.info("Seller account status email sent to {} ({})", maskEmail(toEmail), statusLabel);
+        } catch (MessagingException ex) {
+            log.error("Failed to compose seller account status email for {}", maskEmail(toEmail), ex);
+            throw new IllegalStateException("Unable to send seller notification email.");
+        } catch (Exception ex) {
+            log.error("Failed to send seller account status email for {}", maskEmail(toEmail), ex);
+            throw new IllegalStateException("Unable to send seller notification email.");
         }
     }
 

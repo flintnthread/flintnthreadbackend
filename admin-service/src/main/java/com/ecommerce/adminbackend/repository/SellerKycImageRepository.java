@@ -29,4 +29,14 @@ public interface SellerKycImageRepository extends JpaRepository<SellerKycImage, 
     List<SellerKycImage> findFaceImagesBySellerIds(@Param("sellerIds") Collection<Long> sellerIds);
 
     List<SellerKycImage> findBySellerIdOrderByCapturedAtDesc(Long sellerId);
+
+    long countBySellerId(Long sellerId);
+
+    @Query("""
+            SELECT k.sellerId, COUNT(k)
+            FROM SellerKycImage k
+            WHERE k.sellerId IN :sellerIds
+            GROUP BY k.sellerId
+            """)
+    List<Object[]> countGroupedBySellerIds(@Param("sellerIds") Collection<Long> sellerIds);
 }
