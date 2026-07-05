@@ -1,17 +1,23 @@
 package com.ecommerce.sellerbackend.service.impl;
 
+import com.ecommerce.sellerbackend.dto.SellerRegistrationInvoiceResponse;
 import com.ecommerce.sellerbackend.dto.SellerSettingsResponse;
 import com.ecommerce.sellerbackend.dto.UpdateSellerSettingsRequest;
 import com.ecommerce.sellerbackend.entity.SellerPreferences;
-import com.ecommerce.sellerbackend.repository.SellerPreferencesRepository;
-import com.ecommerce.sellerbackend.repository.SellerRepository;
-import com.ecommerce.sellerbackend.service.SellerSettingsService;
 import com.ecommerce.sellerbackend.exception.ResourceNotFoundException;
+import com.ecommerce.sellerbackend.repository.SellerPreferencesRepository;
+import com.ecommerce.sellerbackend.repository.SellerRegistrationInvoiceRepository;
+import com.ecommerce.sellerbackend.repository.SellerRepository;
+import com.ecommerce.sellerbackend.service.RegistrationInvoicePdfService;
+import com.ecommerce.sellerbackend.service.SellerSettingsService;
+import com.ecommerce.sellerbackend.util.RegistrationReferenceNumberHelper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -19,6 +25,14 @@ public class SellerSettingsServiceImpl implements SellerSettingsService {
 
     private final SellerRepository sellerRepository;
     private final SellerPreferencesRepository preferencesRepository;
+    private final SellerRegistrationInvoiceRepository registrationInvoiceRepository;
+    private final RegistrationInvoicePdfService registrationInvoicePdfService;
+
+    @Value("${app.registration.fee.inr:899}")
+    private int registrationFeeInr;
+
+    @Value("${app.registration.gst.percent:18}")
+    private int registrationGstPercent;
 
     @Override
     @Transactional(readOnly = true)
@@ -95,5 +109,63 @@ public class SellerSettingsServiceImpl implements SellerSettingsService {
                 .orElseThrow(() -> new ResourceNotFoundException("Seller not found."));
         seller.setStatus(com.ecommerce.sellerbackend.entity.SellerAccountStatus.inactive);
         sellerRepository.save(seller);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SellerRegistrationInvoiceResponse> listRegistrationInvoices(Long sellerId) {
+        sellerRepository.findById(sellerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Seller not found."));
+        double gstAmount = registrationFeeInr * registrationGstPercent / 100.0;
+        double totalAmount = registrationFeeInr + gstAmount;
+        int expectedAmountPaise = (int) Math.round(totalAmount * 100);
+        return registrationInvoiceRepository.findBySellerId(sellerId).stream()
+                .map(record -> SellerRegistrationInvoiceResponse.builder()
+                        .id(record.getId())
+                        .invoiceNumber(record.getInvoiceNumber())
+                        .displayOrderNumber(record.getDisplayOrderNumber())
+                        .paymentId(record.getPaymentId())
+                        .amount(expectedAmountPaise)
+                        .registrationFee(registrationFeeInr)
+                        .gstAmount(gstAmount)
+                        .totalAmount(totalAmount)
+                        .currency(record.getCurrency())
+                        .paidAt(record.getPaidAt() != null ? record.getPaidAt().toString() : null)
+                        .build())
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public byte[] downloadRegistrationInvoice(Long sellerId, Long invoiceId, String[] invoiceNumberOut) {
+        var seller = sellerRepository.findById(sellerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Seller not found."));
+        SellerRegistrationInvoiceRepository.InvoiceRecord invoice =
+                registrationInvoiceRepository.findRecordById(sellerId, invoiceId);
+        if (invoice == null) {
+            throw new ResourceNotFoundException("Invoice not found.");
+        }
+        if (invoiceNumberOut != null && invoiceNumberOut.length > 0) {
+            invoiceNumberOut[0] = invoice.getInvoiceNumber();
+        }
+        double gstAmount = registrationFeeInr * registrationGstPercent / 100.0;
+        double totalAmount = registrationFeeInr + gstAmount;
+        int expectedAmountPaise = (int) Math.round(totalAmount * 100);
+        String paidAtText = invoice.getPaidAt() != null
+                ? RegistrationReferenceNumberHelper.formatInvoiceDate(invoice.getPaidAt())
+                : RegistrationReferenceNumberHelper.formatInvoiceDate(LocalDateTime.now());
+        String orderId = invoice.getDisplayOrderNumber() != null && !invoice.getDisplayOrderNumber().isBlank()
+                ? invoice.getDisplayOrderNumber()
+                : invoice.getInvoiceNumber();
+        byte[] pdf = registrationInvoicePdfService.generateRegistrationInvoice(
+                seller,
+                invoice.getInvoiceNumber(),
+                invoice.getPaymentId() != null ? invoice.getPaymentId() : "-",
+                orderId,
+                expectedAmountPaise,
+                paidAtText
+        );
+        registrationInvoiceRepository.updateInvoicePdf(sellerId, invoiceId, expectedAmountPaise, pdf);
+        return pdf;
     }
 }

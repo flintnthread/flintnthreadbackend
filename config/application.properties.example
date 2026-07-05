@@ -1,0 +1,53 @@
+# =============================================================================
+# VPS / production — ONE secrets file for user + seller + admin (all 3 services)
+#
+# SETUP (run once on Ubuntu VPS):
+#   sudo mkdir -p /etc/flintnthread
+#   sudo cp config/application.properties.example /etc/flintnthread/application.properties
+#   sudo nano /etc/flintnthread/application.properties
+#   sudo chmod 600 /etc/flintnthread/application.properties
+#
+# deploy-vps.sh sets: FLINT_CONFIG_DIR=/etc/flintnthread
+# Never commit this file with real secrets — only the .example stays in git.
+# =============================================================================
+
+SPRING_PROFILES_ACTIVE=prod
+
+# --- Database (required) ---
+DB_URL=jdbc:mysql://127.0.0.1:3306/flintandthread?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata
+DB_USERNAME=root
+DB_PASSWORD=YOUR_MYSQL_PASSWORD
+
+# --- Service ports ---
+USER_SERVICE_PORT=8080
+SELLER_SERVICE_PORT=8083
+ADMIN_SERVICE_PORT=8082
+
+# --- Mail (required for OTP / password reset / seller emails) ---
+# Create key: https://app.sendgrid.com/settings/api_keys
+# Sender must be verified in SendGrid: support@flintnthread.in
+SENDGRID_API_KEY=REPLACE_WITH_YOUR_SENDGRID_API_KEY
+MAIL_FROM=support@flintnthread.in
+
+# --- Payment / logistics ---
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+SHIPROCKET_EMAIL=
+SHIPROCKET_PASSWORD=
+
+# --- SMS ---
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+
+# --- JWT ---
+SELLER_JWT_SECRET=your-seller-jwt-secret-min-32-chars
+ADMIN_JWT_SECRET=your-admin-jwt-secret-min-32-chars
+
+# --- Other ---
+GST_LOOKUP_API_KEY=
+MEDIA_PUBLIC_BASE_URL=https://flintnthread.in
+APP_BACKEND_PUBLIC_URL=https://flintnthread.online
+APP_FRONTEND_BASE_URL=https://flintnthread.online
+ADMIN_FRONTEND_URL=https://flintnthread.online
+ADMIN_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006,https://flintnthread.online,https://www.flintnthread.online

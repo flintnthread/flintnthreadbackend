@@ -1,67 +1,89 @@
-# Flint & Thread Platform — Unified Backend
+# Flint & Thread Platform — Backend
 
-Single Maven monorepo containing all three backends with **one shared `application.properties`**:
+Three Spring Boot services, **properties only**, one shared MySQL database.
 
-| Module | Profile | Port | Package | Frontend |
-|--------|---------|------|---------|----------|
-| `user-service` | `user` | **8080** | `com.ecommerce.authdemo` | Customer / shopper app |
-| `seller-service` | `seller` | **8080** | `com.ecommerce.sellerbackend` | Seller app |
-| `admin-service` | `admin` | **8082** | `com.ecommerce.adminbackend` | Admin panel |
+| Module | Port (local) | Frontend |
+|--------|--------------|----------|
+| `user-service` | **8080** | ecommerce-mobile |
+| `seller-service` | **8083** | seller-app-new |
+| `admin-service` | **8082** | Admin |
 
-All original source code is preserved. API paths are unchanged so your frontend integrations keep working.
+## Properties layout
 
-## Project structure
+Each service is self-contained — database, shared integrations, and service settings live in one file:
 
 ```
-flintnthread-platform/
-├── platform-config/          ← SINGLE application.properties (all API keys)
-├── user-service/             ← from flintnthread-backend
-├── seller-service/           ← from seller-backend/seller-service
-├── admin-service/            ← from seller-backend/admin-backend
-├── ai-service/               ← Python CLIP image search (port 5000)
-├── application-local.properties.example
-├── pom.xml
-└── run.bat
+user-service/src/main/resources/
+├── application.properties              ← imports user + optional config/
+├── application-user.properties         ← DB + mail/Razorpay/etc + user (port 8080)
+├── application-local.properties
+└── application-prod.properties
+
+seller-service/src/main/resources/
+├── application.properties
+├── application-seller.properties       ← DB + shared + seller (port 8083 local)
+├── application-local.properties
+└── application-prod.properties
+
+admin-service/src/main/resources/
+├── application.properties
+├── application-admin.properties        ← DB + shared + admin (port 8082)
+├── application-local.properties
+└── application-prod.properties
+
+config/                                 ← your secrets (gitignored)
+├── application.properties.example      ← VPS: DB password once
+└── application-local.properties.example
 ```
 
-## Configuration
-
-**All settings live in `platform-config/src/main/resources/`:**
-
-| File | Purpose |
-|------|---------|
-| `flint-platform-common.properties` | Shared keys (Twilio, Razorpay, Shiprocket, mail, JPA) |
-| `flint-platform-user.properties` | User service — port 8080, `flintdb` |
-| `flint-platform-seller.properties` | Seller service — port 8080, `flintnthread` |
-| `flint-platform-admin.properties` | Admin service — port 8082, `flintandthread` |
-
-Each service module imports its files via `spring.config.import` in its bootstrap `application.properties`.
-
-Optional local overrides (not committed):
+## Local dev
 
 ```bash
-cp application-local.properties.example application-local.properties
-# Edit passwords, SENDGRID_API_KEY, etc.
+cp config/application-local.properties.example config/application-local.properties
+# Edit DB_PASSWORD if needed
+
+start-all.bat    # Windows
+stop-all.bat
 ```
 
-### API keys included
+## VPS
 
-- Twilio (SMS OTP)
-- SendGrid (email SMTP)
-- Razorpay (payments)
-- Shiprocket (logistics)
-- AppyFlow GST lookup (seller)
-- JWT secrets (seller + admin)
-- Cloudinary (hardcoded in user-service `CloudinaryConfig.java` — unchanged)
+```bash
+sudo cp config/application.properties.example /etc/flintnthread/application.properties
+# Edit DB_PASSWORD, SENDGRID_API_KEY, SELLER_SERVICE_PORT=8083, etc.
 
-## Prerequisites
+export FLINT_CONFIG_DIR=/etc/flintnthread
+export SPRING_PROFILES_ACTIVE=prod
+bash scripts/deploy-vps.sh
 
-- Java 17+
-- Maven 3.9+ (or use included `mvnw`)
-- MySQL 8.x with databases configured per profile:
-  - **user:** `flintdb`
-  - **seller:** `flintnthread`
-  - **admin:** `flintandthread`
+# Route all 3 services on https://flintnthread.online
+bash scripts/apply-nginx-flintnthread-online.sh
+# Add inside nginx server { } BEFORE catch-all to :8080:
+#   include snippets/flintnthread-api.conf;
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### One domain routing
+
+| Path prefix | Backend | Port |
+|-------------|---------|------|
+| `/api/admin/` | admin-service | 8082 |
+| `/api/seller/`, `/api/auth/`, `/api/public/`, `/api/sellers/` | seller-service | 8083 |
+| everything else `/api/...` | user-service | 8080 |
+
+Frontends (all use `https://flintnthread.online`):
+
+| App | Env |
+|-----|-----|
+| ecommerce-mobile | user API base URL |
+| seller-app-new | `EXPO_PUBLIC_API_BASE_URL=https://flintnthread.online` |
+| Admin | `EXPO_PUBLIC_ADMIN_API_BASE_URL=https://flintnthread.online` |
+
+Test seller APIs from your PC:
+
+```powershell
+powershell -File flintnthread-platform/scripts/test-seller-production.ps1
+```
 
 ## Build
 
@@ -69,59 +91,14 @@ cp application-local.properties.example application-local.properties
 ./mvnw clean install -DskipTests
 ```
 
-## Run all 3 on one PC (local dev)
-
-User and seller both used port **8080** by default — only one could run at a time. **Seller now defaults to profile `local` → port 8083** so all three can run together:
-
-| Service | Local port | URL |
-|---------|------------|-----|
-| User (customer) | **8080** | `http://localhost:8080` |
-| Seller | **8083** | `http://localhost:8083` |
-| Admin | **8082** | `http://localhost:8082` |
-
-```bash
-start-all.bat    # opens 3 terminal windows
-stop-all.bat     # frees ports 8080, 8082, 8083
-```
-
-**From IntelliJ / IDE:** run each main class in its module — seller starts on **8083** automatically (no extra VM args).
-
-**Production seller** (alone on port 8080): set `SPRING_PROFILES_ACTIVE=prod`.
-
-**Seller frontend** auto-detects ports 8080 and 8083 — no config change needed.
-
-## Run services individually
-
-```bash
-# User API (customer app) — port 8080
-./mvnw -pl user-service -am spring-boot:run
-
-# Seller API — port 8080 (stop user first) OR port 8083 (default local profile):
-./mvnw -pl seller-service -am spring-boot:run
-
-# Admin API — port 8082
-./mvnw -pl admin-service -am spring-boot:run
-```
-
-## AI image search (optional)
-
-```bash
-cd ai-service
-pip install -r requirements.txt
-python app.py
-# Runs on http://localhost:5000 — used by user-service
-```
-
-Or run `start-ai-service.bat` from the project root.
-
 ## Health checks
 
 | Service | URL |
 |---------|-----|
-| User | `GET http://localhost:8080/` |
-| Seller | `GET http://localhost:8080/api/public/marketplace-stats` |
+| User | `GET http://localhost:8080/api/categories/main` |
+| Seller | `GET http://localhost:8083/api/public/marketplace-stats` |
 | Admin | `GET http://localhost:8082/api/admin/health` |
 
-## Why three services, not one JAR?
+## Prerequisites
 
-User and seller APIs share paths like `/api/products`, `/api/orders`, `/api/colors` with different controllers. Merging into one Spring context would cause route conflicts and break the frontend. This monorepo gives you one folder, one config file, and three independently deployable services — matching how your frontends already integrate.
+Java 17+, Maven 3.9+, MySQL 8.x with database `flintandthread`

@@ -73,7 +73,8 @@ public class OrderAdminController {
                 id,
                 request != null ? request.getStatus() : null,
                 request != null ? request.getNote() : null,
-                com.ecommerce.adminbackend.security.AdminSecurityUtils.currentAdminId());
+                com.ecommerce.adminbackend.security.AdminSecurityUtils.currentAdminId(),
+                request != null && Boolean.TRUE.equals(request.getNotifyCustomer()));
     }
 
     @GetMapping("/{id}/invoice")
@@ -86,6 +87,20 @@ public class OrderAdminController {
         byte[] pdf = orderAdminService.generateInvoicePdf(id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"invoice-" + id + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
+
+    @GetMapping("/{id}/shipping-label")
+    public Map<String, Object> generateShippingLabel(@PathVariable Long id) {
+        return orderAdminService.generateShippingLabel(id);
+    }
+
+    @GetMapping("/{id}/shipping-label/pdf")
+    public ResponseEntity<byte[]> downloadShippingLabelPdf(@PathVariable Long id) {
+        byte[] pdf = orderAdminService.generateShippingLabelPdf(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"shipping-label-" + id + ".pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
     }

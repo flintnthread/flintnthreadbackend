@@ -39,7 +39,7 @@ import java.util.Map;
 public class ProductCreateService {
 
     private static final BigDecimal DEFAULT_GST = new BigDecimal("5.00");
-    private static final BigDecimal COMMISSION_PERCENT = new BigDecimal("15.00");
+    private static final BigDecimal COMMISSION_PERCENT = BigDecimal.ZERO;
     private static final BigDecimal DEFAULT_INTRA_CITY = new BigDecimal("175.00");
     private static final BigDecimal DEFAULT_METRO_METRO = new BigDecimal("205.00");
 
@@ -111,6 +111,7 @@ public class ProductCreateService {
 
         Map<String, Long> variantIdsByClientKey = new HashMap<>();
         List<CreateProductResponse.CreatedVariantRef> createdVariants = new ArrayList<>();
+        ProductVariant firstSavedVariant = null;
 
         int variantIndex = 0;
         for (CreateProductVariantRequest variantReq : request.getVariants()) {
@@ -138,6 +139,7 @@ public class ProductCreateService {
             variant.setSize(sizeId);
             variant.setSku(firstNonBlank(variantReq.getSku(), generatedSku));
             variant.setStock(variantReq.getStock());
+            variant.setMinQuantity(variantReq.getMinQuantity());
             variant.setBasePrice(variantReq.getSellingPrice());
             variant.setMrpExclGst(variantReq.getMrp());
             variant.setMrpPrice(pricing.finalPrice());
@@ -160,6 +162,9 @@ public class ProductCreateService {
             variant.setUpdatedAt(now);
 
             variant = productVariantRepository.save(variant);
+            if (firstSavedVariant == null) {
+                firstSavedVariant = variant;
+            }
             variantIdsByClientKey.put(clientKey, variant.getId());
             createdVariants.add(CreateProductResponse.CreatedVariantRef.builder()
                     .clientKey(clientKey)
@@ -167,6 +172,11 @@ public class ProductCreateService {
                     .build());
 
             saveVariantImages(product.getId(), variant.getId(), variantReq.getImages());
+        }
+
+        if (firstSavedVariant != null && firstSavedVariant.getSku() != null && !firstSavedVariant.getSku().isBlank()) {
+            product.setSku(firstSavedVariant.getSku());
+            productRepository.save(product);
         }
 
         saveProductLevelImages(product.getId(), request.getImages(), variantIdsByClientKey);
@@ -227,6 +237,13 @@ public class ProductCreateService {
         if (variantReq.getColorId() != null) {
             return String.valueOf(variantReq.getColorId());
         }
+        String raw = variantReq.getColor() != null ? variantReq.getColor().trim() : "";
+        if (!raw.isEmpty() && raw.matches("\\d+")) {
+            Long parsedId = Long.parseLong(raw);
+            return colorRepository.findVisibleByIdForSeller(parsedId, sellerId)
+                    .map(color -> String.valueOf(color.getId()))
+                    .orElseThrow(() -> new IllegalArgumentException("Color not found: " + raw));
+        }
         Color color = colorRepository.findVisibleByNameForSeller(sellerId, variantReq.getColor())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Color not found: " + variantReq.getColor()));
@@ -236,6 +253,13 @@ public class ProductCreateService {
     private String resolveSizeId(Long sellerId, CreateProductVariantRequest variantReq) {
         if (variantReq.getSizeId() != null) {
             return String.valueOf(variantReq.getSizeId());
+        }
+        String raw = variantReq.getSize() != null ? variantReq.getSize().trim() : "";
+        if (!raw.isEmpty() && raw.matches("\\d+")) {
+            Long parsedId = Long.parseLong(raw);
+            return sizeRepository.findVisibleByIdForSeller(parsedId, sellerId)
+                    .map(size -> String.valueOf(size.getId()))
+                    .orElseThrow(() -> new IllegalArgumentException("Size not found: " + raw));
         }
         Size size = sizeRepository.findVisibleByNameOrCodeForSeller(sellerId, variantReq.getSize())
                 .orElseThrow(() -> new IllegalArgumentException(

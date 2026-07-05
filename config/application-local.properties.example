@@ -1,0 +1,24 @@
+# Local dev secrets — copy to config/application-local.properties (gitignored)
+#
+#   copy config\application-local.properties.example config\application-local.properties
+#
+# Used automatically when FLINT_CONFIG_DIR defaults to ./config
+
+# --- Database ---
+DB_URL=jdbc:mysql://127.0.0.1:3306/flintandthread?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata
+DB_USERNAME=root
+DB_PASSWORD=YOUR_LOCAL_MYSQL_PASSWORD
+
+# --- Mail (required for real emails; leave empty only if testing without mail) ---
+# https://app.sendgrid.com/settings/api_keys
+SENDGRID_API_KEY=REPLACE_WITH_YOUR_SENDGRID_API_KEY
+MAIL_FROM=support@flintnthread.in
+
+# --- Optional ---
+TWILIO_AUTH_TOKEN=
+TWILIO_ACCOUNT_SID=
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+SHIPROCKET_EMAIL=
+SHIPROCKET_PASSWORD=
+GST_LOOKUP_API_KEY=

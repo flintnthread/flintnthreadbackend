@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/category-requests")
+@RequestMapping("/api/seller/category-requests")
 @RequiredArgsConstructor
 public class CategoryRequestController {
 

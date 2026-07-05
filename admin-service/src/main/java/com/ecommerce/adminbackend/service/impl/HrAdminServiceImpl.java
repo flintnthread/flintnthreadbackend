@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -66,8 +67,12 @@ public class HrAdminServiceImpl extends BaseAdminService implements HrAdminServi
     @Override
     @Transactional
     public void deleteDepartment(Long id) {
-        requireDepartment(id);
-        departmentRepository.deleteById(id);
+        AdminDepartment department = requireDepartment(id);
+        long jobCount = jobOpeningRepository.countByDepartmentId(department.getId());
+        if (jobCount > 0) {
+            throw new IllegalArgumentException("Cannot delete department with active job openings.");
+        }
+        departmentRepository.delete(department);
     }
 
     @Override
@@ -82,6 +87,12 @@ public class HrAdminServiceImpl extends BaseAdminService implements HrAdminServi
     @Transactional
     public Map<String, Object> createJob(AdminJobOpening input) {
         requireNonBlank(input.getTitle(), "Job title");
+        if (input.getStatus() != null) {
+            input.setStatus(normalizeJobStatus(input.getStatus()));
+        }
+        if (input.getVacancies() == null || input.getVacancies() < 1) {
+            input.setVacancies(1);
+        }
         return toJob(jobOpeningRepository.save(input));
     }
 
@@ -104,8 +115,20 @@ public class HrAdminServiceImpl extends BaseAdminService implements HrAdminServi
         if (input.getEmploymentType() != null) {
             job.setEmploymentType(input.getEmploymentType());
         }
+        if (input.getRequirements() != null) {
+            job.setRequirements(input.getRequirements());
+        }
+        if (input.getExperienceRequired() != null) {
+            job.setExperienceRequired(input.getExperienceRequired());
+        }
+        if (input.getSalaryRange() != null) {
+            job.setSalaryRange(input.getSalaryRange());
+        }
+        if (input.getVacancies() != null) {
+            job.setVacancies(input.getVacancies());
+        }
         if (input.getStatus() != null) {
-            job.setStatus(input.getStatus());
+            job.setStatus(normalizeJobStatus(input.getStatus()));
         }
         return toJob(jobOpeningRepository.save(job));
     }
@@ -154,7 +177,21 @@ public class HrAdminServiceImpl extends BaseAdminService implements HrAdminServi
         row.put("color", department.getColor());
         row.put("active", department.getActive());
         row.put("jobCount", jobOpeningRepository.countByDepartmentId(department.getId()));
+        row.put("createdAt", department.getCreatedAt());
         return row;
+    }
+
+    private String normalizeJobStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return "open";
+        }
+        String normalized = status.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "active", "open" -> "open";
+            case "paused", "inactive" -> "paused";
+            case "closed" -> "closed";
+            default -> normalized;
+        };
     }
 
     private Map<String, Object> toJob(AdminJobOpening job) {
@@ -165,6 +202,10 @@ public class HrAdminServiceImpl extends BaseAdminService implements HrAdminServi
         row.put("description", job.getDescription());
         row.put("location", job.getLocation());
         row.put("employmentType", job.getEmploymentType());
+        row.put("requirements", job.getRequirements());
+        row.put("experienceRequired", job.getExperienceRequired());
+        row.put("salaryRange", job.getSalaryRange());
+        row.put("vacancies", job.getVacancies());
         row.put("status", job.getStatus());
         row.put("createdAt", job.getCreatedAt());
         row.put("applicationCount", jobApplicationRepository.countByJobId(job.getId()));

@@ -143,7 +143,6 @@ public class CustomerQueryRepository {
                     SELECT LOWER(shipping_email) FROM orders WHERE id = :customerId LIMIT 1
                 )
                 ORDER BY o.created_at DESC
-                LIMIT 50
                 """)
                 .setParameter("customerId", customerId)
                 .getResultList();
@@ -510,8 +509,20 @@ public class CustomerQueryRepository {
                 SELECT o.id,
                        o.order_number,
                        COALESCE(
-                           (SELECT oi.product_name FROM order_items oi
-                            WHERE oi.order_id = o.id ORDER BY oi.id LIMIT 1),
+                           NULLIF(TRIM((
+                               SELECT COALESCE(
+                                   NULLIF(TRIM(oi.product_name), ''),
+                                   NULLIF(TRIM(p.name), ''),
+                                   CASE
+                                       WHEN oi.product_id IS NOT NULL THEN CONCAT('Product #', oi.product_id)
+                                   END
+                               )
+                               FROM order_items oi
+                               LEFT JOIN products p ON p.id = oi.product_id
+                               WHERE oi.order_id = o.id
+                               ORDER BY oi.id
+                               LIMIT 1
+                           )), ''),
                            'Product'
                        ) AS product_name,
                        o.created_at,

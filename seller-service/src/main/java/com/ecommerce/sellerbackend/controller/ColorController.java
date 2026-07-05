@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/colors")
+@RequestMapping("/api/seller/colors")
 @RequiredArgsConstructor
 public class ColorController {
 

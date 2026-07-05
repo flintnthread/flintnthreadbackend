@@ -27,6 +27,7 @@ public class ProductListItemResponse {
     private String subcategory;
     private String color;
     private String size;
+    private Integer minQuantity;
     private String description;
     private String material;
     private String weight;

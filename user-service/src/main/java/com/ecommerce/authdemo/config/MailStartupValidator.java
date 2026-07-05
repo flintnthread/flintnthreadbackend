@@ -23,8 +23,8 @@ public class MailStartupValidator {
     void validateMailConfig() {
         if (!StringUtils.hasText(password) || password.startsWith("${")) {
             log.error(
-                    "[MAIL] SendGrid API key missing. Set SENDGRID_API_KEY (or spring.mail.password in "
-                            + "application-local.properties). OTP emails will fail until configured."
+                    "[MAIL] SendGrid API key missing. Set SENDGRID_API_KEY in "
+                            + "${FLINT_CONFIG_DIR}/application.properties (VPS) or config/application-local.properties (local)."
             );
             return;
         }

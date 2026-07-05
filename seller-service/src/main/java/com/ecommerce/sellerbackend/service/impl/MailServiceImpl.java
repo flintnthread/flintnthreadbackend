@@ -36,8 +36,18 @@ public class MailServiceImpl implements MailService {
     @Value("${app.auth.email-verification-otp-minutes:10}")
     private int emailOtpExpiryMinutes;
 
+    @Value("${app.mail.dev-mode:false}")
+    private boolean mailDevMode;
+
+    @Value("${spring.mail.password:}")
+    private String mailPassword;
+
     @Override
     public void sendEmailVerificationLinkEmail(String toEmail, String recipientName, String verifyLink) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Verification link for {} -> {}", maskEmail(toEmail), verifyLink);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -61,6 +71,10 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public void sendEmailVerificationOtpEmail(String toEmail, String recipientName, String otp) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Verification OTP for {} -> {}", maskEmail(toEmail), otp);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -84,6 +98,10 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public void sendPasswordResetEmail(String toEmail, String recipientName, String resetLink) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Password reset for {} -> {}", maskEmail(toEmail), resetLink);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -114,6 +132,10 @@ public class MailServiceImpl implements MailService {
             String device,
             String location,
             String ipAddress) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Login security alert for {} (device={}, ip={})", maskEmail(toEmail), device, ipAddress);
+            return;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -134,7 +156,12 @@ public class MailServiceImpl implements MailService {
     }
 
     @Override
-    public void sendRegistrationPaymentSuccessEmail(
+    public boolean isRegistrationInvoiceEmailConfigured() {
+        return mailPassword != null && !mailPassword.isBlank();
+    }
+
+    @Override
+    public boolean sendRegistrationPaymentSuccessEmail(
             String toEmail,
             String recipientName,
             String invoiceNumber,
@@ -142,24 +169,109 @@ public class MailServiceImpl implements MailService {
             String paymentId,
             int amountInPaise,
             byte[] invoicePdf) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Registration payment email for {} (invoice={}, paymentId={})",
+                    maskEmail(toEmail), invoiceNumber, paymentId);
+            return true;
+        }
+        if (!isRegistrationInvoiceEmailConfigured()) {
+            log.error("SendGrid API key is not configured (spring.mail.password / SENDGRID_API_KEY)");
+            return false;
+        }
+        if (invoicePdf == null || invoicePdf.length == 0) {
+            log.error("Registration invoice email skipped — PDF is empty for {}", maskEmail(toEmail));
+            return false;
+        }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(fromEmail, fromName);
             helper.setTo(toEmail);
+            helper.setReplyTo(supportEmail);
             helper.setSubject("Registration payment successful - Flint & Thread");
             helper.setText(buildRegistrationPaymentSuccessHtml(
                     recipientName, invoiceNumber, displayOrderNumber, paymentId, amountInPaise), true);
-            helper.addAttachment(invoiceNumber + ".pdf", new ByteArrayResource(invoicePdf));
+            helper.addAttachment(safeAttachmentName(invoiceNumber), new ByteArrayResource(invoicePdf), "application/pdf");
             mailSender.send(message);
             log.info("Registration payment email sent to {}", maskEmail(toEmail));
+            return true;
         } catch (MessagingException ex) {
             log.error("Failed to compose registration payment email for {}", maskEmail(toEmail), ex);
-            throw new IllegalStateException("Payment succeeded but invoice email could not be sent. Please contact support.");
+        } catch (org.springframework.mail.MailException ex) {
+            log.error("SendGrid rejected registration payment email for {}", maskEmail(toEmail), ex);
         } catch (Exception ex) {
             log.error("Failed to send registration payment email for {}", maskEmail(toEmail), ex);
-            throw new IllegalStateException("Payment succeeded but invoice email could not be sent. Please contact support.");
         }
+        return false;
+    }
+
+    private String safeAttachmentName(String invoiceNumber) {
+        String base = invoiceNumber != null ? invoiceNumber.replaceAll("[^a-zA-Z0-9._-]", "_") : "invoice";
+        if (base.isBlank()) {
+            base = "invoice";
+        }
+        return base + ".pdf";
+    }
+
+    @Override
+    public void sendSubscriptionRenewalReminderEmail(
+            String toEmail,
+            String recipientName,
+            String expiryDate,
+            int renewalAmountInr) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Subscription renewal reminder for {} (expires={})",
+                    maskEmail(toEmail), expiryDate);
+            return;
+        }
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail);
+            helper.setSubject("Seller subscription renewal pending - Flint & Thread");
+            helper.setText(buildSubscriptionRenewalReminderHtml(
+                    recipientName, expiryDate, renewalAmountInr), true);
+            mailSender.send(message);
+            log.info("Subscription renewal reminder sent to {}", maskEmail(toEmail));
+        } catch (Exception ex) {
+            log.error("Failed to send subscription renewal reminder for {}", maskEmail(toEmail), ex);
+        }
+    }
+
+    private String buildSubscriptionRenewalReminderHtml(
+            String recipientName,
+            String expiryDate,
+            int renewalAmountInr) {
+        String name = recipientName != null && !recipientName.isBlank() ? recipientName : "Seller";
+        int year = java.time.Year.now().getValue();
+        return """
+                <!DOCTYPE html>
+                <html>
+                <body style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;margin:0;">
+                  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+                    <div style="background:linear-gradient(135deg,#F97316 0%%,#1E3A6E 100%%);padding:28px 32px;text-align:center;">
+                      <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;">Payment Pending</h1>
+                      <p style="color:#fff7ed;margin:0;font-size:15px;">Annual seller subscription renewal</p>
+                    </div>
+                    <div style="padding:32px;">
+                      <p style="color:#111827;font-size:20px;font-weight:bold;line-height:1.4;margin:0 0 16px;">Hello %s,</p>
+                      <p style="color:#374151;line-height:1.7;margin:0 0 16px;font-size:15px;">
+                        Your annual seller subscription expired on <strong>%s</strong>.
+                        Please renew your subscription of Rs %d per annum to continue accessing your seller dashboard.
+                      </p>
+                      <p style="color:#374151;line-height:1.6;margin:0 0 12px;font-size:14px;">
+                        Log in to your seller account and complete the renewal payment from Settings or the renewal screen.
+                      </p>
+                      <p style="color:#9ca3af;font-size:12px;margin-top:24px;margin-bottom:6px;text-align:center;">
+                        &copy; %d Flint &amp; Thread. All rights reserved.
+                      </p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+                """
+                .formatted(name, expiryDate, renewalAmountInr, year);
     }
 
     private static final String EMAIL_VERIFICATION_HEADER = """
@@ -429,12 +541,12 @@ public class MailServiceImpl implements MailService {
                   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
                     <div style="background:linear-gradient(135deg,#F97316 0%%,#1E3A6E 100%%);padding:28px 32px;text-align:center;">
                       <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;">Payment Successful</h1>
-                      <p style="color:#fff7ed;margin:0;font-size:15px;">Seller registration fee received</p>
+                      <p style="color:#fff7ed;margin:0;font-size:15px;">Annual seller subscription fee received</p>
                     </div>
                     <div style="padding:32px;">
                       <p style="color:#111827;font-size:20px;font-weight:bold;line-height:1.4;margin:0 0 16px;">Hello %s,</p>
                       <p style="color:#374151;line-height:1.7;margin:0 0 16px;font-size:15px;">
-                        Your registration fee payment has been received successfully.
+                        Your annual seller subscription payment of Rs %s (incl. GST) has been received successfully.
                       </p>
                       <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin:16px 0;">
                         <p style="margin:0 0 8px;color:#374151;font-size:14px;"><strong>Invoice:</strong> %s</p>
@@ -453,7 +565,7 @@ public class MailServiceImpl implements MailService {
                 </body>
                 </html>
                 """
-                .formatted(name, invoiceNumber, displayOrderNumber, paymentId, amount, year);
+                .formatted(name, amount, invoiceNumber, displayOrderNumber, paymentId, amount, year);
     }
 
     private String maskEmail(String email) {

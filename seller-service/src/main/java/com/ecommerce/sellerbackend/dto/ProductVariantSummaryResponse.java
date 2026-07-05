@@ -14,7 +14,9 @@ public class ProductVariantSummaryResponse {
     private String color;
     private String size;
     private Integer stock;
+    private Integer minQuantity;
     private BigDecimal sellingPrice;
     private BigDecimal finalPrice;
+    private BigDecimal metroMetroDeliveryCharge;
     private String image;
 }

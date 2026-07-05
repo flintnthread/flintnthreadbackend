@@ -18,7 +18,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/analytics")
+@RequestMapping("/api/seller/analytics")
 @RequiredArgsConstructor
 public class AnalyticsController {
 

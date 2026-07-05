@@ -61,4 +61,12 @@ public abstract class BaseAdminService {
     protected String csvHeader(String... columns) {
         return String.join(",", columns);
     }
+
+    protected String stringAt(java.util.Map<String, Object> map, String key) {
+        if (map == null || key == null) {
+            return null;
+        }
+        Object value = map.get(key);
+        return value == null ? null : String.valueOf(value).trim();
+    }
 }

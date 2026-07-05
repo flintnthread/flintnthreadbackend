@@ -2,6 +2,7 @@ package com.ecommerce.authdemo.service.impl;
 
 import com.ecommerce.authdemo.dto.*;
 import com.ecommerce.authdemo.entity.*;
+import com.ecommerce.authdemo.event.OrderPlacedEvent;
 import com.ecommerce.authdemo.service.*;
 import com.ecommerce.authdemo.exception.ResourceNotFoundException;
 import com.ecommerce.authdemo.exception.OrderException;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.HttpEntity;
@@ -61,7 +63,7 @@ public class OrderServiceImpl implements OrderService {
 
     private final EmailService emailService;  // your existing service
     private final SmsService smsService;      // your SMS/WhatsApp service
-    private final InvoiceService invoiceService;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final WalletService walletService;
     private final OrderItemCustomDetailService orderItemCustomDetailService;
 
@@ -248,7 +250,9 @@ public class OrderServiceImpl implements OrderService {
                 );
             }
 
-            generateInvoicesSafely(order.getId());
+            applicationEventPublisher.publishEvent(
+                    new OrderPlacedEvent(Math.toIntExact(order.getId()))
+            );
 
             clearCartSafely(userId);
 
@@ -1024,7 +1028,7 @@ public class OrderServiceImpl implements OrderService {
                                         ? "paid"
                                         : "pending"
                 )
-                .orderStatus("confirmed")
+                .orderStatus("processing")
                 .shippingAddress1(address.getAddressLine1())
                 .shippingCity(address.getCity())
                 .shippingState(address.getState())
@@ -1230,7 +1234,7 @@ public class OrderServiceImpl implements OrderService {
 
                     .hsnCode(product.getHsnCode() != null ? product.getHsnCode() : "0000")
 
-                    .status("confirmed")
+                    .status("processing")
 
                     .build();
 
@@ -1802,19 +1806,6 @@ public class OrderServiceImpl implements OrderService {
                 .format(ORDER_CREATED_DISPLAY_FORMAT);
     }
 
-    private void generateInvoicesSafely(Long orderId) {
-        if (orderId == null || orderId <= 0) {
-            return;
-        }
-        try {
-            InvoiceRequest request = new InvoiceRequest();
-            request.setOrderId(Math.toIntExact(orderId));
-            invoiceService.create(request);
-        } catch (Exception e) {
-            log.warn("[ORDER] invoice generation failed for orderId={}: {}", orderId, e.getMessage());
-        }
-    }
-
     private void validatePlaceOrderRequest(PlaceOrderRequestDTO dto) {
         if (dto == null || dto.getAddressId() == null) {
             throw new OrderException("Invalid request");
@@ -2098,6 +2089,7 @@ public class OrderServiceImpl implements OrderService {
         order.setPaymentStatus("PAID");
 
         order.setOrderStatus("processing");
+
         order.setRazorpayPaymentId(
                 dto.getRazorpayPaymentId()
         );
