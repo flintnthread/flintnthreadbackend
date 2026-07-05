@@ -17,15 +17,15 @@ public interface LocationAdminService {
 
     Map<String, Long> getCounts();
 
-    Map<String, Object> createCountry(String name);
+    Map<String, Object> createCountry(String name, String code, Boolean active);
 
-    Map<String, Object> createState(Integer countryId, String name);
+    Map<String, Object> createState(Integer countryId, String name, Boolean active);
 
-    Map<String, Object> createCity(Integer stateId, String name);
+    Map<String, Object> createCity(Integer stateId, String name, Boolean active);
 
-    Map<String, Object> createArea(Integer cityId, String name);
+    Map<String, Object> createArea(Integer cityId, String name, Boolean active);
 
-    Map<String, Object> createPincode(Integer areaId, String pincode);
+    Map<String, Object> createPincode(Integer areaId, String pincode, Boolean active);
 
     void deleteCountry(Integer id);
 
@@ -37,13 +37,13 @@ public interface LocationAdminService {
 
     void deletePincode(Integer id);
 
-    void updateCountry(Integer id, String name);
+    void updateCountry(Integer id, String name, String code, Boolean active);
 
-    void updateState(Integer id, String name);
+    void updateState(Integer id, String name, Boolean active);
 
-    void updateCity(Integer id, String name);
+    void updateCity(Integer id, String name, Boolean active);
 
-    void updateArea(Integer id, String name);
+    void updateArea(Integer id, String name, Boolean active);
 
-    void updatePincode(Integer id, String pincode);
+    void updatePincode(Integer id, String pincode, Boolean active);
 }

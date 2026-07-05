@@ -29,7 +29,9 @@ import com.ecommerce.authdemo.util.SizeColorMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +57,7 @@ import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class InvoiceServiceImpl implements InvoiceService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Pattern SELLER_ID_IN_PATH = Pattern.compile("_seller_(\\d+)");
@@ -98,10 +101,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
         Invoice firstSaved = null;
         if (sellerIds.isEmpty()) {
-            firstSaved = createInvoiceRecord(request.getOrderId(), normalize(request.getInvoicePath()), null);
+            firstSaved = createOrGetInvoiceRecord(request.getOrderId(), normalize(request.getInvoicePath()), null);
         } else {
             for (Long sellerId : sellerIds) {
-                Invoice saved = createInvoiceRecord(request.getOrderId(), normalize(request.getInvoicePath()), sellerId);
+                Invoice saved = createOrGetInvoiceRecord(request.getOrderId(), normalize(request.getInvoicePath()), sellerId);
                 if (firstSaved == null) {
                     firstSaved = saved;
                 }
@@ -458,13 +461,48 @@ public class InvoiceServiceImpl implements InvoiceService {
         return value.trim();
     }
 
-    private String generateTemporaryInvoiceNumber() {
-        return "TMP-" + UUID.randomUUID();
+    private String allocateUniqueInvoiceNumber(Integer orderId, Long sellerId) {
+        int year = Year.now().getValue();
+        for (int attempt = 0; attempt < 25; attempt++) {
+            String candidate = buildInvoiceNumber(year, orderId, sellerId, attempt);
+            if (invoiceRepository.findByInvoiceNumber(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        return "FTINV-" + year + "-O" + orderId + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ENGLISH);
     }
 
-    private String generateInvoiceNumber(Integer id) {
-        int year = Year.now().getValue();
-        return String.format("INV-%d-%06d", year, id);
+    private String buildInvoiceNumber(int year, Integer orderId, Long sellerId, int attempt) {
+        // "O" prefix avoids collision with legacy INV-{year}-{invoiceRowId} numbers.
+        String base = sellerId != null && sellerId > 0
+                ? String.format(Locale.ENGLISH, "FTINV-%d-O%d-S%d", year, orderId, sellerId)
+                : String.format(Locale.ENGLISH, "FTINV-%d-O%d", year, orderId);
+        if (attempt <= 0) {
+            return base;
+        }
+        return base + "R" + attempt;
+    }
+
+    private boolean isPersistedInvoiceNumber(String invoiceNumber) {
+        String normalized = normalize(invoiceNumber);
+        return normalized != null && !normalized.startsWith("TMP-");
+    }
+
+    private Optional<Invoice> findInvoiceForOrderAndSeller(Integer orderId, Long sellerId) {
+        List<Invoice> invoices = invoiceRepository.findByOrderIdOrderByCreatedAtDesc(orderId);
+        for (Invoice invoice : invoices) {
+            if (!isPersistedInvoiceNumber(invoice.getInvoiceNumber())) {
+                continue;
+            }
+            Long pathSellerId = resolveSellerIdFromInvoicePath(invoice.getInvoicePath());
+            if (sellerId == null && pathSellerId == null) {
+                return Optional.of(invoice);
+            }
+            if (sellerId != null && sellerId.equals(pathSellerId)) {
+                return Optional.of(invoice);
+            }
+        }
+        return Optional.empty();
     }
 
     private String defaultInvoicePath(String invoiceNumber, Long sellerId) {
@@ -1180,20 +1218,52 @@ public class InvoiceServiceImpl implements InvoiceService {
         return entity;
     }
 
-    private Invoice createInvoiceRecord(Integer orderId, String explicitPath, Long sellerId) {
-        Invoice entity = Invoice.builder()
-                .orderId(orderId)
-                .invoiceNumber(generateTemporaryInvoiceNumber())
-                .invoicePath(explicitPath)
-                .build();
-
-        Invoice saved = invoiceRepository.save(entity);
-        String generatedInvoiceNumber = generateInvoiceNumber(saved.getId());
-        saved.setInvoiceNumber(generatedInvoiceNumber);
-        if (saved.getInvoicePath() == null) {
-            saved.setInvoicePath(generateInvoiceHtmlFile(generatedInvoiceNumber, saved.getOrderId(), sellerId));
+    private Invoice createOrGetInvoiceRecord(Integer orderId, String explicitPath, Long sellerId) {
+        Optional<Invoice> existing = findInvoiceForOrderAndSeller(orderId, sellerId);
+        if (existing.isPresent()) {
+            Invoice invoice = ensureInvoiceFileExists(existing.get());
+            if (explicitPath != null && !explicitPath.equals(invoice.getInvoicePath())) {
+                invoice.setInvoicePath(explicitPath);
+                return invoiceRepository.save(invoice);
+            }
+            return invoice;
         }
-        return invoiceRepository.save(saved);
+
+        DataIntegrityViolationException lastConflict = null;
+        for (int retry = 0; retry < 8; retry++) {
+            try {
+                String invoiceNumber = allocateUniqueInvoiceNumber(orderId, sellerId);
+                Invoice entity = Invoice.builder()
+                        .orderId(orderId)
+                        .invoiceNumber(invoiceNumber)
+                        .invoicePath(explicitPath)
+                        .build();
+
+                Invoice saved = invoiceRepository.save(entity);
+                if (saved.getInvoicePath() == null) {
+                    saved.setInvoicePath(generateInvoiceHtmlFile(invoiceNumber, saved.getOrderId(), sellerId));
+                    saved = invoiceRepository.save(saved);
+                }
+                return saved;
+            } catch (DataIntegrityViolationException conflict) {
+                lastConflict = conflict;
+                log.warn(
+                        "[INVOICE] duplicate invoice_number on create for orderId={} sellerId={} retry={}",
+                        orderId,
+                        sellerId,
+                        retry + 1
+                );
+                Optional<Invoice> raced = findInvoiceForOrderAndSeller(orderId, sellerId);
+                if (raced.isPresent()) {
+                    return ensureInvoiceFileExists(raced.get());
+                }
+            }
+        }
+
+        if (lastConflict != null) {
+            throw lastConflict;
+        }
+        throw new OrderException("Could not create invoice for order " + orderId);
     }
 
     private List<Long> resolveSellerIdsForOrder(Integer orderId) {

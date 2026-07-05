@@ -14,13 +14,16 @@ import com.ecommerce.adminbackend.repository.OrderStatusHistoryRepository;
 import com.ecommerce.adminbackend.repository.ProductImageRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
+import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.OrderAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
 import com.ecommerce.adminbackend.util.QrCodeGenerator;
 import com.ecommerce.adminbackend.util.InvoiceHtmlBuilder;
 import com.ecommerce.adminbackend.util.InvoicePdfRenderer;
+import com.ecommerce.adminbackend.util.ShippingLabelHtmlBuilder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -42,6 +45,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdminService {
 
     private final OrderRepository orderRepository;
@@ -52,6 +56,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final MediaUrlHelper mediaUrlHelper;
     private final InvoiceSettings invoiceSettings;
+    private final MailService mailService;
 
     @Override
     @Transactional(readOnly = true)
@@ -199,7 +204,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
     @Override
     @Transactional
-    public Map<String, Object> updateOrderStatus(Long id, String status, String comment, Long adminUserId) {
+    public Map<String, Object> updateOrderStatus(
+            Long id, String status, String comment, Long adminUserId, boolean notifyCustomer) {
         Order order = requireOrder(id);
         String dbStatus = toDbStatus(status);
         String historyStatus = toHistoryStatus(status);
@@ -222,6 +228,22 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         entry.setCreatedBy(adminUserId);
         entry.setCreatedAt(now);
         orderStatusHistoryRepository.save(entry);
+
+        if (notifyCustomer) {
+            try {
+                String orderNumber = order.getOrderNumber() != null && !order.getOrderNumber().isBlank()
+                        ? order.getOrderNumber()
+                        : "#" + order.getId();
+                mailService.sendOrderStatusUpdateEmail(
+                        order.getShippingEmail(),
+                        order.getShippingName(),
+                        orderNumber,
+                        toDisplayStatus(historyStatus),
+                        comment);
+            } catch (Exception ex) {
+                log.warn("Customer notification email failed for order {}: {}", id, ex.getMessage());
+            }
+        }
 
         return getOrder(id);
     }
@@ -292,6 +314,29 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     public byte[] generateInvoicePdf(Long id) {
         Map<String, Object> invoice = generateInvoice(id);
         String html = InvoiceHtmlBuilder.build(invoice);
+        return InvoicePdfRenderer.renderPdf(html);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> generateShippingLabel(Long id) {
+        Order order = requireOrder(id);
+        Map<String, Object> label = new LinkedHashMap<>(generateInvoice(id));
+        List<OrderItem> items = orderItemRepository.findByOrderId(id);
+        appendListShippingMeta(label, order, items);
+        label.put("awbCode", nullSafe(order.getShiprocketAwbCode()));
+        label.put("courierName", !isBlank(order.getShiprocketCourierName())
+                ? order.getShiprocketCourierName().trim()
+                : "Courier");
+        label.put("trackingUrl", nullSafe(order.getShiprocketTrackingUrl()));
+        return label;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generateShippingLabelPdf(Long id) {
+        Map<String, Object> label = generateShippingLabel(id);
+        String html = ShippingLabelHtmlBuilder.build(label);
         return InvoicePdfRenderer.renderPdf(html);
     }
 
@@ -642,6 +687,22 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             case "Replacement" -> "replacement";
             case "Cancelled" -> "cancelled";
             default -> uiStatus.trim().toLowerCase(Locale.ROOT);
+        };
+    }
+
+    private String toDisplayStatus(String historyStatus) {
+        if (historyStatus == null || historyStatus.isBlank()) {
+            return "Updated";
+        }
+        return switch (historyStatus.trim().toLowerCase(Locale.ROOT)) {
+            case "pending" -> "Pending";
+            case "sent_to_seller" -> "Sent to Seller";
+            case "processing" -> "Processing";
+            case "completed", "delivered" -> "Completed";
+            case "returned" -> "Returned";
+            case "replacement" -> "Replacement";
+            case "cancelled" -> "Cancelled";
+            default -> historyStatus.replace('_', ' ');
         };
     }
 

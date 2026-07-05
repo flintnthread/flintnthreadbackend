@@ -38,6 +38,17 @@ public class AdminJobOpening {
     @Column(name = "employment_type", length = 50)
     private String employmentType;
 
+    @Column(columnDefinition = "TEXT")
+    private String requirements;
+
+    @Column(name = "experience_required", length = 100)
+    private String experienceRequired;
+
+    @Column(name = "salary_range", length = 100)
+    private String salaryRange;
+
+    private Integer vacancies = 1;
+
     @Column(nullable = false, length = 30)
     private String status = "open";
 
