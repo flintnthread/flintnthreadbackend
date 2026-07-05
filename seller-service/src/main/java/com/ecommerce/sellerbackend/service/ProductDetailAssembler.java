@@ -106,6 +106,7 @@ public class ProductDetailAssembler {
                 .status(ProductServiceImpl.resolveDisplayStatus(product.getStatus(), totalStock))
                 .rawStatus(product.getStatus())
                 .stock(totalStock)
+                .minQuantity(displayVariant != null ? displayVariant.getMinQuantity() : null)
                 .updated(formatDate(product.getUpdatedAt() != null ? product.getUpdatedAt() : product.getCreatedAt()))
                 .category(categoryName)
                 .categorySub(categorySubName)

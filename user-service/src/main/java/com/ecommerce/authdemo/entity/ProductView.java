@@ -27,6 +27,7 @@ public class ProductView {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
+    @JsonIgnore
     private User user;
 
     private String sessionId;
