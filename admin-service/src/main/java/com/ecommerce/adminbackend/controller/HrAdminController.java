@@ -8,6 +8,7 @@ import com.ecommerce.adminbackend.entity.AdminDepartment;
 import com.ecommerce.adminbackend.entity.AdminJobOpening;
 import com.ecommerce.adminbackend.service.HrAdminService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -47,8 +48,9 @@ public class HrAdminController {
     }
 
     @DeleteMapping("/departments/{id}")
-    public void deleteDepartment(@PathVariable Long id) {
+    public ResponseEntity<Map<String, String>> deleteDepartment(@PathVariable Long id) {
         hrAdminService.deleteDepartment(id);
+        return ResponseEntity.ok(Map.of("message", "Department deleted."));
     }
 
     @GetMapping("/jobs")
@@ -67,8 +69,9 @@ public class HrAdminController {
     }
 
     @DeleteMapping("/jobs/{id}")
-    public void deleteJob(@PathVariable Long id) {
+    public ResponseEntity<Map<String, String>> deleteJob(@PathVariable Long id) {
         hrAdminService.deleteJob(id);
+        return ResponseEntity.ok(Map.of("message", "Job deleted."));
     }
 
     @GetMapping("/job-applications")

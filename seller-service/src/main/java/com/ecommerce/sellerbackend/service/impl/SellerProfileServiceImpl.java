@@ -337,7 +337,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     @Transactional
     public ProfileSubmitResponse submitProfile(Long sellerId) {
         Seller seller = requireSeller(sellerId);
-        registrationPaymentRepository.ensureTable();
+
         if (!registrationPaymentRepository.isPaid(sellerId)) {
             return ProfileSubmitResponse.builder()
                     .submitted(false)

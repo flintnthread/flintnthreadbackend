@@ -25,9 +25,11 @@ public interface SellerAdminService {
 
     List<String> analyticsYearOptions();
 
-    Map<String, Object> blockSeller(Long id);
+    Map<String, Object> blockSeller(Long id, String reason);
 
     Map<String, Object> unblockSeller(Long id);
+
+    Map<String, Object> updateSellerStatus(Long id, String status, String kycVerificationStatus, String kycRemarks);
 
     PageResponse<Map<String, Object>> listPendingBank(int page, int size);
 
