@@ -415,8 +415,10 @@ public class CustomerAnalyticsAssembler {
         for (Object[] row : customerQueryRepository.recentOrdersWithProductByCustomerId(customerId)) {
             Map<String, Object> order = new LinkedHashMap<>();
             order.put("id", String.valueOf(longAt(row, 0)));
+            order.put("orderId", longAt(row, 0));
             order.put("orderNumber", stringAt(row, 1));
-            order.put("productName", stringAt(row, 2));
+            String productName = stringAt(row, 2);
+            order.put("productName", productName.isBlank() ? "Product" : productName);
             order.put("date", formatDate(toDateTime(row[3])));
             order.put("amount", decimalAt(row[4]));
             order.put("status", normalizeUiStatus(stringAt(row, 5)));

@@ -5,6 +5,8 @@ import com.ecommerce.adminbackend.repository.CustomerQueryRepository;
 import com.ecommerce.adminbackend.service.CustomerAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import com.ecommerce.adminbackend.service.support.CustomerAnalyticsAssembler;
+import com.ecommerce.adminbackend.util.CustomerOrderHistoryHtmlBuilder;
+import com.ecommerce.adminbackend.util.InvoicePdfRenderer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +63,55 @@ public class CustomerAdminServiceImpl extends BaseAdminService implements Custom
                 customerQueryRepository.findCustomerById(id),
                 "Customer not found.");
         return customerAnalyticsAssembler.build(id, row);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportOrderHistoryCsv(Long id) {
+        Map<String, Object> customer = loadCustomerExportContext(id);
+        List<Map<String, Object>> orders = buildOrderHistory(id);
+
+        StringBuilder csv = new StringBuilder("\uFEFF");
+        csv.append(csvHeader(
+                "Customer Name", "Customer ID", "Orders", "Total Spent", "Last Order"
+        )).append('\n');
+        csv.append(csvEscape(customer.get("name"))).append(',');
+        csv.append(csvEscape(customer.get("id"))).append(',');
+        csv.append(csvEscape(customer.get("orderCount"))).append(',');
+        csv.append(csvEscape(customer.get("totalSpent"))).append(',');
+        csv.append(csvEscape(customer.get("lastOrderAt"))).append('\n');
+        csv.append('\n');
+        csv.append(csvHeader(
+                "Order ID", "Order #", "Date", "Items", "Amount", "Payment", "Payment Status", "Status"
+        )).append('\n');
+
+        for (Map<String, Object> order : orders) {
+            csv.append(csvEscape(order.get("id"))).append(',');
+            csv.append(csvEscape(order.get("orderNumber"))).append(',');
+            csv.append(csvEscape(order.get("createdAt"))).append(',');
+            csv.append(csvEscape(order.get("itemCount"))).append(',');
+            csv.append(csvEscape(order.get("totalAmount"))).append(',');
+            csv.append(csvEscape(order.get("paymentMethod"))).append(',');
+            csv.append(csvEscape(order.get("paymentStatus"))).append(',');
+            csv.append(csvEscape(order.get("orderStatus"))).append('\n');
+        }
+        return csv.toString();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] exportOrderHistoryPdf(Long id) {
+        Map<String, Object> customer = loadCustomerExportContext(id);
+        List<Map<String, Object>> orders = buildOrderHistory(id);
+        String html = CustomerOrderHistoryHtmlBuilder.build(customer, orders);
+        return InvoicePdfRenderer.renderPdf(html);
+    }
+
+    private Map<String, Object> loadCustomerExportContext(Long id) {
+        Object[] row = requireFound(
+                customerQueryRepository.findCustomerById(id),
+                "Customer not found.");
+        return toCustomerDetail(row);
     }
 
     private List<Map<String, Object>> buildOrderHistory(Long customerId) {

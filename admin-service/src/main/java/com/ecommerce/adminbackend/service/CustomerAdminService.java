@@ -13,4 +13,8 @@ public interface CustomerAdminService {
     Map<String, Object> getCustomer(Long id);
 
     Map<String, Object> getCustomerAnalytics(Long id);
+
+    String exportOrderHistoryCsv(Long id);
+
+    byte[] exportOrderHistoryPdf(Long id);
 }

@@ -14,4 +14,5 @@ public class NoteRequest {
     private String transactionRef;
     private String gstStatus;
     private Boolean active;
+    private Boolean notifyCustomer;
 }
