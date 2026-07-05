@@ -963,7 +963,7 @@ public class OrderServiceImpl implements OrderService {
                                         ? "paid"
                                         : "pending"
                 )
-                .orderStatus("confirmed")
+                .orderStatus("processing")
                 .shippingAddress1(address.getAddressLine1())
                 .shippingCity(address.getCity())
                 .shippingState(address.getState())
@@ -1169,7 +1169,7 @@ public class OrderServiceImpl implements OrderService {
 
                     .hsnCode(product.getHsnCode() != null ? product.getHsnCode() : "0000")
 
-                    .status("confirmed")
+                    .status("processing")
 
                     .build();
 
@@ -1979,7 +1979,7 @@ public class OrderServiceImpl implements OrderService {
 
         order.setPaymentStatus("PAID");
 
-        order.setOrderStatus("PROCESSING");
+        order.setOrderStatus("processing");
 
         order.setRazorpayPaymentId(
                 dto.getRazorpayPaymentId()
