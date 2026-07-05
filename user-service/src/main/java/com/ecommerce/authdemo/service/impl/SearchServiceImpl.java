@@ -286,10 +286,9 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public ApiResponse<SearchResponseDTO> imageSearch(MultipartFile image, Long userId, String sessionId) {
-        log.info("🤖 Starting AI-powered camera search");
+        log.info("Starting camera search");
 
         try {
-            // Basic validation
             if (image == null || image.isEmpty()) {
                 return new ApiResponse<>(false, "Image file is required", null);
             }
@@ -302,13 +301,70 @@ public class SearchServiceImpl implements SearchService {
                 return new ApiResponse<>(false, "Image size should be less than 8MB", null);
             }
 
-            // Use AI service for professional camera search
-            return aiImageSearchDecorator.performImageSearch(image, userId, sessionId);
+            ApiResponse<SearchResponseDTO> aiResponse =
+                    aiImageSearchDecorator.performImageSearch(image, userId, sessionId);
+            List<Product> aiProducts = extractSearchProducts(aiResponse);
+            if (aiResponse.isSuccess() && !aiProducts.isEmpty()) {
+                return aiResponse;
+            }
+
+            log.info("AI camera search unavailable or had no matches — running local visual similarity search");
+            List<Product> localMatches = findSimilarProductsByVisualSignature(image);
+            if (!localMatches.isEmpty()) {
+                SearchResponseDTO response = new SearchResponseDTO(
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        localMatches
+                );
+                return new ApiResponse<>(true, "Camera search completed successfully", response);
+            }
+
+            if (aiResponse.isSuccess()) {
+                return aiResponse;
+            }
+
+            return new ApiResponse<>(
+                    true,
+                    "No similar products found for this image.",
+                    new SearchResponseDTO(
+                            Collections.emptyList(),
+                            Collections.emptyList(),
+                            Collections.emptyList()
+                    )
+            );
 
         } catch (Exception e) {
-            log.error("❌ Error during AI camera search", e);
+            log.error("Error during camera search", e);
             return new ApiResponse<>(false, "Camera search failed: " + e.getMessage(), null);
         }
+    }
+
+    private List<Product> extractSearchProducts(ApiResponse<SearchResponseDTO> response) {
+        if (response == null || !response.isSuccess() || response.getData() == null) {
+            return Collections.emptyList();
+        }
+        List<Product> products = response.getData().getProducts();
+        return products == null ? Collections.emptyList() : products;
+    }
+
+    private List<Product> findSimilarProductsByVisualSignature(MultipartFile image) throws IOException {
+        BufferedImage bufferedImage = ImageIO.read(image.getInputStream());
+        if (bufferedImage == null) {
+            return Collections.emptyList();
+        }
+
+        LinkedHashSet<String> keywords = new LinkedHashSet<>();
+        keywords.addAll(extractKeywordsFromFilename(image.getOriginalFilename()));
+        keywords.addAll(extractDominantColorKeywords(bufferedImage));
+        keywords = expandKeywords(keywords);
+        if (keywords.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Long uploadedHash = computeDHash(bufferedImage);
+        String uploadedStem = toFileStem(image.getOriginalFilename());
+        List<Product> candidates = fetchCandidateProducts(keywords);
+        return rankProductsByImageKeywords(candidates, keywords, uploadedStem, uploadedHash);
     }
 
     @Override
@@ -420,7 +476,10 @@ public class SearchServiceImpl implements SearchService {
         if (image == null) {
             return Set.of();
         }
+        return extractDominantColorKeywords(image);
+    }
 
+    private Set<String> extractDominantColorKeywords(BufferedImage image) {
         Map<String, Integer> colorHits = new HashMap<>();
         int width = image.getWidth();
         int height = image.getHeight();

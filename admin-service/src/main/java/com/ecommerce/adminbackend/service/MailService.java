@@ -14,4 +14,6 @@ public interface MailService {
             String sellerName,
             String statusLabel,
             String reason);
+
+    void sendEmailVerificationLinkEmail(String toEmail, String recipientName, String verifyLink);
 }

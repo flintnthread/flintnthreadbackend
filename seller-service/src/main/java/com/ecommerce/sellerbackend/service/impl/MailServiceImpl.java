@@ -1,6 +1,7 @@
 package com.ecommerce.sellerbackend.service.impl;
 
 import com.ecommerce.sellerbackend.service.MailService;
+import com.ecommerce.sellerbackend.service.PlatformIntegrationSettings;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 public class MailServiceImpl implements MailService {
 
     private final JavaMailSender mailSender;
+    private final PlatformIntegrationSettings integrationSettings;
 
     @Value("${app.mail.from}")
     private String fromEmail;
@@ -157,7 +159,8 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public boolean isRegistrationInvoiceEmailConfigured() {
-        return mailPassword != null && !mailPassword.isBlank();
+        String apiKey = integrationSettings.getSendGridApiKey();
+        return apiKey != null && !apiKey.isBlank();
     }
 
     @Override
