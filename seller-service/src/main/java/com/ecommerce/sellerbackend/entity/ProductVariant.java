@@ -39,6 +39,9 @@ public class ProductVariant {
 
     private Integer stock;
 
+    @Column(name = "min_quantity")
+    private Integer minQuantity;
+
     @Column(name = "mrp_price")
     private BigDecimal mrpPrice;
 

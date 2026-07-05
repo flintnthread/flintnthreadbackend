@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Repository
@@ -30,11 +31,13 @@ public class SellerRegistrationPaymentRepository {
                   status VARCHAR(20) NOT NULL DEFAULT 'pending',
                   receipt VARCHAR(80),
                   paid_at DATETIME NULL,
+                  subscription_expires_at DATETIME NULL,
+                  renewal_reminder_sent_at DATETIME NULL,
                   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                   updated_at DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )
                 """).executeUpdate();
-        addColumnIfMissing("amount", "INT NOT NULL DEFAULT 19900");
+        addColumnIfMissing("amount", "INT NOT NULL DEFAULT 106082");
         addColumnIfMissing("currency", "VARCHAR(8) NOT NULL DEFAULT 'INR'");
         addColumnIfMissing("razorpay_order_id", "VARCHAR(80)");
         addColumnIfMissing("razorpay_payment_id", "VARCHAR(80)");
@@ -44,9 +47,22 @@ public class SellerRegistrationPaymentRepository {
         addColumnIfMissing("status", "VARCHAR(20) NOT NULL DEFAULT 'pending'");
         addColumnIfMissing("receipt", "VARCHAR(80)");
         addColumnIfMissing("paid_at", "DATETIME NULL");
+        addColumnIfMissing("subscription_expires_at", "DATETIME NULL");
+        addColumnIfMissing("renewal_reminder_sent_at", "DATETIME NULL");
         addColumnIfMissing("created_at", "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
         addColumnIfMissing("updated_at", "DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
         migrateLegacyColumns();
+        migrateSubscriptionExpiresAt();
+    }
+
+    private void migrateSubscriptionExpiresAt() {
+        entityManager.createNativeQuery("""
+                UPDATE seller_registration_payments
+                SET subscription_expires_at = DATE_ADD(paid_at, INTERVAL 1 YEAR)
+                WHERE status = 'paid'
+                  AND paid_at IS NOT NULL
+                  AND subscription_expires_at IS NULL
+                """).executeUpdate();
     }
 
     private void migrateLegacyColumns() {
@@ -115,6 +131,8 @@ public class SellerRegistrationPaymentRepository {
                        status,
                        receipt,
                        paid_at,
+                       subscription_expires_at,
+                       renewal_reminder_sent_at,
                        created_at
                 FROM seller_registration_payments
                 WHERE seller_id = :sellerId
@@ -140,7 +158,13 @@ public class SellerRegistrationPaymentRepository {
         if (row[10] instanceof Timestamp ts) {
             record.setPaidAt(ts.toLocalDateTime());
         }
-        if (row[11] instanceof Timestamp createdAt) {
+        if (row[11] instanceof Timestamp expiresAt) {
+            record.setSubscriptionExpiresAt(expiresAt.toLocalDateTime());
+        }
+        if (row[12] instanceof Timestamp reminderAt) {
+            record.setRenewalReminderSentAt(reminderAt.toLocalDateTime());
+        }
+        if (row[13] instanceof Timestamp createdAt) {
             record.setCreatedAt(createdAt.toLocalDateTime());
         }
         return record;
@@ -215,6 +239,8 @@ public class SellerRegistrationPaymentRepository {
                     invoice_number = :invoiceNumber,
                     status = 'paid',
                     paid_at = NOW(),
+                    subscription_expires_at = DATE_ADD(NOW(), INTERVAL 1 YEAR),
+                    renewal_reminder_sent_at = NULL,
                     updated_at = NOW()
                 WHERE seller_id = :sellerId
                   AND razorpay_order_id = :orderId
@@ -228,15 +254,66 @@ public class SellerRegistrationPaymentRepository {
     }
 
     public boolean isPaid(Long sellerId) {
+        return isSubscriptionActive(sellerId);
+    }
+
+    public boolean isSubscriptionActive(Long sellerId) {
         Number count = (Number) entityManager.createNativeQuery("""
                 SELECT COUNT(1)
                 FROM seller_registration_payments
                 WHERE seller_id = :sellerId
                   AND status = 'paid'
+                  AND subscription_expires_at IS NOT NULL
+                  AND subscription_expires_at > NOW()
                 """)
                 .setParameter("sellerId", sellerId)
                 .getSingleResult();
         return count != null && count.longValue() > 0;
+    }
+
+    public boolean hasEverPaid(Long sellerId) {
+        Number count = (Number) entityManager.createNativeQuery("""
+                SELECT COUNT(1)
+                FROM seller_registration_payments
+                WHERE seller_id = :sellerId
+                  AND status = 'paid'
+                  AND paid_at IS NOT NULL
+                """)
+                .setParameter("sellerId", sellerId)
+                .getSingleResult();
+        return count != null && count.longValue() > 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Long> findSellerIdsDueForRenewalReminder() {
+        List<Number> rows = entityManager.createNativeQuery("""
+                SELECT seller_id
+                FROM seller_registration_payments
+                WHERE status = 'paid'
+                  AND subscription_expires_at IS NOT NULL
+                  AND subscription_expires_at <= NOW()
+                  AND renewal_reminder_sent_at IS NULL
+                """)
+                .getResultList();
+        List<Long> sellerIds = new ArrayList<>();
+        for (Number row : rows) {
+            if (row != null) {
+                sellerIds.add(row.longValue());
+            }
+        }
+        return sellerIds;
+    }
+
+    @Transactional
+    public void markRenewalReminderSent(Long sellerId) {
+        entityManager.createNativeQuery("""
+                UPDATE seller_registration_payments
+                SET renewal_reminder_sent_at = NOW(),
+                    updated_at = NOW()
+                WHERE seller_id = :sellerId
+                """)
+                .setParameter("sellerId", sellerId)
+                .executeUpdate();
     }
 
     public static class PaymentRecord {
@@ -251,6 +328,8 @@ public class SellerRegistrationPaymentRepository {
         private String status;
         private String receipt;
         private LocalDateTime paidAt;
+        private LocalDateTime subscriptionExpiresAt;
+        private LocalDateTime renewalReminderSentAt;
         private LocalDateTime createdAt;
 
         public Long getSellerId() { return sellerId; }
@@ -275,6 +354,10 @@ public class SellerRegistrationPaymentRepository {
         public void setReceipt(String receipt) { this.receipt = receipt; }
         public LocalDateTime getPaidAt() { return paidAt; }
         public void setPaidAt(LocalDateTime paidAt) { this.paidAt = paidAt; }
+        public LocalDateTime getSubscriptionExpiresAt() { return subscriptionExpiresAt; }
+        public void setSubscriptionExpiresAt(LocalDateTime subscriptionExpiresAt) { this.subscriptionExpiresAt = subscriptionExpiresAt; }
+        public LocalDateTime getRenewalReminderSentAt() { return renewalReminderSentAt; }
+        public void setRenewalReminderSentAt(LocalDateTime renewalReminderSentAt) { this.renewalReminderSentAt = renewalReminderSentAt; }
         public LocalDateTime getCreatedAt() { return createdAt; }
         public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     }

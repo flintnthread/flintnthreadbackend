@@ -6,7 +6,7 @@ import java.math.RoundingMode;
 public final class ProductVariantPricingCalculator {
 
     public static final BigDecimal DEFAULT_GST = new BigDecimal("5.00");
-    public static final BigDecimal COMMISSION_PERCENT = new BigDecimal("15.00");
+    public static final BigDecimal COMMISSION_PERCENT = BigDecimal.ZERO;
     public static final BigDecimal DEFAULT_INTRA_CITY = new BigDecimal("175.00");
     public static final BigDecimal DEFAULT_METRO_METRO = new BigDecimal("205.00");
 

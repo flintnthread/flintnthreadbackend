@@ -16,5 +16,6 @@ public class ProductVariantSummaryResponse {
     private Integer stock;
     private BigDecimal sellingPrice;
     private BigDecimal finalPrice;
+    private BigDecimal metroMetroDeliveryCharge;
     private String image;
 }

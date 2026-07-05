@@ -13,9 +13,12 @@ public class ProductVariantDetailResponse {
     private Long productId;
     private String color;
     private String colorHex;
+    private Long colorId;
     private String size;
+    private Long sizeId;
     private String sku;
     private Integer stock;
+    private Integer minQuantity;
 
     private BigDecimal basePrice;
     private BigDecimal mrpExclGst;

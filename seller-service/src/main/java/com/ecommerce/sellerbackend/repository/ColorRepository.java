@@ -44,4 +44,10 @@ public interface ColorRepository extends JpaRepository<Color, Long> {
               AND c.status = true
             """)
     Optional<Color> findVisibleByNameForSeller(@Param("sellerId") Long sellerId, @Param("name") String name);
+
+    @Query("""
+            SELECT c FROM Color c
+            WHERE c.id = :id AND (c.sellerId = :sellerId OR c.sellerId IS NULL)
+            """)
+    Optional<Color> findVisibleByIdForSeller(@Param("id") Long id, @Param("sellerId") Long sellerId);
 }

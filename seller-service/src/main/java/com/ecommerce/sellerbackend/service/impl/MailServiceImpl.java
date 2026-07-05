@@ -186,6 +186,67 @@ public class MailServiceImpl implements MailService {
         }
     }
 
+    @Override
+    public void sendSubscriptionRenewalReminderEmail(
+            String toEmail,
+            String recipientName,
+            String expiryDate,
+            int renewalAmountInr) {
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Subscription renewal reminder for {} (expires={})",
+                    maskEmail(toEmail), expiryDate);
+            return;
+        }
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail);
+            helper.setSubject("Seller subscription renewal pending - Flint & Thread");
+            helper.setText(buildSubscriptionRenewalReminderHtml(
+                    recipientName, expiryDate, renewalAmountInr), true);
+            mailSender.send(message);
+            log.info("Subscription renewal reminder sent to {}", maskEmail(toEmail));
+        } catch (Exception ex) {
+            log.error("Failed to send subscription renewal reminder for {}", maskEmail(toEmail), ex);
+        }
+    }
+
+    private String buildSubscriptionRenewalReminderHtml(
+            String recipientName,
+            String expiryDate,
+            int renewalAmountInr) {
+        String name = recipientName != null && !recipientName.isBlank() ? recipientName : "Seller";
+        int year = java.time.Year.now().getValue();
+        return """
+                <!DOCTYPE html>
+                <html>
+                <body style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;margin:0;">
+                  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+                    <div style="background:linear-gradient(135deg,#F97316 0%%,#1E3A6E 100%%);padding:28px 32px;text-align:center;">
+                      <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;">Payment Pending</h1>
+                      <p style="color:#fff7ed;margin:0;font-size:15px;">Annual seller subscription renewal</p>
+                    </div>
+                    <div style="padding:32px;">
+                      <p style="color:#111827;font-size:20px;font-weight:bold;line-height:1.4;margin:0 0 16px;">Hello %s,</p>
+                      <p style="color:#374151;line-height:1.7;margin:0 0 16px;font-size:15px;">
+                        Your annual seller subscription expired on <strong>%s</strong>.
+                        Please renew your subscription of Rs %d per annum to continue accessing your seller dashboard.
+                      </p>
+                      <p style="color:#374151;line-height:1.6;margin:0 0 12px;font-size:14px;">
+                        Log in to your seller account and complete the renewal payment from Settings or the renewal screen.
+                      </p>
+                      <p style="color:#9ca3af;font-size:12px;margin-top:24px;margin-bottom:6px;text-align:center;">
+                        &copy; %d Flint &amp; Thread. All rights reserved.
+                      </p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+                """
+                .formatted(name, expiryDate, renewalAmountInr, year);
+    }
+
     private static final String EMAIL_VERIFICATION_HEADER = """
             <div style="background:linear-gradient(135deg,#F97316 0%%,#B45309 100%%);padding:28px 32px;text-align:center;">
               <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;font-family:Arial,sans-serif;">Welcome to Flint &amp; Thread!</h1>
@@ -453,12 +514,12 @@ public class MailServiceImpl implements MailService {
                   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
                     <div style="background:linear-gradient(135deg,#F97316 0%%,#1E3A6E 100%%);padding:28px 32px;text-align:center;">
                       <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;">Payment Successful</h1>
-                      <p style="color:#fff7ed;margin:0;font-size:15px;">Seller registration fee received</p>
+                      <p style="color:#fff7ed;margin:0;font-size:15px;">Annual seller subscription fee received</p>
                     </div>
                     <div style="padding:32px;">
                       <p style="color:#111827;font-size:20px;font-weight:bold;line-height:1.4;margin:0 0 16px;">Hello %s,</p>
                       <p style="color:#374151;line-height:1.7;margin:0 0 16px;font-size:15px;">
-                        Your registration fee payment has been received successfully.
+                        Your annual seller subscription payment of Rs %s (incl. GST) has been received successfully.
                       </p>
                       <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin:16px 0;">
                         <p style="margin:0 0 8px;color:#374151;font-size:14px;"><strong>Invoice:</strong> %s</p>
@@ -477,7 +538,7 @@ public class MailServiceImpl implements MailService {
                 </body>
                 </html>
                 """
-                .formatted(name, invoiceNumber, displayOrderNumber, paymentId, amount, year);
+                .formatted(name, amount, invoiceNumber, displayOrderNumber, paymentId, amount, year);
     }
 
     private String maskEmail(String email) {

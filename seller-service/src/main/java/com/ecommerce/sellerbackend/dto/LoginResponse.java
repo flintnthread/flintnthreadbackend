@@ -16,6 +16,9 @@ public class LoginResponse {
     private boolean emailVerified;
     private boolean profileCompleted;
     private String status;
+    private boolean subscriptionActive;
+    private boolean paymentPending;
+    private String subscriptionExpiresAt;
     private String accessToken;
     private Long expiresIn;
 }
