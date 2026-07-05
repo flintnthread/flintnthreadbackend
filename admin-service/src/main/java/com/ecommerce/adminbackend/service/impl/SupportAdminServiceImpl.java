@@ -47,9 +47,10 @@ public class SupportAdminServiceImpl extends BaseAdminService implements Support
         stats.put("total", ticketRepository.count());
         stats.put("open", ticketRepository.countByStatusIgnoreCase("open"));
         stats.put("inProgress", ticketRepository.countByStatusIgnoreCase("in_progress"));
-        stats.put("waiting", ticketRepository.countByStatusIgnoreCase("waiting"));
-        stats.put("resolved", ticketRepository.countByStatusIgnoreCase("closed"));
-        stats.put("urgent", ticketRepository.countByPriorityIgnoreCase("critical"));
+        stats.put("waiting", ticketRepository.countWaitingStatuses());
+        stats.put("closed", ticketRepository.countByStatusIgnoreCase("closed"));
+        stats.put("resolved", ticketRepository.countByStatusIgnoreCase("resolved"));
+        stats.put("urgent", ticketRepository.countUrgentPriorities());
         return stats;
     }
 
@@ -78,9 +79,11 @@ public class SupportAdminServiceImpl extends BaseAdminService implements Support
 
         ticket.setLastResponseBy("admin");
         ticket.setLastResponseAt(LocalDateTime.now());
-        if ("closed".equalsIgnoreCase(ticket.getStatus())) {
+        if (isTerminalStatus(ticket.getStatus())) {
             ticket.setStatus("open");
             ticket.setClosedAt(null);
+        } else {
+            ticket.setStatus("waiting_seller");
         }
         ticketRepository.save(ticket);
 
@@ -90,16 +93,27 @@ public class SupportAdminServiceImpl extends BaseAdminService implements Support
     @Override
     @Transactional
     public Map<String, Object> updateStatus(Long ticketId, String status) {
-        String normalized = requireNonBlank(status, "Status").toLowerCase();
+        String normalized = normalizeSellerTicketStatus(requireNonBlank(status, "Status"));
         SellerSupportTicket ticket = requireTicket(ticketId);
         ticket.setStatus(normalized);
-        if ("closed".equals(normalized)) {
-            ticket.setClosedAt(LocalDateTime.now());
+        if ("closed".equals(normalized) || "resolved".equals(normalized)) {
+            if (ticket.getClosedAt() == null) {
+                ticket.setClosedAt(LocalDateTime.now());
+            }
         } else {
             ticket.setClosedAt(null);
         }
         ticketRepository.save(ticket);
-        return Map.of("ticketId", ticketId, "status", ticket.getStatus(), "message", "Ticket status updated.");
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("ticketId", ticketId);
+        response.put("status", ticket.getStatus());
+        response.put("statusLabel", formatStatusLabel(ticket.getStatus()));
+        response.put("statusClosed", isTerminalStatus(ticket.getStatus()));
+        response.put("canResolve", canResolve(ticket.getStatus()));
+        response.put("canClose", canClose(ticket.getStatus()));
+        response.put("canReopen", canReopen(ticket.getStatus()));
+        response.put("message", "Ticket status updated.");
+        return response;
     }
 
     private SellerSupportTicket requireTicket(Long id) {
@@ -108,20 +122,78 @@ public class SupportAdminServiceImpl extends BaseAdminService implements Support
 
     private Map<String, Object> toTicketSummary(SellerSupportTicket ticket) {
         Seller seller = sellerRepository.findById(ticket.getSellerId()).orElse(null);
+        String status = ticket.getStatus() != null ? ticket.getStatus().toLowerCase() : "open";
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("id", ticket.getId());
         summary.put("ticketNumber", ticket.getTicketNumber());
         summary.put("sellerId", ticket.getSellerId());
         summary.put("sellerName", seller != null ? seller.getFullName() : null);
+        summary.put("sellerEmail", seller != null ? seller.getEmail() : null);
+        summary.put("sellerPhone", seller != null ? seller.getMobile() : null);
         summary.put("subject", ticket.getSubject());
         summary.put("category", ticket.getCategory());
         summary.put("priority", ticket.getPriority());
-        summary.put("status", ticket.getStatus());
+        summary.put("status", status);
+        summary.put("statusLabel", formatStatusLabel(status));
+        summary.put("statusClosed", isTerminalStatus(status));
+        summary.put("canResolve", canResolve(status));
+        summary.put("canClose", canClose(status));
+        summary.put("canReopen", canReopen(status));
         summary.put("lastResponseBy", ticket.getLastResponseBy());
         summary.put("lastResponseAt", ticket.getLastResponseAt());
+        summary.put("closedAt", ticket.getClosedAt());
         summary.put("createdAt", ticket.getCreatedAt());
         summary.put("updatedAt", ticket.getUpdatedAt());
         return summary;
+    }
+
+    private String normalizeSellerTicketStatus(String status) {
+        String normalized = status.trim().toLowerCase().replace(' ', '_');
+        return switch (normalized) {
+            case "open" -> "open";
+            case "in_progress", "inprogress" -> "in_progress";
+            case "waiting_admin", "waitingadmin" -> "waiting_admin";
+            case "waiting_seller", "waitingseller" -> "waiting_seller";
+            case "waiting" -> "waiting_admin";
+            case "resolved" -> "resolved";
+            case "closed" -> "closed";
+            default -> throw new IllegalArgumentException("Unsupported ticket status: " + status);
+        };
+    }
+
+    private String formatStatusLabel(String status) {
+        if (status == null || status.isBlank()) {
+            return "Open";
+        }
+        return switch (status.toLowerCase()) {
+            case "open" -> "Open";
+            case "in_progress" -> "In Progress";
+            case "waiting_admin" -> "Waiting Admin";
+            case "waiting_seller" -> "Waiting Seller";
+            case "resolved" -> "Resolved";
+            case "closed" -> "Closed";
+            default -> status.substring(0, 1).toUpperCase() + status.substring(1).replace('_', ' ');
+        };
+    }
+
+    private boolean isTerminalStatus(String status) {
+        if (status == null) {
+            return false;
+        }
+        String normalized = status.toLowerCase();
+        return "closed".equals(normalized) || "resolved".equals(normalized);
+    }
+
+    private boolean canResolve(String status) {
+        return !isTerminalStatus(status);
+    }
+
+    private boolean canClose(String status) {
+        return !isTerminalStatus(status);
+    }
+
+    private boolean canReopen(String status) {
+        return isTerminalStatus(status);
     }
 
     private Map<String, Object> toMessage(SellerSupportMessage message) {
