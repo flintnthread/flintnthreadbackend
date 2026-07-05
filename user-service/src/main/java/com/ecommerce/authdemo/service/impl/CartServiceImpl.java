@@ -279,9 +279,9 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
                 if (stored.compareTo(unitSell) != 0) {
                     cart.setPrice(unitSell);
                     cart.setTotalAmount(unitSell.multiply(BigDecimal.valueOf(cart.getQuantity())));
-                    cart.setFinalAmount(cart.getTotalAmount()
-                            .subtract(cart.getDiscountAmount())
-                            .add(cart.getShippingAmount()));
+                    BigDecimal lineDiscount = cart.getDiscountAmount() != null ? cart.getDiscountAmount() : BigDecimal.ZERO;
+                    BigDecimal lineShipping = cart.getShippingAmount() != null ? cart.getShippingAmount() : BigDecimal.ZERO;
+                    cart.setFinalAmount(cart.getTotalAmount().subtract(lineDiscount).add(lineShipping));
                     if (!cartsToPersist.contains(cart)) {
                         cartsToPersist.add(cart);
                     }
@@ -328,10 +328,12 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
         
         BigDecimal discount = cartItems.stream()
                 .map(Cart::getDiscountAmount)
+                .map(amount -> amount != null ? amount : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         
         BigDecimal delivery = cartItems.stream()
                 .map(Cart::getShippingAmount)
+                .map(amount -> amount != null ? amount : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         
         BigDecimal finalTotal = subtotal.add(delivery).subtract(discount);

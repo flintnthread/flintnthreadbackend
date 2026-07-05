@@ -173,4 +173,9 @@ public class SellerAdminController {
         String note = request != null ? (request.getNote() != null ? request.getNote() : request.getReason()) : null;
         return sellerAdminService.rejectBank(id, note);
     }
+
+    @PostMapping("/{id}/resend-verification")
+    public Map<String, Object> resendVerification(@PathVariable Long id) {
+        return sellerAdminService.resendEmailVerification(id);
+    }
 }

@@ -29,6 +29,38 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     List<Order> findByUserIdAndOrderStatusOrderByCreatedAtDesc(Long userId, String status);
 
+    @Query(
+            value = """
+                    SELECT o.id, o.user_id, o.order_number, o.total_amount, o.shipping_amount, o.discount_amount,
+                           o.payment_method, o.payment_status, o.order_status, o.created_at,
+                           o.razorpay_payment_id, o.shiprocket_awb_code, o.shiprocket_courier_name,
+                           o.shiprocket_tracking_url, o.shiprocket_status
+                    FROM orders o
+                    WHERE o.user_id = :userId
+                    ORDER BY o.created_at DESC
+                    """,
+            nativeQuery = true
+    )
+    List<Object[]> findSummaryRowsByUserId(@Param("userId") Long userId);
+
+    @Query(
+            value = """
+                    SELECT o.id, o.user_id, o.order_number, o.total_amount, o.shipping_amount, o.discount_amount,
+                           o.payment_method, o.payment_status, o.order_status, o.created_at,
+                           o.razorpay_payment_id, o.shiprocket_awb_code, o.shiprocket_courier_name,
+                           o.shiprocket_tracking_url, o.shiprocket_status
+                    FROM orders o
+                    WHERE o.user_id = :userId
+                      AND LOWER(COALESCE(o.order_status, '')) = LOWER(:status)
+                    ORDER BY o.created_at DESC
+                    """,
+            nativeQuery = true
+    )
+    List<Object[]> findSummaryRowsByUserIdAndStatus(
+            @Param("userId") Long userId,
+            @Param("status") String status
+    );
+
     @Query("""
             SELECT o FROM Order o
             WHERE o.userId = :userId

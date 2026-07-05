@@ -26,4 +26,16 @@ public interface SellerSupportTicketRepository extends JpaRepository<SellerSuppo
     long countByStatusIgnoreCase(String status);
 
     long countByPriorityIgnoreCase(String priority);
+
+    @Query("""
+            SELECT COUNT(t) FROM SellerSupportTicket t
+            WHERE LOWER(t.status) IN ('waiting_admin', 'waiting_seller')
+            """)
+    long countWaitingStatuses();
+
+    @Query("""
+            SELECT COUNT(t) FROM SellerSupportTicket t
+            WHERE LOWER(t.priority) IN ('critical', 'urgent', 'high')
+            """)
+    long countUrgentPriorities();
 }
