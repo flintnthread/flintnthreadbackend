@@ -99,6 +99,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
                     row.put("id", seller.getId());
                     row.put("fullName", seller.getFullName());
                     row.put("businessName", seller.getBusinessName());
+                    row.put("sellerUniqueId", resolveSellerUniqueId(seller));
                     return row;
                 })
                 .toList();
@@ -431,6 +432,21 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         return value != null && !value.isBlank();
     }
 
+    private String resolveSellerUniqueId(Seller seller) {
+        if (seller == null || seller.getId() == null) {
+            return "";
+        }
+        String unique = trim(seller.getSellerUniqueId());
+        if (!unique.isEmpty()) {
+            return unique;
+        }
+        return formatSellerUniqueId(seller.getId());
+    }
+
+    private String formatSellerUniqueId(Long sellerId) {
+        return "FNT-SELLER-" + String.format("%06d", sellerId);
+    }
+
     private String resolveSellerState(Seller seller) {
         if (isPresent(seller.getState())) {
             return seller.getState().trim();
@@ -499,7 +515,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         summary.put("profilePicPath", blankToNull(seller.getProfilePic()));
         summary.put("liveSelfiePath", blankToNull(seller.getLiveSelfie()));
         summary.put("profilePicUrl", resolveSellerImageUrl(seller, kycImageFallbacks));
-        summary.put("sellerUniqueId", seller.getSellerUniqueId());
+        summary.put("sellerUniqueId", resolveSellerUniqueId(seller));
         summary.put("referralCode", seller.getReferralCode());
         summary.put("productCount", productCounts.getOrDefault(seller.getId(), 0L));
         summary.put("totalOrders", orderCounts.getOrDefault(seller.getId(), 0L));
