@@ -3,6 +3,7 @@ package com.ecommerce.authdemo.service.impl;
 import com.ecommerce.authdemo.dto.*;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.ProductView;
+import com.ecommerce.authdemo.entity.Seller;
 import com.ecommerce.authdemo.entity.User;
 import com.ecommerce.authdemo.mapper.ProductMapper;
 import com.ecommerce.authdemo.util.GenderBrowseHelper;
@@ -32,6 +33,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariantRepository variantRepo;
     private final ProductViewRepository viewRepo;
     private final CategoryRepository categoryRepository;
+    private final SellerRepository sellerRepository;
     private final SizeColorMapper sizeColorMapper;
     private final ProductMapper mapper;
 
@@ -46,7 +48,36 @@ public class ProductServiceImpl implements ProductService {
     public ProductDTO getProduct(Long id) {
         Product product = productRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
-        return mapper.toDTO(product);
+        ProductDTO dto = mapper.toDTO(product);
+        applySellerBusinessName(dto);
+        return dto;
+    }
+
+    private void applySellerBusinessName(ProductDTO dto) {
+        Long sellerId = dto.getSellerId();
+        if (sellerId == null || sellerId <= 0) {
+            return;
+        }
+        sellerRepository.findById(sellerId).ifPresent(seller -> {
+            String label = resolveSellerBusinessLabel(seller);
+            if (label != null && !label.isBlank()) {
+                dto.setSellerBusinessName(label);
+            }
+        });
+    }
+
+    private String resolveSellerBusinessLabel(Seller seller) {
+        if (seller == null) {
+            return null;
+        }
+        String business = seller.getBusinessName() == null ? "" : seller.getBusinessName().trim();
+        if (!business.isEmpty()) {
+            return business;
+        }
+        String first = seller.getFirstName() == null ? "" : seller.getFirstName().trim();
+        String last = seller.getLastName() == null ? "" : seller.getLastName().trim();
+        String fullName = (first + " " + last).trim();
+        return fullName.isEmpty() ? null : fullName;
     }
 
     @Override

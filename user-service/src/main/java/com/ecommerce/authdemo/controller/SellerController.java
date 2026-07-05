@@ -9,7 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/sellers")
+@RequestMapping({"/api/sellers", "/api/shop/sellers"})
 @RequiredArgsConstructor
 public class SellerController {
 
