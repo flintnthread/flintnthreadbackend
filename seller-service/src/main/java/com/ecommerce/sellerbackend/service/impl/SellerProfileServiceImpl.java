@@ -37,6 +37,7 @@ import com.ecommerce.sellerbackend.util.SellerAccountStatusHelper;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,7 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SellerProfileServiceImpl implements SellerProfileService {
 
     private final SellerRepository sellerRepository;
@@ -507,9 +509,8 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 paidRecord.getPaidAt() != null ? paidRecord.getPaidAt() : LocalDateTime.now(),
                 invoicePdf
         );
-        mailService.sendRegistrationPaymentSuccessEmail(
-                seller.getEmail(),
-                seller.getFullName(),
+        boolean invoiceEmailSent = sendRegistrationInvoiceEmail(
+                seller,
                 invoiceNumber,
                 displayOrderNumber,
                 request.getRazorpayPaymentId(),
@@ -531,7 +532,202 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .gstAmount(gstAmount)
                 .totalAmount(totalAmount)
                 .currency(paidRecord.getCurrency())
+                .invoiceEmailSent(invoiceEmailSent)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public RegistrationPaymentStatusResponse resendRegistrationInvoiceEmail(Long sellerId) {
+        Seller seller = requireSeller(sellerId);
+        if (seller.getEmail() == null || seller.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Your profile email is missing. Please update personal info before requesting the invoice.");
+        }
+
+        registrationPaymentRepository.ensureTable();
+        registrationInvoiceRepository.ensureTable();
+        if (!registrationPaymentRepository.hasEverPaid(sellerId)) {
+            throw new IllegalArgumentException("No paid registration found.");
+        }
+
+        SellerRegistrationPaymentRepository.PaymentRecord paidRecord = registrationPaymentRepository.findBySellerId(sellerId);
+        if (paidRecord == null) {
+            throw new IllegalStateException("Payment record not found.");
+        }
+
+        double gstAmount = registrationFeeInr * registrationGstPercent / 100.0;
+        double totalAmount = registrationFeeInr + gstAmount;
+        int expectedAmountPaise = (int) Math.round(totalAmount * 100);
+
+        String orderId = firstNonBlank(
+                paidRecord.getDisplayOrderNumber(),
+                paidRecord.getOrderId(),
+                "-");
+        String paymentId = firstNonBlank(paidRecord.getPaymentId(), "-");
+        String invoiceNumber = firstNonBlank(
+                paidRecord.getInvoiceNumber(),
+                RegistrationReferenceNumberHelper.buildInvoiceNumber(sellerId, java.time.Year.now().getValue()));
+        LocalDateTime paidAt = paidRecord.getPaidAt() != null ? paidRecord.getPaidAt() : LocalDateTime.now();
+        String currency = paidRecord.getCurrency() != null ? paidRecord.getCurrency() : registrationFeeCurrency;
+        boolean invoiceEmailSent = false;
+
+        try {
+            SellerRegistrationInvoiceRepository.InvoiceRecord latest =
+                    resolveOrCreateLatestInvoice(sellerId, seller, paidRecord, expectedAmountPaise);
+
+            paidAt = latest.getPaidAt() != null ? latest.getPaidAt() : paidAt;
+            orderId = firstNonBlank(
+                    latest.getDisplayOrderNumber(),
+                    paidRecord.getDisplayOrderNumber(),
+                    paidRecord.getOrderId(),
+                    latest.getInvoiceNumber(),
+                    orderId);
+            paymentId = firstNonBlank(latest.getPaymentId(), paidRecord.getPaymentId(), paymentId);
+            invoiceNumber = firstNonBlank(
+                    latest.getInvoiceNumber(),
+                    paidRecord.getInvoiceNumber(),
+                    invoiceNumber);
+            if (latest.getCurrency() != null && !latest.getCurrency().isBlank()) {
+                currency = latest.getCurrency();
+            }
+
+            String paidAtText = RegistrationReferenceNumberHelper.formatInvoiceDate(paidAt);
+            byte[] invoicePdf = registrationInvoicePdfService.generateRegistrationInvoice(
+                    seller,
+                    invoiceNumber,
+                    paymentId,
+                    orderId,
+                    expectedAmountPaise,
+                    paidAtText
+            );
+            if (latest.getId() != null) {
+                try {
+                    registrationInvoiceRepository.updateInvoicePdf(
+                            sellerId, latest.getId(), expectedAmountPaise, invoicePdf);
+                } catch (Exception ex) {
+                    log.warn("Could not update stored invoice PDF for seller {}: {}", sellerId, ex.getMessage());
+                }
+            }
+            invoiceEmailSent = sendRegistrationInvoiceEmail(
+                    seller,
+                    invoiceNumber,
+                    orderId,
+                    paymentId,
+                    expectedAmountPaise,
+                    invoicePdf
+            );
+        } catch (Exception ex) {
+            log.error("Registration invoice resend failed for seller {}", sellerId, ex);
+        }
+
+        return RegistrationPaymentStatusResponse.builder()
+                .paid(true)
+                .subscriptionActive(registrationPaymentRepository.isSubscriptionActive(sellerId))
+                .paymentPending(false)
+                .orderId(orderId)
+                .paymentId(paymentId)
+                .paidAt(paidAt.toString())
+                .subscriptionExpiresAt(paidRecord.getSubscriptionExpiresAt() != null
+                        ? paidRecord.getSubscriptionExpiresAt().toString()
+                        : null)
+                .amount(expectedAmountPaise)
+                .registrationFee(registrationFeeInr)
+                .gstAmount(gstAmount)
+                .totalAmount(totalAmount)
+                .currency(currency)
+                .invoiceEmailSent(invoiceEmailSent)
+                .build();
+    }
+
+    private SellerRegistrationInvoiceRepository.InvoiceRecord resolveOrCreateLatestInvoice(
+            Long sellerId,
+            Seller seller,
+            SellerRegistrationPaymentRepository.PaymentRecord paidRecord,
+            int expectedAmountPaise) {
+        var invoices = registrationInvoiceRepository.findBySellerId(sellerId);
+        if (!invoices.isEmpty()) {
+            return invoices.get(0);
+        }
+
+        String invoiceNumber = firstNonBlank(
+                paidRecord.getInvoiceNumber(),
+                RegistrationReferenceNumberHelper.buildInvoiceNumber(sellerId, java.time.Year.now().getValue()));
+        String orderId = firstNonBlank(
+                paidRecord.getDisplayOrderNumber(),
+                paidRecord.getOrderId(),
+                invoiceNumber);
+        String paymentId = firstNonBlank(paidRecord.getPaymentId(), "-");
+        LocalDateTime paidAt = paidRecord.getPaidAt() != null ? paidRecord.getPaidAt() : LocalDateTime.now();
+        String paidAtText = RegistrationReferenceNumberHelper.formatInvoiceDate(paidAt);
+
+        byte[] invoicePdf = registrationInvoicePdfService.generateRegistrationInvoice(
+                seller,
+                invoiceNumber,
+                paymentId,
+                orderId,
+                expectedAmountPaise,
+                paidAtText
+        );
+        Long invoiceId = registrationInvoiceRepository.saveInvoice(
+                sellerId,
+                invoiceNumber,
+                orderId,
+                paymentId,
+                expectedAmountPaise,
+                paidRecord.getCurrency() != null ? paidRecord.getCurrency() : registrationFeeCurrency,
+                paidAt,
+                invoicePdf
+        );
+
+        SellerRegistrationInvoiceRepository.InvoiceRecord created = new SellerRegistrationInvoiceRepository.InvoiceRecord();
+        created.setId(invoiceId);
+        created.setInvoiceNumber(invoiceNumber);
+        created.setDisplayOrderNumber(orderId);
+        created.setPaymentId(paymentId);
+        created.setAmount(expectedAmountPaise);
+        created.setCurrency(paidRecord.getCurrency() != null ? paidRecord.getCurrency() : registrationFeeCurrency);
+        created.setPaidAt(paidAt);
+        return created;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private boolean sendRegistrationInvoiceEmail(
+            Seller seller,
+            String invoiceNumber,
+            String displayOrderNumber,
+            String paymentId,
+            int amountInPaise,
+            byte[] invoicePdf) {
+        String toEmail = seller.getEmail() != null ? seller.getEmail().trim() : "";
+        if (toEmail.isBlank()) {
+            log.warn("Registration invoice email skipped — seller {} has no email", seller.getId());
+            return false;
+        }
+        try {
+            return mailService.sendRegistrationPaymentSuccessEmail(
+                    toEmail,
+                    seller.getFullName(),
+                    invoiceNumber,
+                    displayOrderNumber,
+                    paymentId,
+                    amountInPaise,
+                    invoicePdf
+            );
+        } catch (Exception ex) {
+            log.error("Registration invoice email failed for seller {} ({})", seller.getId(), toEmail, ex);
+            return false;
+        }
     }
 
     @Override
@@ -557,6 +753,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                     .gstAmount(gstAmount)
                     .totalAmount(totalAmount)
                     .currency(registrationFeeCurrency)
+                    .invoiceEmailSent(false)
                     .build();
         }
         boolean subscriptionActive = registrationPaymentRepository.isSubscriptionActive(sellerId);
@@ -582,6 +779,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .gstAmount(gstAmount)
                 .totalAmount(totalAmount)
                 .currency(record.getCurrency() != null ? record.getCurrency() : registrationFeeCurrency)
+                .invoiceEmailSent(subscriptionActive)
                 .build();
     }
 

@@ -58,23 +58,23 @@ public class ProductDetailAssembler {
                 .map(v -> toVariantDetail(v, images, colorById, sizeById))
                 .toList();
 
-        ProductVariant primary = pickPrimaryVariant(variants);
+        ProductVariant displayVariant = pickMinimumPriceVariant(variants);
         int totalStock = variants.stream()
                 .map(ProductVariant::getStock)
                 .filter(Objects::nonNull)
                 .mapToInt(Integer::intValue)
                 .sum();
 
-        BigDecimal price = resolveTotalMetroMetro(primary);
-        BigDecimal mrpExclGst = resolveMrpExclGst(primary);
-        BigDecimal mrpInclGst = primary != null ? primary.getMrpInclGst() : null;
-        BigDecimal sellingExGst = primary != null ? primary.getSellingPrice() : null;
-        int discount = primary != null && primary.getDiscountPercentage() != null
-                ? primary.getDiscountPercentage().setScale(0, RoundingMode.HALF_UP).intValue()
-                : resolveDiscountPercent(primary, price, mrpExclGst);
+        BigDecimal price = resolveTotalMetroMetro(displayVariant);
+        BigDecimal mrpExclGst = resolveMrpExclGst(displayVariant);
+        BigDecimal mrpInclGst = displayVariant != null ? displayVariant.getMrpInclGst() : null;
+        BigDecimal sellingExGst = displayVariant != null ? displayVariant.getSellingPrice() : null;
+        int discount = displayVariant != null && displayVariant.getDiscountPercentage() != null
+                ? displayVariant.getDiscountPercentage().setScale(0, RoundingMode.HALF_UP).intValue()
+                : resolveDiscountPercent(displayVariant, price, mrpExclGst);
 
-        String primaryColor = resolveColorName(primary != null ? primary.getColor() : null, colorById);
-        String primarySize = resolveSizeName(primary != null ? primary.getSize() : null, sizeById);
+        String displayColor = resolveColorName(displayVariant != null ? displayVariant.getColor() : null, colorById);
+        String displaySize = resolveSizeName(displayVariant != null ? displayVariant.getSize() : null, sizeById);
 
         List<String> imageUrls = images.stream()
                 .map(img -> resolveImageUrl(img.getImagePath()))
@@ -95,7 +95,7 @@ public class ProductDetailAssembler {
                 .subcategoryId(product.getSubcategoryId())
                 .sizeChartId(product.getSizeChartId())
                 .name(product.getName())
-                .sku(resolveDisplaySku(product, primary))
+                .sku(resolveDisplaySku(product, displayVariant))
                 .price(price)
                 .mrp(mrpExclGst)
                 .mrpExclGst(mrpExclGst)
@@ -110,8 +110,8 @@ public class ProductDetailAssembler {
                 .category(categoryName)
                 .categorySub(categorySubName)
                 .subcategory(subcategoryName)
-                .color(primaryColor)
-                .size(primarySize)
+                .color(displayColor)
+                .size(displaySize)
                 .hsnCode(firstNonBlank(product.getHsnCode(), "—"))
                 .gst(formatGst(product.getGstPercentage()))
                 .createdAt(formatDate(product.getCreatedAt()))
@@ -247,15 +247,14 @@ public class ProductDetailAssembler {
                 .build();
     }
 
-    private ProductVariant pickPrimaryVariant(List<ProductVariant> variants) {
+    private ProductVariant pickMinimumPriceVariant(List<ProductVariant> variants) {
         if (variants.isEmpty()) {
             return null;
         }
         return variants.stream()
-                .sorted(java.util.Comparator
-                        .comparing((ProductVariant v) -> v.getStock() != null && v.getStock() > 0).reversed()
+                .min(java.util.Comparator
+                        .comparing(this::resolveTotalMetroMetro, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
                         .thenComparing(ProductVariant::getId))
-                .findFirst()
                 .orElse(variants.get(0));
     }
 

@@ -281,14 +281,15 @@ public class ProductServiceImpl implements ProductService {
                 .mapToInt(Integer::intValue)
                 .sum();
 
-        ProductVariant primaryVariant = pickPrimaryVariant(variants);
-        BigDecimal price = resolvePrice(primaryVariant);
-        BigDecimal mrpInclGst = primaryVariant != null && primaryVariant.getMrpInclGst() != null
-                ? primaryVariant.getMrpInclGst()
+        ProductVariant displayVariant = pickMinimumPriceVariant(variants);
+        BigDecimal price = resolvePrice(displayVariant);
+        BigDecimal mrpInclGst = displayVariant != null && displayVariant.getMrpInclGst() != null
+                ? displayVariant.getMrpInclGst()
                 : BigDecimal.ZERO;
-        String image = resolveProductImage(images, primaryVariant);
-        String color = resolveCatalogLabel(primaryVariant != null ? primaryVariant.getColor() : null, colorById, Color::getColorName);
-        String size = resolveCatalogLabel(primaryVariant != null ? primaryVariant.getSize() : null, sizeById, Size::getSizeName);
+        String image = resolveProductImage(images, displayVariant);
+        String color = resolveCatalogLabel(displayVariant != null ? displayVariant.getColor() : null, colorById, Color::getColorName);
+        String size = resolveCatalogLabel(displayVariant != null ? displayVariant.getSize() : null, sizeById, Size::getSizeName);
+        Integer minQuantity = displayVariant != null ? displayVariant.getMinQuantity() : null;
 
         List<ProductVariantSummaryResponse> variantSummaries = variants.stream()
                 .sorted(Comparator.comparing(ProductVariant::getId))
@@ -298,6 +299,7 @@ public class ProductServiceImpl implements ProductService {
                         .color(resolveCatalogLabel(v.getColor(), colorById, Color::getColorName))
                         .size(resolveCatalogLabel(v.getSize(), sizeById, Size::getSizeName))
                         .stock(v.getStock())
+                        .minQuantity(v.getMinQuantity())
                         .sellingPrice(v.getSellingPrice())
                         .finalPrice(v.getFinalPrice())
                         .metroMetroDeliveryCharge(v.getMetroMetroDeliveryCharge())
@@ -309,7 +311,7 @@ public class ProductServiceImpl implements ProductService {
                 .id(product.getId())
                 .name(product.getName())
                 .sku(firstNonBlank(
-                        primaryVariant != null ? primaryVariant.getSku() : null,
+                        displayVariant != null ? displayVariant.getSku() : null,
                         product.getSku()))
                 .price(price)
                 .mrpInclGst(mrpInclGst)
@@ -326,6 +328,7 @@ public class ProductServiceImpl implements ProductService {
                 .subcategory(displaySubcategory)
                 .color(color)
                 .size(size)
+                .minQuantity(minQuantity)
                 .description(firstNonBlank(product.getShortDescription(), product.getDescription()))
                 .material(product.getProductMaterialType())
                 .weight(formatWeight(product.getProductWeight()))
@@ -336,16 +339,14 @@ public class ProductServiceImpl implements ProductService {
                 .build();
     }
 
-    private ProductVariant pickPrimaryVariant(List<ProductVariant> variants) {
+    private ProductVariant pickMinimumPriceVariant(List<ProductVariant> variants) {
         if (variants.isEmpty()) {
             return null;
         }
         return variants.stream()
-                .sorted(Comparator
-                        .comparing((ProductVariant v) -> v.getStock() != null && v.getStock() > 0)
-                        .reversed()
+                .min(Comparator
+                        .comparing(this::resolvePrice, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(ProductVariant::getId))
-                .findFirst()
                 .orElse(variants.get(0));
     }
 

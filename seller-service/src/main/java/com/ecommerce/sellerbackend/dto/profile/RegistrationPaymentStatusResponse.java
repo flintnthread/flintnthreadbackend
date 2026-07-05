@@ -18,4 +18,5 @@ public class RegistrationPaymentStatusResponse {
     private final double gstAmount;
     private final double totalAmount;
     private final String currency;
+    private final boolean invoiceEmailSent;
 }

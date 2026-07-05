@@ -19,7 +19,7 @@ public interface MailService {
             String ipAddress
     );
 
-    void sendRegistrationPaymentSuccessEmail(
+    boolean sendRegistrationPaymentSuccessEmail(
             String toEmail,
             String recipientName,
             String invoiceNumber,
@@ -28,6 +28,8 @@ public interface MailService {
             int amountInPaise,
             byte[] invoicePdf
     );
+
+    boolean isRegistrationInvoiceEmailConfigured();
 
     void sendSubscriptionRenewalReminderEmail(
             String toEmail,

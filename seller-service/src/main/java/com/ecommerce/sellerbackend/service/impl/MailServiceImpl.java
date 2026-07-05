@@ -39,6 +39,9 @@ public class MailServiceImpl implements MailService {
     @Value("${app.mail.dev-mode:false}")
     private boolean mailDevMode;
 
+    @Value("${spring.mail.password:}")
+    private String mailPassword;
+
     @Override
     public void sendEmailVerificationLinkEmail(String toEmail, String recipientName, String verifyLink) {
         if (mailDevMode) {
@@ -153,7 +156,12 @@ public class MailServiceImpl implements MailService {
     }
 
     @Override
-    public void sendRegistrationPaymentSuccessEmail(
+    public boolean isRegistrationInvoiceEmailConfigured() {
+        return mailPassword != null && !mailPassword.isBlank();
+    }
+
+    @Override
+    public boolean sendRegistrationPaymentSuccessEmail(
             String toEmail,
             String recipientName,
             String invoiceNumber,
@@ -164,26 +172,45 @@ public class MailServiceImpl implements MailService {
         if (mailDevMode) {
             log.warn("[MAIL DEV] Registration payment email for {} (invoice={}, paymentId={})",
                     maskEmail(toEmail), invoiceNumber, paymentId);
-            return;
+            return true;
+        }
+        if (!isRegistrationInvoiceEmailConfigured()) {
+            log.error("SendGrid API key is not configured (spring.mail.password / SENDGRID_API_KEY)");
+            return false;
+        }
+        if (invoicePdf == null || invoicePdf.length == 0) {
+            log.error("Registration invoice email skipped — PDF is empty for {}", maskEmail(toEmail));
+            return false;
         }
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(fromEmail, fromName);
             helper.setTo(toEmail);
+            helper.setReplyTo(supportEmail);
             helper.setSubject("Registration payment successful - Flint & Thread");
             helper.setText(buildRegistrationPaymentSuccessHtml(
                     recipientName, invoiceNumber, displayOrderNumber, paymentId, amountInPaise), true);
-            helper.addAttachment(invoiceNumber + ".pdf", new ByteArrayResource(invoicePdf));
+            helper.addAttachment(safeAttachmentName(invoiceNumber), new ByteArrayResource(invoicePdf), "application/pdf");
             mailSender.send(message);
             log.info("Registration payment email sent to {}", maskEmail(toEmail));
+            return true;
         } catch (MessagingException ex) {
             log.error("Failed to compose registration payment email for {}", maskEmail(toEmail), ex);
-            throw new IllegalStateException("Payment succeeded but invoice email could not be sent. Please contact support.");
+        } catch (org.springframework.mail.MailException ex) {
+            log.error("SendGrid rejected registration payment email for {}", maskEmail(toEmail), ex);
         } catch (Exception ex) {
             log.error("Failed to send registration payment email for {}", maskEmail(toEmail), ex);
-            throw new IllegalStateException("Payment succeeded but invoice email could not be sent. Please contact support.");
         }
+        return false;
+    }
+
+    private String safeAttachmentName(String invoiceNumber) {
+        String base = invoiceNumber != null ? invoiceNumber.replaceAll("[^a-zA-Z0-9._-]", "_") : "invoice";
+        if (base.isBlank()) {
+            base = "invoice";
+        }
+        return base + ".pdf";
     }
 
     @Override

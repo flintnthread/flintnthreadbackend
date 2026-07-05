@@ -84,7 +84,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleUnexpected(Exception ex) {
         log.error("Unhandled server error", ex);
+        String detail = ex.getMessage();
+        if (detail == null || detail.isBlank()) {
+            detail = ex.getClass().getSimpleName();
+        }
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "message", "An unexpected error occurred. Please try again."));
+                "message", "An unexpected error occurred. Please try again.",
+                "detail", detail));
     }
 }
