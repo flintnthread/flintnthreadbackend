@@ -15,6 +15,9 @@ public class ProductDTO {
     private Long subcategoryId;
     private Long sellerId;
 
+    /** Resolved seller store label for product detail (business name when available). */
+    private String sellerBusinessName;
+
     private Boolean buyNowEnabled;
 
     /** Maps to products.is_customized_product (1 = post-order customization). */
