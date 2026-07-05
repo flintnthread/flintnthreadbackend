@@ -1,5 +1,6 @@
 package com.ecommerce.authdemo.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -102,6 +103,7 @@ public class Product {
 
     @BatchSize(size = 32)
     @OneToMany(mappedBy = "product", fetch = FetchType.LAZY)
+    @JsonIgnore
     private List<ProductView> views;
 //
 //    @BatchSize(size = 32)
