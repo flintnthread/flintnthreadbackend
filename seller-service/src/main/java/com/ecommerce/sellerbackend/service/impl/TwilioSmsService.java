@@ -1,6 +1,7 @@
 package com.ecommerce.sellerbackend.service.impl;
 
 import com.ecommerce.sellerbackend.config.TwilioProperties;
+import com.ecommerce.sellerbackend.service.PlatformIntegrationSettings;
 import com.ecommerce.sellerbackend.service.SmsService;
 import com.twilio.Twilio;
 import com.twilio.exception.ApiException;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 public class TwilioSmsService implements SmsService {
 
     private final TwilioProperties twilioProperties;
+    private final PlatformIntegrationSettings integrationSettings;
 
     @Value("${app.otp.dev-mode:false}")
     private boolean devMode;
@@ -41,9 +43,9 @@ public class TwilioSmsService implements SmsService {
         }
         log.info(
                 "Twilio SMS enabled — account {}…{}, from {}",
-                mask(twilioProperties.getAccountSid(), 4),
-                tail(twilioProperties.getAccountSid(), 4),
-                twilioProperties.getPhoneNumber());
+                mask(resolveAccountSid(), 4),
+                tail(resolveAccountSid(), 4),
+                resolvePhoneNumber());
         initTwilioClient();
         validateTwilioCredentials();
     }
@@ -51,12 +53,12 @@ public class TwilioSmsService implements SmsService {
     private void initTwilioClient() {
         if (twilioProperties.hasApiKey()) {
             Twilio.init(
-                    twilioProperties.getAccountSid(),
+                    resolveAccountSid(),
                     twilioProperties.getApiKeySid(),
                     twilioProperties.getApiKeySecret());
             return;
         }
-        Twilio.init(twilioProperties.getAccountSid(), twilioProperties.getAuthToken());
+        Twilio.init(resolveAccountSid(), resolveAuthToken());
     }
 
     @Override
@@ -82,7 +84,7 @@ public class TwilioSmsService implements SmsService {
         try {
             Message.creator(
                     new PhoneNumber(mobileE164),
-                    new PhoneNumber(twilioProperties.getPhoneNumber()),
+                    new PhoneNumber(resolvePhoneNumber()),
                     body
             ).create();
             log.info("OTP SMS sent to {}", mobileE164);
@@ -103,24 +105,33 @@ public class TwilioSmsService implements SmsService {
 
     private void validateTwilioCredentials() {
         try {
-            Account.fetcher(twilioProperties.getAccountSid()).fetch();
-            log.info("Twilio credentials verified for account {}", twilioProperties.getAccountSid());
+            Account.fetcher(resolveAccountSid()).fetch();
+            log.info("Twilio credentials verified for account {}", resolveAccountSid());
         } catch (ApiException ex) {
             log.error(
-                    "Twilio authentication failed at startup ({}). Update twilio.auth.token in application-local.properties",
+                    "Twilio authentication failed at startup ({}). Update Twilio credentials in Admin Settings",
                     ex.getCode());
         }
     }
 
     private boolean hasTwilioCredentials() {
-        boolean hasSid = twilioProperties.getAccountSid() != null
-                && !twilioProperties.getAccountSid().isBlank();
-        boolean hasFrom = twilioProperties.getPhoneNumber() != null
-                && !twilioProperties.getPhoneNumber().isBlank();
-        boolean hasAuthToken = twilioProperties.getAuthToken() != null
-                && !twilioProperties.getAuthToken().isBlank();
+        boolean hasSid = resolveAccountSid() != null && !resolveAccountSid().isBlank();
+        boolean hasFrom = resolvePhoneNumber() != null && !resolvePhoneNumber().isBlank();
+        boolean hasAuthToken = resolveAuthToken() != null && !resolveAuthToken().isBlank();
         boolean hasApiKey = twilioProperties.hasApiKey();
         return hasSid && hasFrom && (hasAuthToken || hasApiKey);
+    }
+
+    private String resolveAccountSid() {
+        return integrationSettings.getTwilioAccountSid();
+    }
+
+    private String resolveAuthToken() {
+        return integrationSettings.getTwilioAuthToken();
+    }
+
+    private String resolvePhoneNumber() {
+        return integrationSettings.getTwilioPhoneNumber();
     }
 
     private static String mask(String value, int keepStart) {
