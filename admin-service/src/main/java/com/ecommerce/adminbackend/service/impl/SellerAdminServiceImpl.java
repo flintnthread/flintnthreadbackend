@@ -12,6 +12,7 @@ import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.SellerAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
+import com.ecommerce.adminbackend.util.SellerEmailVerificationUrlHelper;
 import com.ecommerce.adminbackend.util.SellerGraphPeriodUtil;
 import com.ecommerce.adminbackend.util.TextUtils;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +46,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
     private final SellerKycImageRepository sellerKycImageRepository;
     private final MediaUrlHelper mediaUrlHelper;
     private final MailService mailService;
+    private final SellerEmailVerificationUrlHelper sellerEmailVerificationUrlHelper;
 
     @Override
     @Transactional(readOnly = true)
@@ -336,6 +339,42 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> resendEmailVerification(Long id) {
+        Seller seller = requireSeller(id);
+
+        if (Boolean.TRUE.equals(seller.getEmailVerified())) {
+            throw new IllegalArgumentException("This seller's email is already verified.");
+        }
+        if (seller.getEmail() == null || seller.getEmail().isBlank()) {
+            throw new IllegalArgumentException("Seller does not have an email address on file.");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        String token = UUID.randomUUID().toString().replace("-", "");
+        seller.setEmailVerificationToken(token);
+        seller.setOtp(null);
+        seller.setOtpExpiresAt(null);
+        seller.setOtpSentAt(now);
+        seller.setEmailVerified(false);
+        seller.setStatus(SellerAccountStatus.email_pending);
+        seller.setUpdatedAt(now);
+        sellerRepository.save(seller);
+
+        String verifyLink = sellerEmailVerificationUrlHelper.buildEmailLinkClickUrl(token);
+        mailService.sendEmailVerificationLinkEmail(
+                seller.getEmail(),
+                seller.getFullName(),
+                verifyLink);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sellerId", id);
+        response.put("email", seller.getEmail());
+        response.put("message", "Verification email sent successfully.");
+        return response;
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public PageResponse<Map<String, Object>> listPendingBank(int page, int size) {
         Page<Seller> result = sellerRepository.findPendingBankVerification(PageRequest.of(page, size));
@@ -411,6 +450,16 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
                 ? sellerRepository.findBankVerified(pageable)
                 : sellerRepository.findPendingBankVerification(pageable);
         return PageResponse.from(result.map(this::toBankSummary));
+    }
+
+    private boolean isResendVerificationEligible(Seller seller) {
+        if (Boolean.TRUE.equals(seller.getEmailVerified())) {
+            return false;
+        }
+        if (seller.getStatus() == SellerAccountStatus.email_pending) {
+            return true;
+        }
+        return seller.getStatus() == SellerAccountStatus.pending;
     }
 
     private Seller requireSeller(Long id) {
@@ -583,6 +632,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         summary.put("kycImageCount", kycImageCounts.getOrDefault(seller.getId(), 0L));
         summary.put("emailVerified", seller.getEmailVerified());
         summary.put("mobileVerified", seller.getMobileVerified());
+        summary.put("resendVerificationEligible", isResendVerificationEligible(seller));
         java.math.BigDecimal revenue = revenueBySeller.getOrDefault(seller.getId(), java.math.BigDecimal.ZERO);
         summary.put("totalRevenue", revenue);
         return summary;

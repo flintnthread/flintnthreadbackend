@@ -47,7 +47,7 @@ public interface SellerRepository extends JpaRepository<Seller, Long> {
                    LOWER(COALESCE(s.sellerUniqueId, '')) LIKE LOWER(CONCAT('%', :search, '%')) OR
                    LOWER(COALESCE(s.referralCode, '')) LIKE LOWER(CONCAT('%', :search, '%')) OR
                    s.mobile LIKE CONCAT('%', :search, '%'))
-            ORDER BY s.updatedAt DESC, s.createdAt DESC
+            ORDER BY s.createdAt DESC, s.id DESC
             """)
     Page<Seller> searchSellersAll(@Param("search") String search, Pageable pageable);
 

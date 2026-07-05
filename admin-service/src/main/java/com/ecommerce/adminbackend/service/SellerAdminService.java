@@ -46,4 +46,6 @@ public interface SellerAdminService {
     PageResponse<Map<String, Object>> listShiprocketSellers(String status, int page, int size);
 
     PageResponse<Map<String, Object>> listBankVerifications(String status, int page, int size);
+
+    Map<String, Object> resendEmailVerification(Long id);
 }
