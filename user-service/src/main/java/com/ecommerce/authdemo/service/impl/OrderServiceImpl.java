@@ -308,18 +308,12 @@ public class OrderServiceImpl implements OrderService {
     public List<OrderResponseDTO> getUserOrders(String status) {
         Long userId = securityUtil.getCurrentUserId();
 
-        List<Order> orders;
-
-        if (status == null || status.equalsIgnoreCase("all")) {
-            orders = orderRepository.findByUserIdOrderByCreatedAtDesc(userId);
-        } else {
-            orders = orderRepository.findByUserIdAndOrderStatusOrderByCreatedAtDesc(userId, status);
-        }
+        List<Order> orders = loadOrdersForUserList(userId, status);
 
         return orders.stream()
                 .map(order -> {
                     try {
-                        return buildOrderSummaryResponse(order);
+                        return buildOrderSummaryResponseLite(order);
                     } catch (Exception e) {
                         log.warn(
                                 "Skipping order id={} in list: {}",
@@ -331,6 +325,65 @@ public class OrderServiceImpl implements OrderService {
                 })
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    private List<Order> loadOrdersForUserList(Long userId, String status) {
+        try {
+            if (status == null || status.equalsIgnoreCase("all")) {
+                return orderRepository.findByUserIdOrderByCreatedAtDesc(userId);
+            }
+            return orderRepository.findByUserIdAndOrderStatusOrderByCreatedAtDesc(userId, status);
+        } catch (Exception jpaError) {
+            log.warn(
+                    "JPA order list failed for userId={}, status={}: {} — using native fallback",
+                    userId,
+                    status,
+                    jpaError.getMessage()
+            );
+            List<Object[]> rows =
+                    status == null || status.equalsIgnoreCase("all")
+                            ? orderRepository.findSummaryRowsByUserId(userId)
+                            : orderRepository.findSummaryRowsByUserIdAndStatus(userId, status);
+            return rows.stream()
+                    .map(this::mapNativeOrderSummaryRow)
+                    .filter(Objects::nonNull)
+                    .toList();
+        }
+    }
+
+    private Order mapNativeOrderSummaryRow(Object[] row) {
+        if (row == null || row.length < 10) {
+            return null;
+        }
+        Order order = new Order();
+        order.setId(row[0] != null ? ((Number) row[0]).longValue() : null);
+        order.setUserId(row[1] != null ? ((Number) row[1]).longValue() : null);
+        order.setOrderNumber(row[2] != null ? String.valueOf(row[2]) : null);
+        order.setTotalAmount(row[3] != null ? ((Number) row[3]).doubleValue() : null);
+        order.setShippingAmount(row[4] != null ? ((Number) row[4]).doubleValue() : null);
+        order.setDiscountAmount(row[5] != null ? ((Number) row[5]).doubleValue() : null);
+        order.setPaymentMethod(row[6] != null ? String.valueOf(row[6]) : null);
+        order.setPaymentStatus(row[7] != null ? String.valueOf(row[7]) : null);
+        order.setOrderStatus(row[8] != null ? String.valueOf(row[8]) : null);
+        if (row[9] instanceof java.time.LocalDateTime ldt) {
+            order.setCreatedAt(ldt);
+        } else if (row[9] instanceof java.sql.Timestamp ts) {
+            order.setCreatedAt(ts.toLocalDateTime());
+        }
+        order.setRazorpayPaymentId(row.length > 10 && row[10] != null ? String.valueOf(row[10]) : null);
+        if (row.length > 11) {
+            order.setShiprocketAwbCode(row[11] != null ? String.valueOf(row[11]) : null);
+        }
+        if (row.length > 12) {
+            order.setShiprocketCourierName(row[12] != null ? String.valueOf(row[12]) : null);
+        }
+        if (row.length > 13) {
+            order.setShiprocketTrackingUrl(row[13] != null ? String.valueOf(row[13]) : null);
+        }
+        if (row.length > 14) {
+            order.setShiprocketStatus(row[14] != null ? String.valueOf(row[14]) : null);
+        }
+        return order.getId() != null ? order : null;
     }
 
     @Override
@@ -676,7 +729,19 @@ public class OrderServiceImpl implements OrderService {
             OrderResponseDTO.OrderResponseDTOBuilder builder
     ) {
         double payable = order.getTotalAmount() != null ? order.getTotalAmount() : 0.0d;
-        double walletUsed = resolveWalletAmountUsedForOrder(order).doubleValue();
+        double walletUsed = 0.0d;
+        try {
+            walletUsed = resolveWalletAmountUsedForOrder(order).doubleValue();
+        } catch (Exception e) {
+            log.warn(
+                    "Wallet lookup failed for order id={}: {}",
+                    order.getId(),
+                    e.getMessage()
+            );
+            if (order.getWalletAmountUsed() != null && order.getWalletAmountUsed() > 0) {
+                walletUsed = order.getWalletAmountUsed();
+            }
+        }
         builder
                 .totalAmount(payable > 0 ? payable : null)
                 .finalAmount(payable > 0 ? payable : null)
@@ -1331,6 +1396,50 @@ public class OrderServiceImpl implements OrderService {
 
         applyOrderResponseFields(order, responseBuilder);
         return responseBuilder.build();
+    }
+
+    private OrderResponseDTO buildOrderSummaryResponseLite(Order order) {
+        List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+        String firstImage = null;
+        if (!items.isEmpty()) {
+            OrderItem first = items.get(0);
+            firstImage = first.getProductImagePath();
+            if (firstImage == null || firstImage.isBlank()) {
+                try {
+                    ProductImage primaryImg =
+                            productImageRepository.findTopByProductIdAndIsPrimaryTrue(first.getProductId());
+                    if (primaryImg != null && primaryImg.getImagePath() != null) {
+                        firstImage = primaryImg.getImagePath();
+                    }
+                } catch (Exception e) {
+                    log.warn(
+                            "Could not resolve list image for order id={}: {}",
+                            order.getId(),
+                            e.getMessage()
+                    );
+                }
+            }
+        }
+
+        OrderResponseDTO.OrderResponseDTOBuilder summaryBuilder = OrderResponseDTO.builder()
+                .orderId(order.getId())
+                .orderNumber(order.getOrderNumber())
+                .orderStatus(order.getOrderStatus())
+                .paymentMethod(order.getPaymentMethod())
+                .paymentStatus(order.getPaymentStatus())
+                .shippingAmount(order.getShippingAmount())
+                .discountAmount(order.getDiscountAmount())
+                .createdDate(formatOrderCreatedDate(order.getCreatedAt()))
+                .totalItems(items.size())
+                .firstProductImage(firstImage)
+                .items(List.of())
+                .shiprocketAwbCode(order.getShiprocketAwbCode())
+                .shiprocketCourierName(order.getShiprocketCourierName())
+                .shiprocketTrackingUrl(order.getShiprocketTrackingUrl())
+                .shiprocketStatus(order.getShiprocketStatus());
+
+        applyWalletAmountFields(order, summaryBuilder);
+        return summaryBuilder.build();
     }
 
     private OrderResponseDTO buildOrderSummaryResponse(Order order) {
