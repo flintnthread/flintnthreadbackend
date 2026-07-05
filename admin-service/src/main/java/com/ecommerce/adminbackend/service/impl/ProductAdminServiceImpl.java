@@ -384,25 +384,11 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
     }
 
     private long countOutOfStock() {
-        return productRepository.findAll().stream()
-                .filter(product -> {
-                    int stock = productVariantRepository.findByProductIdOrderByIdAsc(product.getId()).stream()
-                            .mapToInt(v -> v.getStock() != null ? v.getStock() : 0)
-                            .sum();
-                    return stock <= 0;
-                })
-                .count();
+        return productVariantRepository.countOutOfStockProducts();
     }
 
     private long countLowStock() {
-        return productRepository.findAll().stream()
-                .filter(product -> {
-                    int stock = productVariantRepository.findByProductIdOrderByIdAsc(product.getId()).stream()
-                            .mapToInt(v -> v.getStock() != null ? v.getStock() : 0)
-                            .sum();
-                    return stock > 0 && stock <= 10;
-                })
-                .count();
+        return productVariantRepository.countLowStockProducts();
     }
 
     private Map<String, Object> toVariant(

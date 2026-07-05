@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -26,6 +27,8 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", row[0]);
             item.put("name", row[1]);
+            item.put("code", row[2]);
+            item.put("active", toActive(row[3]));
             return item;
         });
     }
@@ -39,6 +42,7 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("name", row[1]);
             item.put("countryId", row[2]);
             item.put("countryName", row[3]);
+            item.put("active", toActive(row[4]));
             return item;
         });
     }
@@ -52,6 +56,7 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("name", row[1]);
             item.put("stateId", row[2]);
             item.put("stateName", row[3]);
+            item.put("active", toActive(row[4]));
             return item;
         });
     }
@@ -65,6 +70,7 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("name", row[1]);
             item.put("cityId", row[2]);
             item.put("cityName", row[3]);
+            item.put("active", toActive(row[4]));
             return item;
         });
     }
@@ -80,6 +86,7 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("city", row[3]);
             item.put("state", row[4]);
             item.put("country", row[5]);
+            item.put("name", row[1]);
             return item;
         });
     }
@@ -98,55 +105,100 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
 
     @Override
     @Transactional
-    public Map<String, Object> createCountry(String name) {
-        Integer id = locationRepository.insertCountry(name);
+    public Map<String, Object> createCountry(String name, String code, Boolean active) {
+        String countryName = requireNonBlank(name, "Country name");
+        String countryCode = requireNonBlank(code, "Country code");
+        if (countryCode.length() != 2) {
+            throw new IllegalArgumentException("Country code must be exactly 2 characters.");
+        }
+        boolean isActive = active == null || active;
+        Integer id = locationRepository.insertCountry(countryName, countryCode, isActive);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", id);
-        result.put("name", name);
+        result.put("name", countryName);
+        result.put("code", countryCode.toUpperCase(Locale.ROOT));
+        result.put("active", isActive);
         return result;
     }
 
     @Override
     @Transactional
-    public Map<String, Object> createState(Integer countryId, String name) {
-        Integer id = locationRepository.insertState(countryId, name);
+    public Map<String, Object> createState(Integer countryId, String name, Boolean active) {
+        if (countryId == null || countryId <= 0) {
+            throw new IllegalArgumentException("Country is required.");
+        }
+        String stateName = requireNonBlank(name, "State name");
+        boolean isActive = active == null || active;
+        Integer id = locationRepository.insertState(countryId, stateName, isActive);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", id);
-        result.put("name", name);
+        result.put("name", stateName);
         result.put("countryId", countryId);
+        result.put("active", isActive);
         return result;
     }
 
     @Override
     @Transactional
-    public Map<String, Object> createCity(Integer stateId, String name) {
-        Integer id = locationRepository.insertCity(stateId, name);
+    public Map<String, Object> createCity(Integer stateId, String name, Boolean active) {
+        if (stateId == null || stateId <= 0) {
+            throw new IllegalArgumentException("State is required.");
+        }
+        Integer countryId = locationRepository.findCountryIdByStateId(stateId);
+        if (countryId == null) {
+            throw new IllegalArgumentException("Selected state was not found.");
+        }
+        String cityName = requireNonBlank(name, "City name");
+        boolean isActive = active == null || active;
+        Integer id = locationRepository.insertCity(stateId, countryId, cityName, isActive);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", id);
-        result.put("name", name);
+        result.put("name", cityName);
         result.put("stateId", stateId);
+        result.put("active", isActive);
         return result;
     }
 
     @Override
     @Transactional
-    public Map<String, Object> createArea(Integer cityId, String name) {
-        Integer id = locationRepository.insertArea(cityId, name);
+    public Map<String, Object> createArea(Integer cityId, String name, Boolean active) {
+        if (cityId == null || cityId <= 0) {
+            throw new IllegalArgumentException("City is required.");
+        }
+        Integer[] hierarchy = locationRepository.findCityHierarchyIds(cityId);
+        if (hierarchy == null) {
+            throw new IllegalArgumentException("Selected city was not found.");
+        }
+        String areaName = requireNonBlank(name, "Area name");
+        boolean isActive = active == null || active;
+        Integer id = locationRepository.insertArea(cityId, hierarchy[1], hierarchy[0], areaName, isActive);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", id);
-        result.put("name", name);
+        result.put("name", areaName);
         result.put("cityId", cityId);
+        result.put("active", isActive);
         return result;
     }
 
     @Override
     @Transactional
-    public Map<String, Object> createPincode(Integer areaId, String pincode) {
-        Integer id = locationRepository.insertPincode(areaId, pincode);
+    public Map<String, Object> createPincode(Integer areaId, String pincode, Boolean active) {
+        if (areaId == null || areaId <= 0) {
+            throw new IllegalArgumentException("Area is required.");
+        }
+        Integer[] hierarchy = locationRepository.findAreaHierarchyIds(areaId);
+        if (hierarchy == null) {
+            throw new IllegalArgumentException("Selected area was not found.");
+        }
+        String pin = requireNonBlank(pincode, "Pincode");
+        boolean isActive = active == null || active;
+        Integer id = locationRepository.insertPincode(hierarchy[0], hierarchy[1], hierarchy[2], areaId, pin, isActive);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", id);
-        result.put("pincode", pincode);
+        result.put("pincode", pin);
+        result.put("name", pin);
         result.put("areaId", areaId);
+        result.put("active", isActive);
         return result;
     }
 
@@ -182,32 +234,51 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
 
     @Override
     @Transactional
-    public void updateCountry(Integer id, String name) {
-        locationRepository.updateCountry(id, name);
+    public void updateCountry(Integer id, String name, String code, Boolean active) {
+        String countryName = requireNonBlank(name, "Country name");
+        String countryCode = requireNonBlank(code, "Country code");
+        if (countryCode.length() != 2) {
+            throw new IllegalArgumentException("Country code must be exactly 2 characters.");
+        }
+        locationRepository.updateCountry(id, countryName, countryCode, active == null || active);
     }
 
     @Override
     @Transactional
-    public void updateState(Integer id, String name) {
-        locationRepository.updateState(id, name);
+    public void updateState(Integer id, String name, Boolean active) {
+        locationRepository.updateState(id, requireNonBlank(name, "State name"), active == null || active);
     }
 
     @Override
     @Transactional
-    public void updateCity(Integer id, String name) {
-        locationRepository.updateCity(id, name);
+    public void updateCity(Integer id, String name, Boolean active) {
+        locationRepository.updateCity(id, requireNonBlank(name, "City name"), active == null || active);
     }
 
     @Override
     @Transactional
-    public void updateArea(Integer id, String name) {
-        locationRepository.updateArea(id, name);
+    public void updateArea(Integer id, String name, Boolean active) {
+        locationRepository.updateArea(id, requireNonBlank(name, "Area name"), active == null || active);
     }
 
     @Override
     @Transactional
-    public void updatePincode(Integer id, String pincode) {
-        locationRepository.updatePincode(id, pincode);
+    public void updatePincode(Integer id, String pincode, Boolean active) {
+        locationRepository.updatePincode(id, requireNonBlank(pincode, "Pincode"), active == null || active);
+    }
+
+    private boolean toActive(Object status) {
+        if (status == null) {
+            return true;
+        }
+        if (status instanceof Boolean bool) {
+            return bool;
+        }
+        if (status instanceof Number number) {
+            return number.intValue() != 0;
+        }
+        String text = status.toString().trim().toLowerCase(Locale.ROOT);
+        return !("0".equals(text) || "false".equals(text) || "inactive".equals(text));
     }
 
     private List<Map<String, Object>> mapRows(

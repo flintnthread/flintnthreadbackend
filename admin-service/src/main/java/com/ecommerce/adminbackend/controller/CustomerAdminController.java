@@ -5,6 +5,9 @@ import org.slf4j.Logger;
 import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.service.CustomerAdminService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,5 +46,20 @@ public class CustomerAdminController {
     @GetMapping("/{id}/analytics")
     public Map<String, Object> getCustomerAnalytics(@PathVariable Long id) {
         return customerAdminService.getCustomerAnalytics(id);
+    }
+
+    @GetMapping(value = "/{id}/orders/export", produces = "text/csv;charset=UTF-8")
+    public String exportOrderHistoryCsv(@PathVariable Long id) {
+        return customerAdminService.exportOrderHistoryCsv(id);
+    }
+
+    @GetMapping("/{id}/orders/export/pdf")
+    public ResponseEntity<byte[]> exportOrderHistoryPdf(@PathVariable Long id) {
+        byte[] pdf = customerAdminService.exportOrderHistoryPdf(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"customer-" + id + "-orders.pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
     }
 }
