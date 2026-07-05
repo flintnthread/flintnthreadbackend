@@ -111,7 +111,23 @@ public class DashboardServiceImpl implements DashboardService {
         List<SalesTrendPointDto> salesPoints = analyticsService.getSalesTrend(sellerId, mapped);
         List<SalesTrendPointDto> ordersPoints = analyticsService.getOrdersTrend(sellerId, mapped);
         List<SalesTrendPointDto> productsPoints = analyticsService.getProductsTrend(sellerId, mapped);
+        return buildChartsResponse(mapped, salesPoints, ordersPoints, productsPoints);
+    }
 
+    @Override
+    @Transactional(readOnly = true)
+    public DashboardChartsResponse getCharts(Long sellerId, java.time.LocalDate from, java.time.LocalDate to) {
+        List<SalesTrendPointDto> salesPoints = analyticsService.getSalesTrend(sellerId, from, to);
+        List<SalesTrendPointDto> ordersPoints = analyticsService.getOrdersTrend(sellerId, from, to);
+        List<SalesTrendPointDto> productsPoints = analyticsService.getProductsTrend(sellerId, from, to);
+        return buildChartsResponse("custom", salesPoints, ordersPoints, productsPoints);
+    }
+
+    private DashboardChartsResponse buildChartsResponse(
+            String period,
+            List<SalesTrendPointDto> salesPoints,
+            List<SalesTrendPointDto> ordersPoints,
+            List<SalesTrendPointDto> productsPoints) {
         BigDecimal totalSales = salesPoints.stream()
                 .map(p -> BigDecimal.valueOf(p.getValue()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -119,7 +135,7 @@ public class DashboardServiceImpl implements DashboardService {
         long totalUnits = Math.round(productsPoints.stream().mapToDouble(SalesTrendPointDto::getValue).sum());
 
         return DashboardChartsResponse.builder()
-                .period(mapped)
+                .period(period)
                 .salesPoints(salesPoints)
                 .ordersPoints(ordersPoints)
                 .productsPoints(productsPoints)
