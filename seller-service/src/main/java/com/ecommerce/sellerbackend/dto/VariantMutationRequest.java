@@ -28,6 +28,9 @@ public class VariantMutationRequest {
     @NotNull
     private Integer stock;
 
+    /** Minimum order quantity for B2B sellers */
+    private Integer minQuantity;
+
     @NotNull
     private BigDecimal mrp;
 

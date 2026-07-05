@@ -8,6 +8,7 @@ import com.ecommerce.sellerbackend.entity.SellerAccountStatus;
 import com.ecommerce.sellerbackend.exception.ForbiddenException;
 import com.ecommerce.sellerbackend.exception.ResourceNotFoundException;
 import com.ecommerce.sellerbackend.exception.UnauthorizedException;
+import com.ecommerce.sellerbackend.repository.SellerRegistrationPaymentRepository;
 import com.ecommerce.sellerbackend.repository.SellerRepository;
 import com.ecommerce.sellerbackend.service.AuthService;
 import com.ecommerce.sellerbackend.service.JwtService;
@@ -34,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
             DateTimeFormatter.ofPattern("MMMM d, yyyy 'at' h:mm a", Locale.US);
 
     private final SellerRepository sellerRepository;
+    private final SellerRegistrationPaymentRepository registrationPaymentRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final MailService mailService;
@@ -70,6 +72,9 @@ public class AuthServiceImpl implements AuthService {
         sendLoginSecurityAlertAfterCommit(seller, loginAt, userAgent, resolvedIp);
 
         String accessToken = jwtService.generateAccessToken(seller.getId(), seller.getEmail());
+        boolean subscriptionActive = resolveSubscriptionActive(seller);
+        boolean paymentPending = resolvePaymentPending(seller, subscriptionActive);
+        String subscriptionExpiresAt = resolveSubscriptionExpiresAt(seller.getId());
 
         return LoginResponse.builder()
                 .sellerId(seller.getId())
@@ -83,9 +88,38 @@ public class AuthServiceImpl implements AuthService {
                 .status(seller.getStatus() != null
                         ? seller.getStatus().name()
                         : SellerAccountStatus.pending.name())
+                .subscriptionActive(subscriptionActive)
+                .paymentPending(paymentPending)
+                .subscriptionExpiresAt(subscriptionExpiresAt)
                 .accessToken(accessToken)
                 .expiresIn(jwtService.getExpirySeconds())
                 .build();
+    }
+
+    private boolean resolveSubscriptionActive(Seller seller) {
+        if (!Boolean.TRUE.equals(seller.getProfileCompleted())) {
+            return true;
+        }
+
+        return registrationPaymentRepository.isSubscriptionActive(seller.getId());
+    }
+
+    private boolean resolvePaymentPending(Seller seller, boolean subscriptionActive) {
+        if (!Boolean.TRUE.equals(seller.getProfileCompleted())) {
+            return false;
+        }
+
+        return registrationPaymentRepository.hasEverPaid(seller.getId()) && !subscriptionActive;
+    }
+
+    private String resolveSubscriptionExpiresAt(Long sellerId) {
+
+        SellerRegistrationPaymentRepository.PaymentRecord record =
+                registrationPaymentRepository.findBySellerId(sellerId);
+        if (record == null || record.getSubscriptionExpiresAt() == null) {
+            return null;
+        }
+        return record.getSubscriptionExpiresAt().toString();
     }
 
     @Override

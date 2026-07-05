@@ -52,4 +52,19 @@ public interface SizeRepository extends JpaRepository<Size, Long> {
     Optional<Size> findVisibleByNameOrCodeForSeller(
             @Param("sellerId") Long sellerId,
             @Param("value") String value);
+
+    @Query("""
+            SELECT s FROM Size s
+            WHERE s.id = :id AND (s.sellerId = :sellerId OR s.sellerId IS NULL)
+            """)
+    Optional<Size> findVisibleByIdForSeller(@Param("id") Long id, @Param("sellerId") Long sellerId);
+
+    @Query("""
+            SELECT s FROM Size s
+            WHERE (s.sellerId = :sellerId OR s.sellerId IS NULL)
+              AND (LOWER(s.sizeName) = LOWER(:value) OR LOWER(s.sizeCode) = LOWER(:value))
+            """)
+    Optional<Size> findByNameOrCodeForSellerIgnoreStatus(
+            @Param("sellerId") Long sellerId,
+            @Param("value") String value);
 }

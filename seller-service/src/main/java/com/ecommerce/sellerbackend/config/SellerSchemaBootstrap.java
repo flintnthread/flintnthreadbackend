@@ -70,5 +70,72 @@ public class SellerSchemaBootstrap {
         } catch (Exception ex) {
             log.warn("Could not ensure seller_support_feedbacks table: {}", ex.getMessage());
         }
+
+        ensureProductVariantMinQuantityColumn();
+        normalizeVariantCommissionAndTotals();
+        syncLegacyProductSkusFromVariants();
+    }
+
+    private void ensureProductVariantMinQuantityColumn() {
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                    """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = 'product_variants'
+                      AND COLUMN_NAME = 'min_quantity'
+                    """,
+                    Integer.class);
+            if (count != null && count > 0) {
+                return;
+            }
+            jdbcTemplate.execute(
+                    "ALTER TABLE product_variants ADD COLUMN min_quantity INT NULL AFTER stock");
+            log.info("product_variants.min_quantity column is ready");
+        } catch (Exception ex) {
+            log.warn("Could not ensure product_variants.min_quantity column: {}", ex.getMessage());
+        }
+    }
+
+    private void normalizeVariantCommissionAndTotals() {
+        try {
+            int updated = jdbcTemplate.update("""
+                    UPDATE product_variants
+                    SET commission_percentage = 0,
+                        commission_amount = 0,
+                        total_price_intra_city = ROUND(final_price + IFNULL(intra_city_delivery_charge, 0), 2),
+                        total_price_metro_metro = ROUND(final_price + IFNULL(metro_metro_delivery_charge, 0), 2)
+                    WHERE IFNULL(commission_percentage, 0) <> 0
+                       OR IFNULL(commission_amount, 0) <> 0
+                    """);
+            if (updated > 0) {
+                log.info("Normalized commission/totals on {} product_variants rows", updated);
+            }
+        } catch (Exception ex) {
+            log.warn("Could not normalize product_variants commission totals: {}", ex.getMessage());
+        }
+    }
+
+    private void syncLegacyProductSkusFromVariants() {
+        try {
+            int updated = jdbcTemplate.update("""
+                    UPDATE products p
+                    INNER JOIN (
+                        SELECT product_id, MIN(id) AS variant_id
+                        FROM product_variants
+                        GROUP BY product_id
+                    ) first_variant ON first_variant.product_id = p.id
+                    INNER JOIN product_variants v ON v.id = first_variant.variant_id
+                    SET p.sku = v.sku
+                    WHERE p.sku LIKE 'SKU-%'
+                      AND v.sku IS NOT NULL
+                      AND v.sku <> ''
+                    """);
+            if (updated > 0) {
+                log.info("Synced {} legacy product SKUs from first variant", updated);
+            }
+        } catch (Exception ex) {
+            log.warn("Could not sync legacy product SKUs: {}", ex.getMessage());
+        }
     }
 }

@@ -43,6 +43,8 @@ public interface SellerProfileService {
 
     RegistrationPaymentStatusResponse verifyRegistrationPayment(Long sellerId, RegistrationPaymentVerifyRequest request);
 
+    RegistrationPaymentStatusResponse resendRegistrationInvoiceEmail(Long sellerId);
+
     RegistrationPaymentStatusResponse getRegistrationPaymentStatus(Long sellerId);
 
     ProfileSubmitResponse submitProfile(Long sellerId);

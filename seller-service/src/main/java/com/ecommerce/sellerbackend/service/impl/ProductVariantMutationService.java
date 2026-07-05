@@ -96,6 +96,7 @@ public class ProductVariantMutationService {
         variant.setSize(catalogResolver.resolveSizeId(product.getSellerId(), catalogReq));
         variant.setSku(request.getSku());
         variant.setStock(request.getStock());
+        variant.setMinQuantity(request.getMinQuantity());
         variant.setBasePrice(request.getSellingPrice());
         variant.setMrpExclGst(request.getMrp());
         variant.setMrpPrice(pricing.finalPrice());

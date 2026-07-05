@@ -58,23 +58,23 @@ public class ProductDetailAssembler {
                 .map(v -> toVariantDetail(v, images, colorById, sizeById))
                 .toList();
 
-        ProductVariant primary = pickPrimaryVariant(variants);
+        ProductVariant displayVariant = pickMinimumPriceVariant(variants);
         int totalStock = variants.stream()
                 .map(ProductVariant::getStock)
                 .filter(Objects::nonNull)
                 .mapToInt(Integer::intValue)
                 .sum();
 
-        BigDecimal price = resolveTotalMetroMetro(primary);
-        BigDecimal mrpExclGst = resolveMrpExclGst(primary);
-        BigDecimal mrpInclGst = primary != null ? primary.getMrpInclGst() : null;
-        BigDecimal sellingExGst = primary != null ? primary.getSellingPrice() : null;
-        int discount = primary != null && primary.getDiscountPercentage() != null
-                ? primary.getDiscountPercentage().setScale(0, RoundingMode.HALF_UP).intValue()
-                : resolveDiscountPercent(primary, price, mrpExclGst);
+        BigDecimal price = resolveTotalMetroMetro(displayVariant);
+        BigDecimal mrpExclGst = resolveMrpExclGst(displayVariant);
+        BigDecimal mrpInclGst = displayVariant != null ? displayVariant.getMrpInclGst() : null;
+        BigDecimal sellingExGst = displayVariant != null ? displayVariant.getSellingPrice() : null;
+        int discount = displayVariant != null && displayVariant.getDiscountPercentage() != null
+                ? displayVariant.getDiscountPercentage().setScale(0, RoundingMode.HALF_UP).intValue()
+                : resolveDiscountPercent(displayVariant, price, mrpExclGst);
 
-        String primaryColor = resolveColorName(primary != null ? primary.getColor() : null, colorById);
-        String primarySize = resolveSizeName(primary != null ? primary.getSize() : null, sizeById);
+        String displayColor = resolveColorName(displayVariant != null ? displayVariant.getColor() : null, colorById);
+        String displaySize = resolveSizeName(displayVariant != null ? displayVariant.getSize() : null, sizeById);
 
         List<String> imageUrls = images.stream()
                 .map(img -> resolveImageUrl(img.getImagePath()))
@@ -95,7 +95,7 @@ public class ProductDetailAssembler {
                 .subcategoryId(product.getSubcategoryId())
                 .sizeChartId(product.getSizeChartId())
                 .name(product.getName())
-                .sku(firstNonBlank(product.getSku(), primary != null ? primary.getSku() : null, "—"))
+                .sku(resolveDisplaySku(product, displayVariant))
                 .price(price)
                 .mrp(mrpExclGst)
                 .mrpExclGst(mrpExclGst)
@@ -110,8 +110,8 @@ public class ProductDetailAssembler {
                 .category(categoryName)
                 .categorySub(categorySubName)
                 .subcategory(subcategoryName)
-                .color(primaryColor)
-                .size(primarySize)
+                .color(displayColor)
+                .size(displaySize)
                 .hsnCode(firstNonBlank(product.getHsnCode(), "—"))
                 .gst(formatGst(product.getGstPercentage()))
                 .createdAt(formatDate(product.getCreatedAt()))
@@ -185,12 +185,12 @@ public class ProductDetailAssembler {
 
         BigDecimal taxPct = variant.getTaxPercentage() != null ? variant.getTaxPercentage() : BigDecimal.ZERO;
         BigDecimal taxAmt = variant.getTaxAmount() != null ? variant.getTaxAmount() : BigDecimal.ZERO;
-        BigDecimal commissionPct = variant.getCommissionPercentage() != null ? variant.getCommissionPercentage() : BigDecimal.ZERO;
-        BigDecimal commissionAmt = variant.getCommissionAmount() != null ? variant.getCommissionAmount() : BigDecimal.ZERO;
         BigDecimal intraCity = variant.getIntraCityDeliveryCharge() != null ? variant.getIntraCityDeliveryCharge() : BigDecimal.ZERO;
         BigDecimal metroMetro = variant.getMetroMetroDeliveryCharge() != null ? variant.getMetroMetroDeliveryCharge() : BigDecimal.ZERO;
-        BigDecimal totalIntra = variant.getTotalPriceIntraCity() != null ? variant.getTotalPriceIntraCity() : BigDecimal.ZERO;
-        BigDecimal totalMetro = variant.getTotalPriceMetroMetro() != null ? variant.getTotalPriceMetroMetro() : BigDecimal.ZERO;
+        BigDecimal commissionPct = BigDecimal.ZERO;
+        BigDecimal commissionAmt = BigDecimal.ZERO;
+        BigDecimal totalIntra = priceWithGst.add(intraCity).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalMetro = priceWithGst.add(metroMetro).setScale(2, RoundingMode.HALF_UP);
 
         int discount = variant.getDiscountPercentage() != null
                 ? variant.getDiscountPercentage().setScale(0, RoundingMode.HALF_UP).intValue()
@@ -205,9 +205,12 @@ public class ProductDetailAssembler {
                 .productId(variant.getProductId())
                 .color(colorName)
                 .colorHex(colorHex)
+                .colorId(parseCatalogId(variant.getColor()).orElse(null))
                 .size(resolveSizeName(variant.getSize(), sizeById))
+                .sizeId(parseCatalogId(variant.getSize()).orElse(null))
                 .sku(firstNonBlank(variant.getSku(), "—"))
                 .stock(variant.getStock() != null ? variant.getStock() : 0)
+                .minQuantity(variant.getMinQuantity())
                 .basePrice(variant.getBasePrice())
                 .mrpExclGst(mrpExclGst)
                 .mrpPrice(mrpPriceDb)
@@ -244,15 +247,14 @@ public class ProductDetailAssembler {
                 .build();
     }
 
-    private ProductVariant pickPrimaryVariant(List<ProductVariant> variants) {
+    private ProductVariant pickMinimumPriceVariant(List<ProductVariant> variants) {
         if (variants.isEmpty()) {
             return null;
         }
         return variants.stream()
-                .sorted(java.util.Comparator
-                        .comparing((ProductVariant v) -> v.getStock() != null && v.getStock() > 0).reversed()
+                .min(java.util.Comparator
+                        .comparing(this::resolveTotalMetroMetro, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
                         .thenComparing(ProductVariant::getId))
-                .findFirst()
                 .orElse(variants.get(0));
     }
 
@@ -264,16 +266,28 @@ public class ProductDetailAssembler {
         return value != null ? value : BigDecimal.ZERO;
     }
 
-    /** Customer-facing list/detail price — total metro-metro (selling + commission + delivery). */
+    /** Customer-facing list/detail price — total metro-metro (selling + delivery, no commission). */
     private BigDecimal resolveTotalMetroMetro(ProductVariant variant) {
         if (variant == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal totalMetro = firstDecimal(variant.getTotalPriceMetroMetro());
-        if (totalMetro != null && totalMetro.compareTo(BigDecimal.ZERO) > 0) {
-            return totalMetro;
+        BigDecimal sellingWithGst = firstDecimal(variant.getFinalPrice(), variant.getMrpPrice());
+        if (sellingWithGst == null || sellingWithGst.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
         }
-        return resolveSellingPrice(variant);
+        BigDecimal metroMetro = variant.getMetroMetroDeliveryCharge() != null
+                ? variant.getMetroMetroDeliveryCharge()
+                : BigDecimal.ZERO;
+        return sellingWithGst.add(metroMetro).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String resolveDisplaySku(Product product, ProductVariant primary) {
+        String variantSku = primary != null ? primary.getSku() : null;
+        String productSku = product.getSku();
+        if (variantSku != null && !variantSku.isBlank()) {
+            return variantSku;
+        }
+        return firstNonBlank(productSku, "—");
     }
 
     /** MRP shown with strikethrough — always from mrp_excl_gst (fallback base_price). */

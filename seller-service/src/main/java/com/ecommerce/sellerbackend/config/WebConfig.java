@@ -23,9 +23,16 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        String[] origins = allowedOrigins.split(",");
         registry.addMapping("/api/**")
-                .allowedOrigins(allowedOrigins.split(","))
+                .allowedOrigins(origins)
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .exposedHeaders("*")
+                .allowCredentials(false);
+        registry.addMapping("/uploads/**")
+                .allowedOrigins(origins)
+                .allowedMethods("GET", "HEAD", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("*")
                 .allowCredentials(false);

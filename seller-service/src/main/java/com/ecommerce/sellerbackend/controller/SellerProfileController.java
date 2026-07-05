@@ -131,6 +131,13 @@ public class SellerProfileController {
                 request);
     }
 
+    @PostMapping("/registration-payment/resend-invoice")
+    public RegistrationPaymentStatusResponse resendRegistrationInvoiceEmail(
+            @RequestHeader(SELLER_ID_HEADER) Long sellerId) {
+        return sellerProfileService.resendRegistrationInvoiceEmail(
+                authenticatedSellerResolver.requireCurrentSellerId(sellerId));
+    }
+
     @GetMapping("/registration-payment/status")
     public RegistrationPaymentStatusResponse getRegistrationPaymentStatus(
             @RequestHeader(SELLER_ID_HEADER) Long sellerId) {
