@@ -89,7 +89,64 @@ public class AccountServiceImpl implements AccountService {
             user.setGender(request.getGender().trim().toLowerCase());
         }
 
+        if (request != null && request.getCurrentLocation() != null) {
+            String location = request.getCurrentLocation().trim();
+            if (!location.isEmpty()) {
+                syncProfileLocationAddress(user, location);
+            }
+        }
+
         return toProfileDto(userRepository.save(user));
+    }
+
+    private void syncProfileLocationAddress(User user, String locationLine) {
+        String[] parts = locationLine.split(",");
+        String city = parts.length > 0 ? parts[0].trim() : locationLine.trim();
+        String state = parts.length > 1 ? parts[1].trim() : "";
+        String country = parts.length > 2 ? parts[2].trim() : "India";
+
+        if (city.isEmpty()) {
+            return;
+        }
+
+        Address address = addressRepository.findByUserIdAndIsDefaultTrue(user.getId()).orElse(null);
+        if (address == null) {
+            List<Address> rows = addressRepository.findByUserIdOrderByIsDefaultDescCreatedAtDesc(user.getId());
+            address = rows.isEmpty() ? null : rows.get(0);
+        }
+
+        if (address == null) {
+            String phone = user.getContactNumber() != null ? user.getContactNumber().trim() : "0000000000";
+            if (phone.isEmpty()) {
+                phone = "0000000000";
+            }
+            address = Address.builder()
+                    .userId(user.getId())
+                    .name(user.getUsername())
+                    .email(user.getEmail())
+                    .phone(phone)
+                    .addressLine1(city)
+                    .city(city)
+                    .state(state.isEmpty() ? city : state)
+                    .country(country.isEmpty() ? "India" : country)
+                    .pincode("000000")
+                    .addressType("home")
+                    .isDefault(true)
+                    .build();
+        } else {
+            address.setCity(city);
+            if (!state.isEmpty()) {
+                address.setState(state);
+            }
+            if (!country.isEmpty()) {
+                address.setCountry(country);
+            }
+            if (address.getAddressLine1() == null || address.getAddressLine1().isBlank()) {
+                address.setAddressLine1(city);
+            }
+        }
+
+        addressRepository.save(address);
     }
 
     private UserProfileDTO toProfileDto(User user) {

@@ -18,4 +18,7 @@ public class UpdateProfileRequest {
     private LocalDate dateOfBirth;
 
     private String gender;
+
+    /** Free-text location from account settings; synced to default address when possible. */
+    private String currentLocation;
 }
