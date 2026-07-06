@@ -528,17 +528,21 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         return value != null && !value.isBlank();
     }
 
-    private String resolveSellerUniqueId(Seller seller) {
-        if (seller == null || seller.getId() == null) {
-            return "";
-        }
-        String unique = trim(seller.getSellerUniqueId());
-        if (!unique.isEmpty()) {
-            return unique;
-        }
-        return formatSellerUniqueId(seller.getId());
+private String resolveSellerUniqueId(Seller seller) {
+    if (seller == null || seller.getId() == null) {
+        return "";
     }
 
+    String unique = seller.getSellerUniqueId() == null
+            ? ""
+            : seller.getSellerUniqueId().trim();
+
+    if (!unique.isEmpty()) {
+        return unique;
+    }
+
+    return formatSellerUniqueId(seller.getId());
+}
     private String formatSellerUniqueId(Long sellerId) {
         return "FNT-SELLER-" + String.format("%06d", sellerId);
     }
