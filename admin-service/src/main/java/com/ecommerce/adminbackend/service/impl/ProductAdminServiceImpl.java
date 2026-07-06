@@ -150,17 +150,12 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
                 : null;
         Map<Long, Color> colorById = loadColors(variants);
         Map<Long, Size> sizeById = loadSizes(variants);
-        String fallbackImage = images.stream()
-                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
-                .findFirst()
-                .or(() -> images.stream().findFirst())
-                .map(img -> mediaUrlHelper.toPublicUrl(img.getImagePath()))
-                .orElse(null);
+        String fallbackImage = resolveListProductImage(images, variants.isEmpty() ? null : variants.get(0));
 
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("id", product.getId());
         detail.put("name", product.getName());
-        detail.put("sku", product.getSku());
+        detail.put("sku", resolveProductSku(product, variants));
         detail.put("status", product.getStatus());
         detail.put("categoryId", product.getCategoryId());
         detail.put("subcategoryId", product.getSubcategoryId());
@@ -266,12 +261,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
                 .findFirst()
                 .orElse(BigDecimal.ZERO);
         ProductVariant firstVariant = variants.isEmpty() ? null : variants.get(0);
-        String imageUrl = images.stream()
-                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
-                .findFirst()
-                .or(() -> images.stream().findFirst())
-                .map(img -> mediaUrlHelper.toPublicUrl(img.getImagePath()))
-                .orElse(null);
+        String imageUrl = resolveListProductImage(images, firstVariant);
 
         Seller listSeller = product.getSellerId() != null
                 ? sellerRepository.findById(product.getSellerId()).orElse(null)
@@ -280,7 +270,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", product.getId());
         row.put("name", product.getName());
-        row.put("sku", product.getSku());
+        row.put("sku", resolveProductSku(product, firstVariant));
         row.put("status", product.getStatus());
         row.put("sellerId", product.getSellerId());
         row.put("addedByAdmin", product.getSellerId() == null);
@@ -531,11 +521,66 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         return BigDecimal.ZERO;
     }
 
+    private String resolveListProductImage(List<ProductImage> images, ProductVariant firstVariant) {
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+        String primaryImage = images.stream()
+                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
+                .findFirst()
+                .map(img -> toProductImageUrl(img.getImagePath()))
+                .orElse(null);
+        if (primaryImage != null && !primaryImage.isBlank()) {
+            return primaryImage;
+        }
+        if (firstVariant != null) {
+            String variantImage = resolveVariantImage(images, firstVariant.getId(), null);
+            if (variantImage != null && !variantImage.isBlank()) {
+                return variantImage;
+            }
+        }
+        return images.stream()
+                .findFirst()
+                .map(img -> toProductImageUrl(img.getImagePath()))
+                .orElse(null);
+    }
+
+    private String resolveProductSku(Product product, ProductVariant firstVariant) {
+        if (product != null && product.getSku() != null && !product.getSku().isBlank()) {
+            return product.getSku().trim();
+        }
+        if (firstVariant != null && firstVariant.getSku() != null && !firstVariant.getSku().isBlank()) {
+            return firstVariant.getSku().trim();
+        }
+        return null;
+    }
+
+    private String resolveProductSku(Product product, List<ProductVariant> variants) {
+        ProductVariant firstVariant = variants == null || variants.isEmpty() ? null : variants.get(0);
+        String sku = resolveProductSku(product, firstVariant);
+        if (sku != null && !sku.isBlank()) {
+            return sku;
+        }
+        if (variants == null) {
+            return null;
+        }
+        for (ProductVariant variant : variants) {
+            if (variant.getSku() != null && !variant.getSku().isBlank()) {
+                return variant.getSku().trim();
+            }
+        }
+        return null;
+    }
+
+    private String toProductImageUrl(String path) {
+        return mediaUrlHelper.toPublicUrl(path, "products");
+    }
+
     private String resolveVariantImage(List<ProductImage> images, Long variantId, String fallbackImage) {
         String variantImage = images.stream()
                 .filter(img -> Objects.equals(variantId, img.getVariantId()))
                 .findFirst()
-                .map(img -> mediaUrlHelper.toPublicUrl(img.getImagePath()))
+                .map(img -> toProductImageUrl(img.getImagePath()))
                 .orElse(null);
         if (variantImage != null && !variantImage.isBlank()) {
             return variantImage;
@@ -594,7 +639,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
     private Map<String, Object> toImage(ProductImage image) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", image.getId());
-        row.put("url", mediaUrlHelper.toPublicUrl(image.getImagePath()));
+        row.put("url", toProductImageUrl(image.getImagePath()));
         row.put("isPrimary", image.getIsPrimary());
         row.put("sortOrder", image.getSortOrder());
         return row;
