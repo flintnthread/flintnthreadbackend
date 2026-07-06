@@ -38,14 +38,14 @@ public class User {
     @Column(nullable = false)
     private boolean verified = false;
 
-    // 🔹 Profile (NEW for mobile)
+    // 🔹 Profile (persisted — see V8__add_user_profile_fields.sql)
     @Column(name = "profile_image")
     private String profileImage;
 
-    @Transient
+    @Column(name = "date_of_birth")
     private java.time.LocalDate dateOfBirth;
 
-    @Transient
+    @Column(length = 32)
     private String gender;
 
     // 🔹 Status (FIXED)
