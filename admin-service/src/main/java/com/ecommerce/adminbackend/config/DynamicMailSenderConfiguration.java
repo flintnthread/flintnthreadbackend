@@ -3,6 +3,7 @@ package com.ecommerce.adminbackend.config;
 import com.ecommerce.adminbackend.service.PlatformIntegrationSettings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.mail.MailProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.Properties;
 
 @Configuration
+@EnableConfigurationProperties(MailProperties.class)
 @RequiredArgsConstructor
 public class DynamicMailSenderConfiguration {
 
