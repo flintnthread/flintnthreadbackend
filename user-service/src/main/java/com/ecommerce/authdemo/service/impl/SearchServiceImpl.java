@@ -165,7 +165,7 @@ public class SearchServiceImpl implements SearchService {
             suggestions = productRepository.findSuggestionsByKeyword(keyword);
         } catch (Exception e) {
             log.warn("findSuggestionsByKeyword failed, falling back: {}", e.getMessage());
-            suggestions = productRepository.findTop5ByNameContainingIgnoreCase(keyword)
+            suggestions = productRepository.findTop5ByNameContainingIgnoreCaseAndStatus(keyword, ACTIVE_STATUS)
                     .stream()
                     .map(Product::getName)
                     .distinct()
@@ -184,7 +184,7 @@ public class SearchServiceImpl implements SearchService {
     public ApiResponse<List<String>> getTrendingSearches() {
 
         List<String> trending =
-                productRepository.findTop10ByOrderByIdDesc()
+                productRepository.findTop10ByStatusOrderByIdDesc(ACTIVE_STATUS)
                         .stream()
                         .map(Product::getName)
                         .collect(Collectors.toList());
@@ -356,7 +356,7 @@ public class SearchServiceImpl implements SearchService {
         LinkedHashSet<String> keywords = new LinkedHashSet<>();
         keywords.addAll(extractKeywordsFromFilename(image.getOriginalFilename()));
         keywords.addAll(extractDominantColorKeywords(bufferedImage));
-        keywords = expandKeywords(keywords);
+        keywords = new LinkedHashSet<>(expandKeywords(keywords));
         if (keywords.isEmpty()) {
             return Collections.emptyList();
         }

@@ -13,6 +13,8 @@ import java.util.Optional;
 @Slf4j
 public class PlatformIntegrationSettings {
 
+    public static final String KEY_COMMISSION_B2C = "commission_b2c";
+
     public static final String KEY_SENDGRID_API_KEY = "sendgrid_api_key";
     public static final String KEY_TWILIO_ACCOUNT_SID = "twilio_account_sid";
     public static final String KEY_TWILIO_AUTH_TOKEN = "twilio_auth_token";

@@ -8,6 +8,7 @@ import com.ecommerce.authdemo.entity.ProductImage;
 import com.ecommerce.authdemo.entity.ProductVariant;
 import com.ecommerce.authdemo.entity.SizeChart;
 import com.ecommerce.authdemo.repository.SizeChartRepository;
+import com.ecommerce.authdemo.service.CustomerPriceResolver;
 import com.ecommerce.authdemo.util.SizeChartUtil;
 import com.ecommerce.authdemo.util.SizeColorMapper;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class ProductMapper {
     
     private final SizeColorMapper sizeColorMapper;
     private final SizeChartRepository sizeChartRepository;
+    private final CustomerPriceResolver customerPriceResolver;
 
     public String resolveImageUrl(String storedPath) {
         if (storedPath == null || storedPath.isBlank()) {
@@ -110,15 +112,40 @@ public class ProductMapper {
 
                         // When out of stock, return null price fields so UI can show "Out of stock"
                         // instead of displaying a price.
-                        vd.setMrpPrice(inStock ? v.getMrpPrice() : null);
-                        vd.setSellingPrice(inStock ? v.getSellingPrice() : null);
-                        vd.setFinalPrice(inStock ? v.getFinalPrice() : null);
+                        if (inStock) {
+                            CustomerPriceResolver.ResolvedPrice pricing =
+                                    customerPriceResolver.resolve(p, v);
+                            vd.setMrpPrice(v.getMrpPrice());
+                            if (pricing != null) {
+                                vd.setSellingPriceExclGst(pricing.sellingExclGst());
+                                vd.setSellingPrice(pricing.customerPrice());
+                                vd.setFinalPrice(pricing.priceAfterGst());
+                                vd.setCustomerPrice(pricing.customerPrice());
+                                vd.setTaxPercentage(pricing.gstPercent());
+                                vd.setTaxAmount(pricing.taxAmount());
+                                vd.setCommissionPercentage(pricing.commissionPercent());
+                                vd.setCommissionAmount(pricing.commissionAmount());
+                            } else {
+                                vd.setSellingPrice(v.getSellingPrice());
+                                vd.setSellingPriceExclGst(v.getSellingPrice());
+                                vd.setFinalPrice(v.getFinalPrice());
+                                vd.setTaxPercentage(v.getTaxPercentage());
+                                vd.setTaxAmount(v.getTaxAmount());
+                            }
+                        } else {
+                            vd.setMrpPrice(null);
+                            vd.setSellingPrice(null);
+                            vd.setSellingPriceExclGst(null);
+                            vd.setFinalPrice(null);
+                            vd.setCustomerPrice(null);
+                            vd.setTaxPercentage(null);
+                            vd.setTaxAmount(null);
+                            vd.setCommissionPercentage(null);
+                            vd.setCommissionAmount(null);
+                        }
 
                         vd.setDiscountPercentage(inStock ? v.getDiscountPercentage() : null);
                         vd.setDiscountAmount(inStock ? v.getDiscountAmount() : null);
-
-                        vd.setTaxPercentage(v.getTaxPercentage());
-                        vd.setTaxAmount(v.getTaxAmount());
 
                         vd.setStock(stock);
                         vd.setInStock(inStock);

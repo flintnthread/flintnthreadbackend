@@ -6,12 +6,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PlatformIntegrationSettings {
+
+    public static final String KEY_COMMISSION_B2C = "commission_b2c";
+    public static final BigDecimal DEFAULT_COMMISSION_B2C = new BigDecimal("15.00");
 
     public static final String KEY_SENDGRID_API_KEY = "sendgrid_api_key";
     public static final String KEY_TWILIO_ACCOUNT_SID = "twilio_account_sid";
@@ -48,6 +52,12 @@ public class PlatformIntegrationSettings {
         return readSetting(KEY_TWILIO_PHONE_NUMBER).orElse(trimToEmpty(defaultTwilioPhoneNumber));
     }
 
+    public BigDecimal getCommissionB2cPercent() {
+        return readSetting(KEY_COMMISSION_B2C)
+                .flatMap(PlatformIntegrationSettings::parsePositiveDecimal)
+                .orElse(DEFAULT_COMMISSION_B2C);
+    }
+
     public Optional<String> readSetting(String key) {
         try {
             return jdbcTemplate.query(
@@ -66,5 +76,17 @@ public class PlatformIntegrationSettings {
 
     private static String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static Optional<BigDecimal> parsePositiveDecimal(String raw) {
+        try {
+            BigDecimal value = new BigDecimal(raw.trim());
+            if (value.compareTo(BigDecimal.ZERO) > 0) {
+                return Optional.of(value);
+            }
+        } catch (NumberFormatException ignored) {
+            // fall through to default
+        }
+        return Optional.empty();
     }
 }

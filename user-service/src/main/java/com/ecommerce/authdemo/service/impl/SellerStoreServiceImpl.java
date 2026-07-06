@@ -8,6 +8,7 @@ import com.ecommerce.authdemo.entity.Seller;
 import com.ecommerce.authdemo.mapper.ProductMapper;
 import com.ecommerce.authdemo.repository.*;
 import com.ecommerce.authdemo.service.SellerStoreService;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -36,7 +37,8 @@ public class SellerStoreServiceImpl implements SellerStoreService {
     @Override
     public SellerProfileDTO getProfile(Long sellerId) {
         Seller seller = sellerRepository.findById(sellerId).orElse(null);
-        long productCount = productRepository.countBySellerId(sellerId);
+        long productCount = productRepository.countBySellerIdAndStatus(
+                sellerId, ProductCatalogVisibility.USER_VISIBLE_STATUS);
         if (seller == null && productCount == 0) {
             throw new RuntimeException("Seller not found");
         }
@@ -54,7 +56,8 @@ public class SellerStoreServiceImpl implements SellerStoreService {
     @Override
     public SellerStoreResponseDTO getStore(Long sellerId) {
         Seller seller = sellerRepository.findById(sellerId).orElse(null);
-        long productCount = productRepository.countBySellerId(sellerId);
+        long productCount = productRepository.countBySellerIdAndStatus(
+                sellerId, ProductCatalogVisibility.USER_VISIBLE_STATUS);
         if (seller == null && productCount == 0) {
             throw new RuntimeException("Seller not found");
         }
@@ -92,14 +95,16 @@ public class SellerStoreServiceImpl implements SellerStoreService {
 
     @Override
     public Page<ProductDTO> getProducts(Long sellerId, int page, int size) {
-        long productCount = productRepository.countBySellerId(sellerId);
+        long productCount = productRepository.countBySellerIdAndStatus(
+                sellerId, ProductCatalogVisibility.USER_VISIBLE_STATUS);
         if (productCount == 0 && !sellerRepository.existsById(sellerId)) {
             throw new RuntimeException("Seller not found");
         }
         int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
         Pageable pageable = PageRequest.of(safePage, safeSize);
-        Page<Product> productPage = productRepository.findBySellerId(sellerId, pageable);
+        Page<Product> productPage = productRepository.findBySellerIdAndStatus(
+                sellerId, ProductCatalogVisibility.USER_VISIBLE_STATUS, pageable);
         return productPage.map(productMapper::toDTO);
     }
 
@@ -343,7 +348,8 @@ public class SellerStoreServiceImpl implements SellerStoreService {
 
     private List<ProductDTO> loadSellerSampleProducts(Long sellerId, int limit) {
         int safeLimit = Math.min(Math.max(limit, 1), 20);
-        return productRepository.findTop20BySellerIdOrderByCreatedAtDesc(sellerId).stream()
+        return productRepository.findTop20BySellerIdAndStatusOrderByCreatedAtDesc(
+                        sellerId, ProductCatalogVisibility.USER_VISIBLE_STATUS).stream()
                 .limit(safeLimit)
                 .map(productMapper::toDTO)
                 .toList();

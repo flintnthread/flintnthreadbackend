@@ -107,7 +107,7 @@ public class AIImageServiceImpl implements AIImageService {
     public void processExistingProducts() {
         log.info("Starting to process existing products for embeddings");
         
-        List<Product> products = productRepository.findAll();
+        List<Product> products = productRepository.findTop300ByStatusOrderByCreatedAtDesc("active");
         int processed = 0;
         
         for (Product product : products) {

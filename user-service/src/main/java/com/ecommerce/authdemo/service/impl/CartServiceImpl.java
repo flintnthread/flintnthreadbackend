@@ -13,6 +13,8 @@ import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.ProductVariantRepository;
 import com.ecommerce.authdemo.repository.UserRepository;
 import com.ecommerce.authdemo.service.CartService;
+import com.ecommerce.authdemo.service.CustomerPriceResolver;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import com.ecommerce.authdemo.util.SecurityUtil;
 import com.ecommerce.authdemo.util.SizeColorMapper;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class CartServiceImpl implements CartService {
     private final ProductImageRepository productImageRepository;
     private final ProductVariantRepository productVariantRepository;
     private final SizeColorMapper sizeColorMapper;
+    private final CustomerPriceResolver customerPriceResolver;
     
     @Value("${app.media.public-base-url}")
     private String publicBaseUrl;
@@ -458,8 +461,7 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
     }
 
     /**
-     * Unit price when writing cart rows: validated variant + {@link ProductVariant#resolveSellingUnitPrice()},
-     * else legacy stub (only if variant prices are missing in DB).
+     * Unit price when writing cart rows: selling + GST + commission via {@link CustomerPriceResolver}.
      */
     private BigDecimal resolveUnitPriceStrict(Long productId, Long variantId) {
         ProductVariant variant = productVariantRepository.findByIdWithProduct(variantId)
@@ -467,7 +469,10 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
         if (variant.getProduct() == null || !variant.getProduct().getId().equals(productId)) {
             throw new CartException("Variant does not belong to this product");
         }
-        BigDecimal fromVariant = variant.resolveSellingUnitPrice();
+        if (!ProductCatalogVisibility.isVisibleToUsers(variant.getProduct())) {
+            throw new CartException("Product is not available for purchase");
+        }
+        BigDecimal fromVariant = customerPriceResolver.resolveCustomerUnitPrice(variant.getProduct(), variant);
         if (fromVariant != null && fromVariant.compareTo(BigDecimal.ZERO) > 0) {
             return fromVariant;
         }
@@ -479,11 +484,11 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
     }
 
     /**
-     * Selling unit for a cart row: variant {@link ProductVariant#resolveSellingUnitPrice()}, else stored cart price, else stub.
+     * Customer unit price for a cart row: selling + GST + commission, else stored cart price.
      */
     private BigDecimal resolveSellingForCartLine(ProductVariant variant, Cart cart) {
-        if (variant != null) {
-            BigDecimal v = variant.resolveSellingUnitPrice();
+        if (variant != null && variant.getProduct() != null) {
+            BigDecimal v = customerPriceResolver.resolveCustomerUnitPrice(variant.getProduct(), variant);
             if (v != null && v.compareTo(BigDecimal.ZERO) > 0) {
                 return v;
             }
