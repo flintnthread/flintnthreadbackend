@@ -25,9 +25,11 @@ public interface SellerAdminService {
 
     List<String> analyticsYearOptions();
 
-    Map<String, Object> blockSeller(Long id);
+    Map<String, Object> blockSeller(Long id, String reason);
 
     Map<String, Object> unblockSeller(Long id);
+
+    Map<String, Object> updateSellerStatus(Long id, String status, String kycVerificationStatus, String kycRemarks);
 
     PageResponse<Map<String, Object>> listPendingBank(int page, int size);
 
@@ -44,4 +46,6 @@ public interface SellerAdminService {
     PageResponse<Map<String, Object>> listShiprocketSellers(String status, int page, int size);
 
     PageResponse<Map<String, Object>> listBankVerifications(String status, int page, int size);
+
+    Map<String, Object> resendEmailVerification(Long id);
 }

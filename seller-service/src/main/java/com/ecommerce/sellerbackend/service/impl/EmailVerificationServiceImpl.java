@@ -164,10 +164,11 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     }
 
     private void assertVerificationLinkNotExpired(Seller seller) {
-        if (seller.getCreatedAt() == null) {
+        LocalDateTime base = seller.getOtpSentAt() != null ? seller.getOtpSentAt() : seller.getCreatedAt();
+        if (base == null) {
             return;
         }
-        LocalDateTime expiresAt = seller.getCreatedAt().plusHours(emailVerificationExpiryHours);
+        LocalDateTime expiresAt = base.plusHours(emailVerificationExpiryHours);
         if (expiresAt.isBefore(LocalDateTime.now())) {
             throw new IllegalArgumentException(
                     "Verification link has expired. Please sign up again or contact support.");

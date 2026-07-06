@@ -100,7 +100,7 @@ public class AuthServiceImpl implements AuthService {
         if (!Boolean.TRUE.equals(seller.getProfileCompleted())) {
             return true;
         }
-        registrationPaymentRepository.ensureTable();
+
         return registrationPaymentRepository.isSubscriptionActive(seller.getId());
     }
 
@@ -108,12 +108,12 @@ public class AuthServiceImpl implements AuthService {
         if (!Boolean.TRUE.equals(seller.getProfileCompleted())) {
             return false;
         }
-        registrationPaymentRepository.ensureTable();
+
         return registrationPaymentRepository.hasEverPaid(seller.getId()) && !subscriptionActive;
     }
 
     private String resolveSubscriptionExpiresAt(Long sellerId) {
-        registrationPaymentRepository.ensureTable();
+
         SellerRegistrationPaymentRepository.PaymentRecord record =
                 registrationPaymentRepository.findBySellerId(sellerId);
         if (record == null || record.getSubscriptionExpiresAt() == null) {

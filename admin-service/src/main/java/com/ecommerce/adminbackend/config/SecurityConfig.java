@@ -60,6 +60,8 @@ public class SecurityConfig {
         patterns.add("http://127.0.0.1:*");
         patterns.add("https://flintnthread.online");
         patterns.add("https://www.flintnthread.online");
+        patterns.add("https://admin.flintnthread.online");
+        patterns.add("https://seller.flintnthread.online");
         config.setAllowedOriginPatterns(patterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

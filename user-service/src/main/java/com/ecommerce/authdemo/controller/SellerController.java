@@ -1,6 +1,7 @@
 package com.ecommerce.authdemo.controller;
 
 import com.ecommerce.authdemo.dto.ProductDTO;
+import com.ecommerce.authdemo.dto.SellerProfileDTO;
 import com.ecommerce.authdemo.dto.SellerReviewDTO;
 import com.ecommerce.authdemo.dto.SellerStoreResponseDTO;
 import com.ecommerce.authdemo.service.SellerStoreService;
@@ -9,11 +10,16 @@ import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/sellers")
+@RequestMapping({"/api/sellers", "/api/shop/sellers"})
 @RequiredArgsConstructor
 public class SellerController {
 
     private final SellerStoreService sellerStoreService;
+
+    @GetMapping("/{sellerId}/profile")
+    public SellerProfileDTO getProfile(@PathVariable Long sellerId) {
+        return sellerStoreService.getProfile(sellerId);
+    }
 
     @GetMapping("/{sellerId}/store")
     public SellerStoreResponseDTO getStore(@PathVariable Long sellerId) {

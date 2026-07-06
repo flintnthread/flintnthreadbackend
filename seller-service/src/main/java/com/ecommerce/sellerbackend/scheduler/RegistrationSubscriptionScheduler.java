@@ -29,7 +29,7 @@ public class RegistrationSubscriptionScheduler {
     @Scheduled(cron = "${app.registration.renewal-reminder.cron:0 0 8 * * *}")
     @Transactional
     public void sendRenewalReminders() {
-        registrationPaymentRepository.ensureTable();
+
         List<Long> sellerIds = registrationPaymentRepository.findSellerIdsDueForRenewalReminder();
         if (sellerIds.isEmpty()) {
             return;

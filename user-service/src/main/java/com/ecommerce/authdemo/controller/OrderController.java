@@ -71,8 +71,10 @@ public class OrderController {
             );
         } catch (RuntimeException e) {
             String message = e.getMessage() != null ? e.getMessage() : "Failed to fetch orders";
-            if (message.toLowerCase().contains("not authenticated")
-                    || message.toLowerCase().contains("user not found")) {
+            String lowered = message.toLowerCase();
+            if (lowered.contains("not authenticated")
+                    || lowered.contains("user not found")
+                    || lowered.contains("access denied")) {
                 log.warn("Unauthorized orders request: {}", message);
                 return ResponseEntity.status(401)
                         .body(new ApiResponse<>(false, message, List.of()));

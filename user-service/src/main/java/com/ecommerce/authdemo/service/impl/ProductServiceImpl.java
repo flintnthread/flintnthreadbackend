@@ -3,9 +3,11 @@ package com.ecommerce.authdemo.service.impl;
 import com.ecommerce.authdemo.dto.*;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.ProductView;
+import com.ecommerce.authdemo.entity.Seller;
 import com.ecommerce.authdemo.entity.User;
 import com.ecommerce.authdemo.mapper.ProductMapper;
 import com.ecommerce.authdemo.util.GenderBrowseHelper;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import com.ecommerce.authdemo.util.SizeColorMapper;
 import com.ecommerce.authdemo.entity.Category;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariantRepository variantRepo;
     private final ProductViewRepository viewRepo;
     private final CategoryRepository categoryRepository;
+    private final SellerRepository sellerRepository;
     private final SizeColorMapper sizeColorMapper;
     private final ProductMapper mapper;
 
@@ -46,24 +49,56 @@ public class ProductServiceImpl implements ProductService {
     public ProductDTO getProduct(Long id) {
         Product product = productRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Product not found"));
-        return mapper.toDTO(product);
+        if (!ProductCatalogVisibility.isVisibleToUsers(product)) {
+            throw new RuntimeException("Product not found");
+        }
+        ProductDTO dto = mapper.toDTO(product);
+        applySellerBusinessName(dto);
+        return dto;
+    }
+
+    private void applySellerBusinessName(ProductDTO dto) {
+        Long sellerId = dto.getSellerId();
+        if (sellerId == null || sellerId <= 0) {
+            return;
+        }
+        sellerRepository.findById(sellerId).ifPresent(seller -> {
+            String label = resolveSellerBusinessLabel(seller);
+            if (label != null && !label.isBlank()) {
+                dto.setSellerBusinessName(label);
+            }
+        });
+    }
+
+    private String resolveSellerBusinessLabel(Seller seller) {
+        if (seller == null) {
+            return null;
+        }
+        String business = seller.getBusinessName() == null ? "" : seller.getBusinessName().trim();
+        if (!business.isEmpty()) {
+            return business;
+        }
+        String first = seller.getFirstName() == null ? "" : seller.getFirstName().trim();
+        String last = seller.getLastName() == null ? "" : seller.getLastName().trim();
+        String fullName = (first + " " + last).trim();
+        return fullName.isEmpty() ? null : fullName;
     }
 
     @Override
     public Page<ProductDTO> getAllProducts(Pageable pageable) {
-        return productRepo.findAll(pageable)
+        return productRepo.findAll(ProductCatalogVisibility.visibleToUsers(), pageable)
                 .map(mapper::toDTO);
     }
 
     @Override
     public Page<ProductDTO> getByCategory(Long categoryId, Pageable pageable) {
-        return productRepo.findByCategoryId(categoryId, pageable)
+        return productRepo.findByCategoryIdAndStatus(categoryId, ProductCatalogVisibility.USER_VISIBLE_STATUS, pageable)
                 .map(mapper::toDTO);
     }
 
     @Override
     public List<ProductDTO> getRecentProducts() {
-        return productRepo.findTop10ByOrderByCreatedAtDesc()
+        return productRepo.findTop10ByStatusOrderByCreatedAtDesc(ProductCatalogVisibility.USER_VISIBLE_STATUS)
                 .stream()
                 .map(mapper::toDTO)
                 .toList();
@@ -122,8 +157,10 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public List<ProductDTO> getRelatedProducts(Long productId) {
         Product product = productRepo.findById(productId).orElseThrow();
-        return productRepo.findTop10ByCategoryIdAndIdNot(
-                Long.valueOf(product.getCategoryId()), productId
+        return productRepo.findTop10ByCategoryIdAndStatusAndIdNot(
+                Long.valueOf(product.getCategoryId()),
+                ProductCatalogVisibility.USER_VISIBLE_STATUS,
+                productId
         ).stream().map(mapper::toDTO).toList();
     }
 
@@ -476,7 +513,9 @@ public class ProductServiceImpl implements ProductService {
     private List<ProductDTO> mapProductsByIdOrder(List<Long> productIds) {
         List<Product> products = productRepo.findAllById(productIds);
         Map<Long, ProductDTO> dtoById = new LinkedHashMap<>();
-        products.forEach(product -> dtoById.put(product.getId(), mapper.toDTO(product)));
+        products.stream()
+                .filter(ProductCatalogVisibility::isVisibleToUsers)
+                .forEach(product -> dtoById.put(product.getId(), mapper.toDTO(product)));
         return productIds.stream()
                 .map(dtoById::get)
                 .filter(java.util.Objects::nonNull)

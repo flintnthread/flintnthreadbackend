@@ -26,6 +26,8 @@ public class ProductDetailResponse {
     private String status;
     private String rawStatus;
     private Integer stock;
+    /** Minimum order quantity from the lowest-price variant (when set). */
+    private Integer minQuantity;
     private String updated;
     private String category;
     private String categorySub;

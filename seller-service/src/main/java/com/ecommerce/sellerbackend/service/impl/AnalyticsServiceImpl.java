@@ -177,12 +177,32 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<SalesTrendPointDto> getOrdersTrend(Long sellerId, LocalDate from, LocalDate to) {
+        LocalDateTime[] range = AnalyticsPeriodUtil.resolveRange(from, to);
+        return buildCountTrendPoints(
+                orderItemRepository.countOrdersGroupedByDay(sellerId, range[0], range[1]),
+                range,
+                "custom");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<SalesTrendPointDto> getProductsTrend(Long sellerId, String period) {
         LocalDateTime[] range = AnalyticsPeriodUtil.resolveRange(period);
         return buildCountTrendPoints(
                 orderItemRepository.sumUnitsGroupedByDay(sellerId, range[0], range[1]),
                 range,
                 period);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SalesTrendPointDto> getProductsTrend(Long sellerId, LocalDate from, LocalDate to) {
+        LocalDateTime[] range = AnalyticsPeriodUtil.resolveRange(from, to);
+        return buildCountTrendPoints(
+                orderItemRepository.sumUnitsGroupedByDay(sellerId, range[0], range[1]),
+                range,
+                "custom");
     }
 
     @Override

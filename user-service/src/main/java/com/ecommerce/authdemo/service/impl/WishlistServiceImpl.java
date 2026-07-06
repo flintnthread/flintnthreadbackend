@@ -13,12 +13,15 @@ import com.ecommerce.authdemo.util.SizeColorMapper;
 import com.ecommerce.authdemo.repository.WishlistRepository;
 import com.ecommerce.authdemo.repository.UserRepository;
 import com.ecommerce.authdemo.service.ProductService;
+import com.ecommerce.authdemo.service.CustomerPriceResolver;
 import com.ecommerce.authdemo.service.WishlistService;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import com.ecommerce.authdemo.util.SecurityUtil;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -34,6 +37,7 @@ public class WishlistServiceImpl implements WishlistService {
     private final SecurityUtil securityUtil;
     private final UserRepository userRepository;
     private final SizeColorMapper sizeColorMapper;
+    private final CustomerPriceResolver customerPriceResolver;
 
 
     public WishlistServiceImpl(WishlistRepository wishlistRepository,
@@ -41,13 +45,15 @@ public class WishlistServiceImpl implements WishlistService {
                                ProductMapper productMapper,
                                SecurityUtil securityUtil,
                                UserRepository userRepository,
-                               SizeColorMapper sizeColorMapper) {
+                               SizeColorMapper sizeColorMapper,
+                               CustomerPriceResolver customerPriceResolver) {
         this.wishlistRepository = wishlistRepository;
         this.productService = productService;
         this.productMapper = productMapper;
         this.securityUtil = securityUtil;
         this.userRepository = userRepository;
         this.sizeColorMapper = sizeColorMapper;
+        this.customerPriceResolver = customerPriceResolver;
     }
 
     @Override
@@ -179,14 +185,18 @@ public class WishlistServiceImpl implements WishlistService {
         }
 
         if (product.getVariants() != null && !product.getVariants().isEmpty()) {
+            if (!ProductCatalogVisibility.isVisibleToUsers(product)) {
+                return response;
+            }
             // Find the specific variant that matches the variantId in the wishlist
             ProductVariant variant = product.getVariants().stream()
                     .filter(v -> v.getId().equals(wishlist.getVariantId()))
                     .findFirst()
                     .orElse(product.getVariants().iterator().next()); // Fallback to first variant
 
-            response.setMrpPrice(variant.getSellingPrice());
-            response.setSellingPrice(variant.getSellingPrice());
+            BigDecimal customerPrice = customerPriceResolver.resolveCustomerUnitPrice(product, variant);
+            response.setMrpPrice(variant.getMrpPrice());
+            response.setSellingPrice(customerPrice != null ? customerPrice : variant.getSellingPrice());
             response.setSize(sizeColorMapper.getSizeName(variant.getSize()));
             response.setColor(sizeColorMapper.getColorName(variant.getColor()));
             response.setInStock(variant.getStock() > 0);

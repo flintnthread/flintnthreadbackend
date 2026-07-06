@@ -225,10 +225,10 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     public BigDecimal getWalletDebitTotalForOrder(Integer userId, Long orderId) {
-        if (userId == null || orderId == null || orderId <= 0) {
+        if (userId == null || orderId == null || orderId <= 0 || orderId > Integer.MAX_VALUE) {
             return BigDecimal.ZERO;
         }
-        int orderIdInt = Math.toIntExact(orderId);
+        int orderIdInt = orderId.intValue();
         return walletTransactionRepo.findByUserIdAndOrderId(userId, orderIdInt).stream()
                 .filter(txn -> txn.getType() == WalletTransaction.Type.debit)
                 .map(WalletTransaction::getAmount)
