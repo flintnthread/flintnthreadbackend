@@ -1,5 +1,6 @@
 package com.ecommerce.authdemo.service;
 
+import com.ecommerce.authdemo.dto.Enum.DeliveryType;
 import com.ecommerce.authdemo.entity.Category;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.ProductVariant;
@@ -15,8 +16,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * Resolves customer-facing unit price:
- * sellingPrice (ex-GST) + GST (from category/HSN chain) + commission (from admin_settings).
+ * Customer-facing price:
+ * sellingPrice (ex-GST) + GST + commission + delivery (from variant DB columns).
+ * Default display uses metro-metro delivery (higher charge).
  */
 @Service
 @RequiredArgsConstructor
@@ -37,12 +39,25 @@ public class CustomerPriceResolver {
             BigDecimal priceAfterGst,
             BigDecimal commissionPercent,
             BigDecimal commissionAmount,
-            BigDecimal customerPrice) {}
+            BigDecimal priceBeforeDelivery,
+            BigDecimal intraCityDeliveryCharge,
+            BigDecimal metroMetroDeliveryCharge,
+            DeliveryType deliveryType,
+            BigDecimal deliveryCharge,
+            BigDecimal customerPrice,
+            BigDecimal totalPriceIntraCity,
+            BigDecimal totalPriceMetroMetro) {}
 
     public ResolvedPrice resolve(Product product, ProductVariant variant) {
+        return resolve(product, variant, DeliveryType.metro_metro);
+    }
+
+    public ResolvedPrice resolve(Product product, ProductVariant variant, DeliveryType deliveryType) {
         if (variant == null) {
             return null;
         }
+
+        DeliveryType effectiveType = deliveryType != null ? deliveryType : DeliveryType.metro_metro;
 
         BigDecimal sellingExcl = firstPositive(variant.getSellingPrice(), variant.getBasePrice());
         if (sellingExcl == null) {
@@ -82,7 +97,23 @@ public class CustomerPriceResolver {
                     .divide(HUNDRED, 2, RoundingMode.HALF_UP);
         }
 
-        BigDecimal customerPrice = priceAfterGst.add(commissionAmount).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal priceBeforeDelivery = priceAfterGst.add(commissionAmount).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal intraDelivery = nonNegative(variant.getIntraCityDeliveryCharge());
+        BigDecimal metroDelivery = nonNegative(variant.getMetroMetroDeliveryCharge());
+
+        BigDecimal totalIntra = positiveOrNull(variant.getTotalPriceIntraCity());
+        if (totalIntra == null) {
+            totalIntra = priceBeforeDelivery.add(intraDelivery).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal totalMetro = positiveOrNull(variant.getTotalPriceMetroMetro());
+        if (totalMetro == null) {
+            totalMetro = priceBeforeDelivery.add(metroDelivery).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal deliveryCharge = effectiveType == DeliveryType.intra_city ? intraDelivery : metroDelivery;
+        BigDecimal customerPrice = effectiveType == DeliveryType.intra_city ? totalIntra : totalMetro;
 
         return new ResolvedPrice(
                 sellingExcl,
@@ -91,12 +122,33 @@ public class CustomerPriceResolver {
                 priceAfterGst,
                 commissionPercent,
                 commissionAmount,
-                customerPrice);
+                priceBeforeDelivery,
+                intraDelivery,
+                metroDelivery,
+                effectiveType,
+                deliveryCharge,
+                customerPrice,
+                totalIntra,
+                totalMetro);
     }
 
     public BigDecimal resolveCustomerUnitPrice(Product product, ProductVariant variant) {
-        ResolvedPrice resolved = resolve(product, variant);
+        return resolveCustomerUnitPrice(product, variant, DeliveryType.metro_metro);
+    }
+
+    public BigDecimal resolveCustomerUnitPrice(Product product, ProductVariant variant, DeliveryType deliveryType) {
+        ResolvedPrice resolved = resolve(product, variant, deliveryType);
         return resolved != null ? resolved.customerPrice() : null;
+    }
+
+    public BigDecimal resolveDeliveryCharge(ProductVariant variant, DeliveryType deliveryType) {
+        if (variant == null) {
+            return BigDecimal.ZERO;
+        }
+        DeliveryType effectiveType = deliveryType != null ? deliveryType : DeliveryType.metro_metro;
+        return effectiveType == DeliveryType.intra_city
+                ? nonNegative(variant.getIntraCityDeliveryCharge())
+                : nonNegative(variant.getMetroMetroDeliveryCharge());
     }
 
     private BigDecimal resolveGstPercent(Product product, ProductVariant variant) {
@@ -205,5 +257,19 @@ public class CustomerPriceResolver {
             }
         }
         return null;
+    }
+
+    private static BigDecimal positiveOrNull(BigDecimal value) {
+        if (value != null && value.compareTo(BigDecimal.ZERO) > 0) {
+            return value.setScale(2, RoundingMode.HALF_UP);
+        }
+        return null;
+    }
+
+    private static BigDecimal nonNegative(BigDecimal value) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) < 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return value.setScale(2, RoundingMode.HALF_UP);
     }
 }

@@ -10,6 +10,10 @@ public interface CartService {
 
     CartResponseDTO getCart();
 
+    CartResponseDTO getCart(Integer addressId);
+
+    CartResponseDTO previewCartForAddress(Integer addressId);
+
     // ✅ change = +1 / -1 (IMPORTANT for your frontend)
     CartResponseDTO updateQuantity(Long itemId, Integer change);
 

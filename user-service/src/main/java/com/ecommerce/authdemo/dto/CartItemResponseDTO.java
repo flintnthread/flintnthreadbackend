@@ -26,6 +26,9 @@ public class CartItemResponseDTO {
     /** Unit MRP / list price before line discount. */
     private BigDecimal mrpPrice;
 
+    /** Per-unit delivery charge for the active delivery zone (metro-metro by default on catalog). */
+    private BigDecimal deliveryCharge;
+
     private Integer quantity;
 
     // ✅ Total price = price * quantity

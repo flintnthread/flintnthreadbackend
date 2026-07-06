@@ -1,19 +1,25 @@
 package com.ecommerce.authdemo.service.impl;
 
 import com.ecommerce.authdemo.dto.*;
+import com.ecommerce.authdemo.entity.Address;
 import com.ecommerce.authdemo.entity.Cart;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.ProductVariant;
+import com.ecommerce.authdemo.entity.Seller;
 import com.ecommerce.authdemo.entity.User;
+import com.ecommerce.authdemo.dto.Enum.DeliveryType;
 import com.ecommerce.authdemo.exception.ResourceNotFoundException;
 import com.ecommerce.authdemo.exception.CartException;
+import com.ecommerce.authdemo.repository.AddressRepository;
 import com.ecommerce.authdemo.repository.CartRepository;
 import com.ecommerce.authdemo.repository.ProductImageRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.ProductVariantRepository;
+import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.repository.UserRepository;
 import com.ecommerce.authdemo.service.CartService;
 import com.ecommerce.authdemo.service.CustomerPriceResolver;
+import com.ecommerce.authdemo.service.DeliveryZoneResolver;
 import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import com.ecommerce.authdemo.util.SecurityUtil;
 import com.ecommerce.authdemo.util.SizeColorMapper;
@@ -41,6 +47,9 @@ public class CartServiceImpl implements CartService {
     private final ProductVariantRepository productVariantRepository;
     private final SizeColorMapper sizeColorMapper;
     private final CustomerPriceResolver customerPriceResolver;
+    private final DeliveryZoneResolver deliveryZoneResolver;
+    private final AddressRepository addressRepository;
+    private final SellerRepository sellerRepository;
     
     @Value("${app.media.public-base-url}")
     private String publicBaseUrl;
@@ -54,7 +63,7 @@ public class CartServiceImpl implements CartService {
         validateAddToCartRequest(dto);
         
         Long userId = securityUtil.getCurrentUserId();
-        BigDecimal productPrice = resolveUnitPriceStrict(dto.getProductId(), dto.getVariantId());
+        LinePricing linePricing = resolveLinePricing(dto.getProductId(), dto.getVariantId(), null);
         
         // Check if item already exists in cart
         Optional<Cart> existingCart = cartRepository.findByUser_IdAndProductIdAndVariantId(
@@ -65,11 +74,7 @@ public class CartServiceImpl implements CartService {
             int newQuantity = cart.getQuantity() + dto.getQuantity();
             validateQuantity(newQuantity);
             cart.setQuantity(newQuantity);
-            cart.setPrice(productPrice);
-            cart.setTotalAmount(productPrice.multiply(BigDecimal.valueOf(newQuantity)));
-            BigDecimal discount = cart.getDiscountAmount() != null ? cart.getDiscountAmount() : BigDecimal.ZERO;
-            BigDecimal shipping = cart.getShippingAmount() != null ? cart.getShippingAmount() : BigDecimal.ZERO;
-            cart.setFinalAmount(cart.getTotalAmount().subtract(discount).add(shipping));
+            applyLinePricing(cart, linePricing);
             cartRepository.save(cart);
             log.info("Updated existing cart item: cartId={}, newQuantity={}", cart.getId(), newQuantity);
         } else {
@@ -78,14 +83,14 @@ public class CartServiceImpl implements CartService {
                     dto.getProductId(),
                     dto.getVariantId(),
                     dto.getQuantity(),
-                    productPrice
+                    linePricing
             );
             log.info("Created new cart item: cartId={}", newCart.getId());
         }
 
         // Get updated cart items
         List<Cart> cartItems = cartRepository.findAllByUser_Id(userId);
-        return buildCartResponse(cartItems);
+        return buildCartResponse(cartItems, null);
     }
 
     @Override
@@ -93,7 +98,23 @@ public class CartServiceImpl implements CartService {
     public CartResponseDTO getCart() {
         Long userId = securityUtil.getCurrentUserId();
         List<Cart> cartItems = cartRepository.findAllByUser_Id(userId);
-        return buildCartResponse(cartItems);
+        return buildCartResponse(cartItems, null);
+    }
+
+    @Override
+    @Transactional
+    public CartResponseDTO getCart(Integer addressId) {
+        Long userId = securityUtil.getCurrentUserId();
+        List<Cart> cartItems = cartRepository.findAllByUser_Id(userId);
+        Address address = loadUserAddress(userId, addressId);
+        refreshCartDeliveryForAddress(cartItems, address);
+        return buildCartResponse(cartItems, address);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CartResponseDTO previewCartForAddress(Integer addressId) {
+        return getCart(addressId);
     }
 
     @Override
@@ -135,23 +156,16 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
         log.info("Item removed due to zero quantity: itemId={}", itemId);
     } else {
         // ✅ UPDATE QUANTITY
-        BigDecimal productPrice = resolveUnitPriceStrict(cart.getProductId(), cart.getVariantId());
-
         cart.setQuantity(newQuantity);
-        cart.setPrice(productPrice);
-        cart.setTotalAmount(productPrice.multiply(BigDecimal.valueOf(newQuantity)));
-
-        BigDecimal discount = cart.getDiscountAmount() != null ? cart.getDiscountAmount() : BigDecimal.ZERO;
-        BigDecimal shipping = cart.getShippingAmount() != null ? cart.getShippingAmount() : BigDecimal.ZERO;
-
-        cart.setFinalAmount(cart.getTotalAmount().subtract(discount).add(shipping));
+        LinePricing linePricing = resolveLinePricing(cart.getProductId(), cart.getVariantId(), null);
+        applyLinePricing(cart, linePricing);
 
         cartRepository.save(cart);
         log.info("Updated cart item quantity: itemId={}, newQuantity={}", itemId, newQuantity);
     }
 
     List<Cart> cartItems = cartRepository.findAllByUser_Id(securityUtil.getCurrentUserId());
-    return buildCartResponse(cartItems);
+    return buildCartResponse(cartItems, null);
 }
 
     @Override
@@ -167,7 +181,7 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
         cartRepository.delete(cart);
         
         List<Cart> cartItems = cartRepository.findAllByUser_Id(securityUtil.getCurrentUserId());
-        return buildCartResponse(cartItems);
+        return buildCartResponse(cartItems, null);
     }
 
     @Override
@@ -227,12 +241,23 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
             cartRepository.save(cart);
         }
 
-        return buildCartResponse(cartItems);
+        return buildCartResponse(cartItems, null);
     }
 
-    private CartResponseDTO buildCartResponse(List<Cart> cartItems) {
+    private record LinePricing(
+            DeliveryType deliveryType,
+            BigDecimal baseUnitPrice,
+            BigDecimal deliveryUnitCharge,
+            BigDecimal customerUnitPrice) {}
+
+    private CartResponseDTO buildCartResponse(List<Cart> cartItems, Address address) {
+        if (address != null) {
+            refreshCartDeliveryForAddress(cartItems, address);
+        } else {
+            refreshCartDeliveryForAddress(cartItems, null);
+        }
+
         List<CartItemResponseDTO> itemDTOs = new ArrayList<>();
-        List<Cart> cartsToPersist = new ArrayList<>();
 
         for (Cart cart : cartItems) {
             CartItemResponseDTO dto = new CartItemResponseDTO();
@@ -240,61 +265,31 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
             dto.setProductId(cart.getProductId());
             dto.setVariantId(cart.getVariantId());
 
-            // ✅ DEBUG: Log cart variantId before lookup
-            log.info("[STOCK DEBUG] Cart itemId={}, variantId={}", cart.getId(), cart.getVariantId());
-
-            // ✅ Fetch variant with product to ensure proper loading
             ProductVariant variant = null;
             if (cart.getVariantId() != null) {
                 variant = productVariantRepository.findByIdWithProduct(cart.getVariantId()).orElse(null);
             }
 
             if (variant != null) {
-                // ✅ Get stock directly from variant
                 Integer stock = variant.getStock();
-
-                // ✅ DEBUG: Log raw stock value from entity
-                log.info("[STOCK DEBUG] variantId={}, rawStockFromDB={}", cart.getVariantId(), stock);
-
-                // Handle null stock as 0
-                int availableStock = (stock != null) ? stock : 0;
-
+                int availableStock = stock != null ? stock : 0;
                 dto.setAvailableStock(availableStock);
                 dto.setOutOfStock(availableStock <= 0);
-
-                log.info("[STOCK SET] itemId={}, variantId={}, availableStock={}, outOfStock={}",
-                        cart.getId(), cart.getVariantId(), availableStock, availableStock <= 0);
-
             } else {
-                log.warn("[STOCK DEBUG] Variant NOT FOUND for variantId={}", cart.getVariantId());
                 dto.setAvailableStock(0);
                 dto.setOutOfStock(true);
             }
 
-            BigDecimal unitSell = resolveSellingForCartLine(variant, cart);
+            LinePricing linePricing = resolveLinePricing(cart.getProductId(), cart.getVariantId(), address);
+            BigDecimal unitCustomer = linePricing.customerUnitPrice();
             BigDecimal rawMrp = variant != null ? variant.resolveMrpUnitPrice() : null;
-            BigDecimal unitMrp = (rawMrp != null && rawMrp.compareTo(unitSell) > 0) ? rawMrp : unitSell;
+            BigDecimal unitMrp = rawMrp != null && rawMrp.compareTo(unitCustomer) > 0 ? rawMrp : unitCustomer;
 
-            // ✅ PRICE CORRECTION BLOCK (if variant exists)
-            if (variant != null) {
-                // 🔥 FIX PRICE if wrong
-                BigDecimal stored = cart.getPrice() != null ? cart.getPrice() : BigDecimal.ZERO;
-                if (stored.compareTo(unitSell) != 0) {
-                    cart.setPrice(unitSell);
-                    cart.setTotalAmount(unitSell.multiply(BigDecimal.valueOf(cart.getQuantity())));
-                    BigDecimal lineDiscount = cart.getDiscountAmount() != null ? cart.getDiscountAmount() : BigDecimal.ZERO;
-                    BigDecimal lineShipping = cart.getShippingAmount() != null ? cart.getShippingAmount() : BigDecimal.ZERO;
-                    cart.setFinalAmount(cart.getTotalAmount().subtract(lineDiscount).add(lineShipping));
-                    if (!cartsToPersist.contains(cart)) {
-                        cartsToPersist.add(cart);
-                    }
-                }
-            }
-
-            dto.setSellingPrice(unitSell);
+            dto.setSellingPrice(unitCustomer);
             dto.setMrpPrice(unitMrp);
-            dto.setPrice(unitSell);
+            dto.setPrice(unitCustomer);
             dto.setOriginalPrice(unitMrp);
+            dto.setDeliveryCharge(linePricing.deliveryUnitCharge());
 
             String productTitle = productRepository.findById(cart.getProductId())
                     .map(Product::getName)
@@ -303,42 +298,33 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
                     .orElse("Product " + cart.getProductId());
             dto.setName(productTitle);
             dto.setProductName(productTitle);
-
             dto.setImageUrl(getProductImageUrl(cart.getProductId()));
             dto.setQuantity(cart.getQuantity());
-            dto.setTotal(unitSell.multiply(BigDecimal.valueOf(cart.getQuantity())));
+            dto.setTotal(unitCustomer.multiply(BigDecimal.valueOf(cart.getQuantity())));
 
-            // ✅ Set size/color from variant (stock already set above)
             if (variant != null) {
-                String sizeLabel = sizeColorMapper.getSizeName(variant.getSize());
-                String colorLabel = sizeColorMapper.getColorName(variant.getColor());
-
-                dto.setSize(sizeLabel);
-                dto.setColor(colorLabel);
-                dto.setColorName(colorLabel);
+                dto.setSize(sizeColorMapper.getSizeName(variant.getSize()));
+                dto.setColor(sizeColorMapper.getColorName(variant.getColor()));
+                dto.setColorName(sizeColorMapper.getColorName(variant.getColor()));
             }
 
             itemDTOs.add(dto);
         }
 
-        if (!cartsToPersist.isEmpty()) {
-            cartRepository.saveAll(cartsToPersist);
-        }
-
-        BigDecimal subtotal = itemDTOs.stream()
-                .map(i -> i.getPrice().multiply(BigDecimal.valueOf(i.getQuantity())))
+        BigDecimal subtotal = cartItems.stream()
+                .map(cart -> cart.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+
         BigDecimal discount = cartItems.stream()
                 .map(Cart::getDiscountAmount)
                 .map(amount -> amount != null ? amount : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+
         BigDecimal delivery = cartItems.stream()
                 .map(Cart::getShippingAmount)
                 .map(amount -> amount != null ? amount : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+
         BigDecimal finalTotal = subtotal.add(delivery).subtract(discount);
 
         PriceSummaryDTO summary = new PriceSummaryDTO();
@@ -347,7 +333,6 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
         summary.setDeliveryCharge(delivery);
         summary.setFinalTotal(finalTotal);
 
-        // Calculate distinct product count (unique productIds)
         long distinctProductCount = cartItems.stream()
                 .map(Cart::getProductId)
                 .distinct()
@@ -358,50 +343,113 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
         response.setPriceSummary(summary);
         response.setCouponApplied(cartItems.isEmpty() ? null : cartItems.get(0).getCouponCode());
         response.setProductCount((int) distinctProductCount);
-
         return response;
     }
 
-   private Cart createCart(
-           Long userId,
-           Long productId,
-           Long variantId,
-           Integer quantity,
-           BigDecimal price
-   ) {
-
-    if (variantId == null) {
-        throw new CartException("Variant ID is required");
+    private void refreshCartDeliveryForAddress(List<Cart> cartItems, Address address) {
+        List<Cart> changed = new ArrayList<>();
+        for (Cart cart : cartItems) {
+            LinePricing before = linePricingFromCart(cart);
+            LinePricing after = resolveLinePricing(cart.getProductId(), cart.getVariantId(), address);
+            if (before.deliveryType() != after.deliveryType()
+                    || before.baseUnitPrice().compareTo(after.baseUnitPrice()) != 0
+                    || before.deliveryUnitCharge().compareTo(after.deliveryUnitCharge()) != 0) {
+                applyLinePricing(cart, after);
+                changed.add(cart);
+            }
+        }
+        if (!changed.isEmpty()) {
+            cartRepository.saveAll(changed);
+        }
     }
 
-    User user = userRepository.findById(userId)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-    Cart cart = Cart.builder()
-            .user(user)
-            .sessionId("USER-" + userId)
-            .productId(productId)
-            .variantId(variantId) // ✅ FIXED (removed default 1L)
-            .quantity(quantity != null ? quantity : 1)
-            .price(price != null ? price : BigDecimal.ZERO)
-            .deliveryType(com.ecommerce.authdemo.dto.Enum.DeliveryType.metro_metro)
-            .totalAmount(price.multiply(BigDecimal.valueOf(quantity)))
-            .discountAmount(BigDecimal.ZERO)
-            .shippingAmount(BigDecimal.ZERO)
-            .finalAmount(price.multiply(BigDecimal.valueOf(quantity)))
-            .currency("USD")
-            .build();
-
-    return cartRepository.save(cart);
-}
-    private Cart getCartEntity() {
-        Long userId = securityUtil.getCurrentUserId();
-        return getOrCreateCart(userId);
+    private LinePricing linePricingFromCart(Cart cart) {
+        BigDecimal base = cart.getPrice() != null ? cart.getPrice() : BigDecimal.ZERO;
+        int qty = cart.getQuantity() != null && cart.getQuantity() > 0 ? cart.getQuantity() : 1;
+        BigDecimal lineShipping = cart.getShippingAmount() != null ? cart.getShippingAmount() : BigDecimal.ZERO;
+        BigDecimal deliveryUnit = lineShipping.divide(BigDecimal.valueOf(qty), 2, java.math.RoundingMode.HALF_UP);
+        DeliveryType type = cart.getDeliveryType() != null ? cart.getDeliveryType() : DeliveryType.metro_metro;
+        return new LinePricing(type, base, deliveryUnit, base.add(deliveryUnit));
     }
 
-    private Cart getOrCreateCart(Long userId) {
-        return cartRepository.findByUser_Id(userId)
-                .orElseGet(() -> createCart(userId, 0L, 1L, 1, BigDecimal.ZERO));
+    private void applyLinePricing(Cart cart, LinePricing pricing) {
+        int qty = cart.getQuantity() != null && cart.getQuantity() > 0 ? cart.getQuantity() : 1;
+        cart.setPrice(pricing.baseUnitPrice());
+        cart.setDeliveryType(pricing.deliveryType());
+        BigDecimal lineShipping = pricing.deliveryUnitCharge().multiply(BigDecimal.valueOf(qty));
+        cart.setShippingAmount(lineShipping);
+        cart.setTotalAmount(pricing.baseUnitPrice().multiply(BigDecimal.valueOf(qty)));
+        BigDecimal discount = cart.getDiscountAmount() != null ? cart.getDiscountAmount() : BigDecimal.ZERO;
+        cart.setFinalAmount(cart.getTotalAmount().subtract(discount).add(lineShipping));
+    }
+
+    private LinePricing resolveLinePricing(Long productId, Long variantId, Address address) {
+        ProductVariant variant = productVariantRepository.findByIdWithProduct(variantId)
+                .orElseThrow(() -> new CartException("Product variant not found"));
+        Product product = variant.getProduct();
+        if (product == null || !product.getId().equals(productId)) {
+            throw new CartException("Variant does not belong to this product");
+        }
+        if (!ProductCatalogVisibility.isVisibleToUsers(product)) {
+            throw new CartException("Product is not available for purchase");
+        }
+
+        DeliveryType deliveryType = DeliveryType.metro_metro;
+        if (address != null && product.getSellerId() != null) {
+            Seller seller = sellerRepository.findById(product.getSellerId()).orElse(null);
+            String sellerPincode = seller != null ? seller.getPincode() : null;
+            deliveryType = deliveryZoneResolver.resolveDeliveryType(
+                    sellerPincode, address.getPincode(), address.getCity());
+        }
+
+        CustomerPriceResolver.ResolvedPrice resolved =
+                customerPriceResolver.resolve(product, variant, deliveryType);
+        if (resolved == null) {
+            throw new CartException("Price not available for this product variant");
+        }
+
+        return new LinePricing(
+                deliveryType,
+                resolved.priceBeforeDelivery(),
+                resolved.deliveryCharge(),
+                resolved.customerPrice());
+    }
+
+    private Address loadUserAddress(Long userId, Integer addressId) {
+        if (addressId == null) {
+            return null;
+        }
+        return addressRepository.findByIdAndUserId(addressId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Address not found for current user"));
+    }
+
+    private Cart createCart(
+            Long userId,
+            Long productId,
+            Long variantId,
+            Integer quantity,
+            LinePricing pricing) {
+
+        if (variantId == null) {
+            throw new CartException("Variant ID is required");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        Cart cart = Cart.builder()
+                .user(user)
+                .sessionId("USER-" + userId)
+                .productId(productId)
+                .variantId(variantId)
+                .quantity(quantity != null ? quantity : 1)
+                .price(pricing.baseUnitPrice())
+                .deliveryType(pricing.deliveryType())
+                .discountAmount(BigDecimal.ZERO)
+                .currency("INR")
+                .build();
+        applyLinePricing(cart, pricing);
+        return cartRepository.save(cart);
     }
 
     private void validateAddToCartRequest(AddToCartDTO dto) {
@@ -458,54 +506,6 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
         if (!cart.getUserId().equals(currentUserId)) {
             throw new CartException("Access denied: You can only modify your own cart");
         }
-    }
-
-    /**
-     * Unit price when writing cart rows: selling + GST + commission via {@link CustomerPriceResolver}.
-     */
-    private BigDecimal resolveUnitPriceStrict(Long productId, Long variantId) {
-        ProductVariant variant = productVariantRepository.findByIdWithProduct(variantId)
-                .orElseThrow(() -> new CartException("Product variant not found"));
-        if (variant.getProduct() == null || !variant.getProduct().getId().equals(productId)) {
-            throw new CartException("Variant does not belong to this product");
-        }
-        if (!ProductCatalogVisibility.isVisibleToUsers(variant.getProduct())) {
-            throw new CartException("Product is not available for purchase");
-        }
-        BigDecimal fromVariant = customerPriceResolver.resolveCustomerUnitPrice(variant.getProduct(), variant);
-        if (fromVariant != null && fromVariant.compareTo(BigDecimal.ZERO) > 0) {
-            return fromVariant;
-        }
-        return getProductPriceFallback(productId);
-    }
-
-    private BigDecimal getProductPriceFallback(Long productId) {
-        return BigDecimal.valueOf(500 + (productId % 100) * 10);
-    }
-
-    /**
-     * Customer unit price for a cart row: selling + GST + commission, else stored cart price.
-     */
-    private BigDecimal resolveSellingForCartLine(ProductVariant variant, Cart cart) {
-        if (variant != null && variant.getProduct() != null) {
-            BigDecimal v = customerPriceResolver.resolveCustomerUnitPrice(variant.getProduct(), variant);
-            if (v != null && v.compareTo(BigDecimal.ZERO) > 0) {
-                return v;
-            }
-        }
-        BigDecimal stored = cart.getPrice();
-        if (stored != null && stored.compareTo(BigDecimal.ZERO) > 0) {
-            return stored;
-        }
-        return getProductPriceFallback(cart.getProductId());
-    }
-
-    private BigDecimal calculateShipping(BigDecimal subtotal) {
-        // Free shipping for orders above $1000
-        if (subtotal.compareTo(BigDecimal.valueOf(1000)) >= 0) {
-            return BigDecimal.ZERO;
-        }
-        return BigDecimal.valueOf(99);
     }
 
     private String getProductImageUrl(Long productId) {
