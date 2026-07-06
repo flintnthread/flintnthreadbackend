@@ -20,7 +20,11 @@ public interface AnalyticsService {
 
     List<SalesTrendPointDto> getOrdersTrend(Long sellerId, String period);
 
+    List<SalesTrendPointDto> getOrdersTrend(Long sellerId, LocalDate from, LocalDate to);
+
     List<SalesTrendPointDto> getProductsTrend(Long sellerId, String period);
+
+    List<SalesTrendPointDto> getProductsTrend(Long sellerId, LocalDate from, LocalDate to);
 
     List<PaymentMethodBreakdownDto> getPaymentMethods(Long sellerId, String period);
 

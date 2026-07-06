@@ -93,8 +93,9 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             List<OrderItem> items = itemsByOrder.getOrDefault(order.getId(), List.of());
             summary.put("products", buildProductPreviews(items, productImageById, productNameById));
             summary.put("sellers", buildSellerPreviews(items, sellersById));
-            summary.put("sellerGroups", buildInvoiceSellerGroups(
-                    items, productsById, sellersById, productImageById, productNameById));
+            List<Map<String, Object>> sellerGroups = buildInvoiceSellerGroups(
+                    items, productsById, sellersById, productImageById, productNameById);
+            enrichOrderDocumentFlags(summary, order, items, sellerGroups);
             appendListShippingMeta(summary, order, items);
             return summary;
         }));
@@ -196,8 +197,9 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         detail.put("items", items.stream().map(item -> toItem(item, productImageById, productNameById)).toList());
         detail.put("statusHistory", statusHistory.stream().map(this::toStatusHistoryRow).toList());
         detail.put("sellers", buildSellerPreviews(items, sellersById));
-        detail.put("sellerGroups", buildInvoiceSellerGroups(
-                items, resolveProducts(items), sellersById, productImageById, productNameById));
+        List<Map<String, Object>> sellerGroups = buildInvoiceSellerGroups(
+                items, resolveProducts(items), sellersById, productImageById, productNameById);
+        enrichOrderDocumentFlags(detail, order, items, sellerGroups);
         appendListShippingMeta(detail, order, items);
         return detail;
     }
@@ -344,10 +346,21 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     @Transactional
     public Map<String, Object> updateGstStatus(Long id, String gstStatus) {
         Order order = requireOrder(id);
-        String normalized = requireNonBlank(gstStatus, "GST status");
+        String normalized = normalizeGstStatus(requireNonBlank(gstStatus, "GST status"));
         order.setGstInfo(normalized);
         orderRepository.save(order);
         return Map.of("orderId", id, "gstStatus", normalized, "message", "GST status updated.");
+    }
+
+    private String normalizeGstStatus(String gstStatus) {
+        String value = gstStatus.trim();
+        if ("filed".equalsIgnoreCase(value)) {
+            return "Filed";
+        }
+        if ("pending".equalsIgnoreCase(value) || "not filed".equalsIgnoreCase(value)) {
+            return "Not Filed";
+        }
+        throw new IllegalArgumentException("Unsupported GST status: " + gstStatus);
     }
 
     private Order requireOrder(Long id) {
@@ -454,6 +467,22 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         summary.put("shiprocketCourierName", order.getShiprocketCourierName());
         summary.put("shiprocketTrackingUrl", order.getShiprocketTrackingUrl());
         return summary;
+    }
+
+    private void enrichOrderDocumentFlags(
+            Map<String, Object> target,
+            Order order,
+            List<OrderItem> items,
+            List<Map<String, Object>> sellerGroups) {
+        boolean hasInvoice = items != null && !items.isEmpty();
+        boolean hasShippingLabel = !isBlank(order.getShiprocketAwbCode());
+        target.put("hasInvoice", hasInvoice);
+        target.put("hasShippingLabel", hasShippingLabel);
+        for (Map<String, Object> group : sellerGroups) {
+            group.put("hasInvoice", hasInvoice);
+            group.put("hasShippingLabel", hasShippingLabel);
+        }
+        target.put("sellerGroups", sellerGroups);
     }
 
     private void appendListShippingMeta(Map<String, Object> summary, Order order, List<OrderItem> items) {

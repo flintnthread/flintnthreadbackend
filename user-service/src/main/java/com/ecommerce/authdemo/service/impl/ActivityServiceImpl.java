@@ -4,6 +4,7 @@ import com.ecommerce.authdemo.dto.ActivitySummaryDTO;
 import com.ecommerce.authdemo.dto.RecentlyViewedActivityDTO;
 import com.ecommerce.authdemo.dto.UserActivityReviewDTO;
 import com.ecommerce.authdemo.entity.Category;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.ProductImage;
 import com.ecommerce.authdemo.entity.ProductReview;
@@ -15,6 +16,7 @@ import com.ecommerce.authdemo.repository.ReviewRepository;
 import com.ecommerce.authdemo.mapper.ProductMapper;
 import com.ecommerce.authdemo.repository.WishlistRepository;
 import com.ecommerce.authdemo.service.ActivityService;
+import com.ecommerce.authdemo.service.CustomerPriceResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +37,7 @@ public class ActivityServiceImpl implements ActivityService {
     private final WishlistRepository wishlistRepository;
     private final ReviewRepository reviewRepository;
     private final ProductMapper productMapper;
+    private final CustomerPriceResolver customerPriceResolver;
 
     @Override
     @Transactional(readOnly = true)
@@ -91,7 +94,9 @@ public class ActivityServiceImpl implements ActivityService {
             return List.of();
         }
 
-        List<Product> products = productRepository.findAllWithImagesAndVariantsByIdIn(productIds);
+        List<Product> products = productRepository.findAllWithImagesAndVariantsByIdIn(productIds).stream()
+                .filter(ProductCatalogVisibility::isVisibleToUsers)
+                .toList();
         Map<Long, Product> productById = products.stream()
                 .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
 
@@ -199,7 +204,9 @@ public class ActivityServiceImpl implements ActivityService {
             Map<Long, String> categoryNames
     ) {
         ProductVariant variant = pickVariant(product);
-        BigDecimal selling = variant != null ? variant.resolveSellingUnitPrice() : null;
+        BigDecimal selling = variant != null
+                ? customerPriceResolver.resolveCustomerUnitPrice(product, variant)
+                : null;
         BigDecimal mrp = variant != null ? variant.resolveMrpUnitPrice() : null;
         Integer stock = variant != null ? variant.getStock() : null;
         boolean inStock = stock != null ? stock > 0 : true;

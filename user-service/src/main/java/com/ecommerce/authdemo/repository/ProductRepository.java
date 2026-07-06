@@ -27,17 +27,36 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     // ---------------- BASIC ----------------
 
+    Page<Product> findByCategoryIdAndStatus(Long categoryId, String status, Pageable pageable);
+
+    Page<Product> findBySellerIdAndStatus(Long sellerId, String status, Pageable pageable);
+
+    List<Product> findTop10ByStatusOrderByCreatedAtDesc(String status);
+
+    List<Product> findTop10ByStatusOrderByIdDesc(String status);
+
+    List<Product> findTop5ByNameContainingIgnoreCaseAndStatus(String name, String status);
+
+    List<Product> findTop10ByCategoryIdAndStatusAndIdNot(Long categoryId, String status, Long id);
+
+    List<Product> findTop20BySellerIdAndStatusOrderByCreatedAtDesc(Long sellerId, String status);
+
+    long countBySellerIdAndStatus(Long sellerId, String status);
+
+    long countByCategoryIdAndStatus(Long categoryId, String status);
+
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);
 
     Long countByCategoryId(Long categoryId);
 
-    Long countByGender(String gender);
-
-    @Query("SELECT COUNT(p) FROM Product p JOIN p.variants v WHERE v.sellingPrice BETWEEN :min AND :max")
+    @Query("SELECT COUNT(p) FROM Product p JOIN p.variants v WHERE p.status = 'active' AND v.sellingPrice BETWEEN :min AND :max")
     Long countByPriceRange(@Param("min") Double min, @Param("max") Double max);
 
-    @Query("SELECT COUNT(p) FROM Product p WHERE p.rating >= :rating")
+    @Query("SELECT COUNT(p) FROM Product p WHERE p.status = 'active' AND p.rating >= :rating")
     Long countByMinRating(@Param("rating") Integer rating);
+
+    @Query("SELECT COUNT(p) FROM Product p WHERE p.status = 'active' AND p.gender = :gender")
+    Long countByGender(@Param("gender") String gender);
 
     List<Product> findTop10ByOrderByCreatedAtDesc();
 
@@ -85,7 +104,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     // ---------------- SEARCH ----------------
 
-    @Query("SELECT p FROM Product p WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))")
+    @Query("SELECT p FROM Product p WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%')) AND p.status = 'active'")
 
     List<Product> search(@Param("keyword") String keyword);
 
@@ -197,6 +216,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN p.views v
 
+        WHERE p.status = 'active'
+
         GROUP BY p
 
         ORDER BY COUNT(v.id) DESC
@@ -213,13 +234,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         FROM products p
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
            OR p.category_id IN (
 
                SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-           )
+           ))
 
         ORDER BY p.created_at DESC
 
@@ -237,13 +260,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         FROM products p
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
            OR p.category_id IN (
 
                SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-           )
+           ))
 
         ORDER BY p.created_at DESC
 
@@ -263,13 +288,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN product_views v ON v.product_id = p.id
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
            OR p.category_id IN (
 
                SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-           )
+           ))
 
         GROUP BY p.id
 
@@ -291,7 +318,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN p.views v
 
-        WHERE v.viewedAt >= :date
+        WHERE p.status = 'active'
+
+          AND v.viewedAt >= :date
 
         GROUP BY p
 
@@ -312,6 +341,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
         JOIN product_views v ON v.product_id = p.id
 
         WHERE v.viewed_at >= :date
+
+          AND p.status = 'active'
 
           AND (
 
@@ -343,13 +374,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         FROM products p
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
            OR p.category_id IN (
 
                SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-           )
+           ))
 
         ORDER BY p.created_at DESC
 
@@ -371,13 +404,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         LEFT JOIN product_views pv ON pv.product_id = p.id
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
            OR p.category_id IN (
 
                SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-           )
+           ))
 
         GROUP BY p.id
 
@@ -407,17 +442,21 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
             FROM products p2
 
-            WHERE p2.category_id = :mainCategoryId
+            WHERE p2.status = 'active'
+
+              AND (p2.category_id = :mainCategoryId
 
                OR p2.category_id IN (
 
                    SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-               )
+               ))
 
             GROUP BY LOWER(TRIM(p2.name))
 
         ) uniq ON uniq.id = p.id
+
+        WHERE p.status = 'active'
 
         ORDER BY p.created_at DESC
 
@@ -437,13 +476,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN order_items oi ON oi.product_id = p.id
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
            OR p.category_id IN (
 
                SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-           )
+           ))
 
         GROUP BY p.id
 
@@ -467,7 +508,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         LEFT JOIN product_variants v ON v.product_id = p.id
 
-        WHERE (
+        WHERE p.status = 'active'
+
+          AND (
 
                p.category_id = :mainCategoryId
 
@@ -535,7 +578,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN products p ON p.id = pv.product_id
 
-        WHERE (
+        WHERE p.status = 'active'
+
+          AND (
 
                p.category_id = :mainCategoryId
 
@@ -581,7 +626,11 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         FROM product_views pv
 
-        WHERE (
+        JOIN products p ON p.id = pv.product_id
+
+        WHERE p.status = 'active'
+
+          AND (
 
                (:userId IS NOT NULL AND pv.user_id = :userId)
 
@@ -612,6 +661,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @Query("""
         SELECT p FROM Product p
         WHERE p.categoryId = :categoryId
+          AND p.status = 'active'
         ORDER BY p.createdAt DESC
     """)
     List<Product> findByCategoryFull(@Param("categoryId") Long categoryId);
@@ -625,6 +675,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @Query("""
         SELECT p FROM Product p
         WHERE p.subcategoryId = :subId
+          AND p.status = 'active'
         ORDER BY p.createdAt DESC
     """)
     List<Product> findBySubCategoryFull(@Param("subId") Long subId);
@@ -640,6 +691,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
         FROM products p
 
         JOIN product_variants v ON p.id = v.product_id
+
+        WHERE p.status = 'active'
 
         GROUP BY p.id
 
@@ -663,7 +716,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN product_variants v ON p.id = v.product_id
 
-        WHERE p.category_id = :categoryId
+        WHERE p.status = 'active'
+
+          AND p.category_id = :categoryId
 
         GROUP BY p.id
 
@@ -687,6 +742,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     JOIN product_variants v ON p.id = v.product_id
 
+    WHERE p.status = 'active'
+
     GROUP BY p.id
 
     ORDER BY MAX(v.discount_percentage) DESC
@@ -707,13 +764,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN product_variants v ON p.id = v.product_id
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
            OR p.category_id IN (
 
                SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-           )
+           ))
 
         GROUP BY p.id
 
@@ -733,7 +792,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN product_variants v ON p.id = v.product_id
 
-        WHERE (
+        WHERE p.status = 'active'
+
+          AND (
 
                p.category_id = :mainCategoryId
 
@@ -771,7 +832,9 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         JOIN product_variants v ON p.id = v.product_id
 
-        WHERE (
+        WHERE p.status = 'active'
+
+          AND (
 
                p.category_id = :mainCategoryId
 
@@ -806,7 +869,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     SELECT p.*
     FROM products p
     JOIN product_variants v ON v.product_id = p.id
-    WHERE v.selling_price > 0
+    WHERE p.status = 'active'
+      AND v.selling_price > 0
     GROUP BY p.id
     ORDER BY MIN(v.selling_price) ASC
 """, nativeQuery = true)
@@ -816,7 +880,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     SELECT p.*
     FROM products p
     JOIN product_variants v ON v.product_id = p.id
-    WHERE v.selling_price > 0
+    WHERE p.status = 'active'
+      AND v.selling_price > 0
     GROUP BY p.id
     ORDER BY MAX(v.selling_price) DESC
 """, nativeQuery = true)
@@ -826,7 +891,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     SELECT p.*
     FROM products p
     JOIN product_variants v ON v.product_id = p.id
-    WHERE v.discount_percentage > 0
+    WHERE p.status = 'active'
+      AND v.discount_percentage > 0
       AND v.selling_price > 0
     GROUP BY p.id
     ORDER BY MAX(v.discount_percentage) DESC
@@ -840,13 +906,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         FROM products p
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
         OR p.category_id IN (
 
             SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-        )
+        ))
 
     """, nativeQuery = true)
 
@@ -862,13 +930,15 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
         LEFT JOIN product_variants v ON p.id = v.product_id
 
-        WHERE p.category_id = :mainCategoryId
+        WHERE p.status = 'active'
+
+          AND (p.category_id = :mainCategoryId
 
         OR p.category_id IN (
 
             SELECT c.id FROM categories c WHERE c.parent_id = :mainCategoryId
 
-        )
+        ))
 
     """, nativeQuery = true)
 
@@ -882,7 +952,8 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     SELECT DISTINCT p
     FROM Product p
     LEFT JOIN p.variants v
-    WHERE
+    WHERE p.status = 'active'
+      AND (
         LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
         OR LOWER(COALESCE(p.shortDescription, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
         OR LOWER(COALESCE(p.description, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
@@ -892,6 +963,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
         OR LOWER(COALESCE(v.color, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
         OR LOWER(COALESCE(v.size, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
         OR LOWER(COALESCE(v.sku, '')) LIKE LOWER(CONCAT('%', :keyword, '%'))
+      )
 """)
     Page<Product> advancedSearch(
             @Param("keyword") String keyword,

@@ -3,6 +3,7 @@ package com.ecommerce.authdemo.service;
 import com.ecommerce.authdemo.dto.FilterOptionsDTO;
 import com.ecommerce.authdemo.entity.*;
 import com.ecommerce.authdemo.repository.*;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -148,7 +149,8 @@ public class FilterService {
 
     // Helper methods to count products (simplified implementations)
     private Integer countProductsByCategory(Long categoryId) {
-        Long count = productRepository.countByCategoryId(categoryId);
+        Long count = productRepository.countByCategoryIdAndStatus(
+                categoryId, ProductCatalogVisibility.USER_VISIBLE_STATUS);
         return count != null ? count.intValue() : 0;
     }
 

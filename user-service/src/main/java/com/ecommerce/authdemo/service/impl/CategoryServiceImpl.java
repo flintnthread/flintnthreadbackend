@@ -6,6 +6,7 @@ import com.ecommerce.authdemo.dto.SubCategoryResponseDTO;
 import com.ecommerce.authdemo.entity.Category;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.SubCategory;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import com.ecommerce.authdemo.repository.CategoryRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.SubCategoryRepository;
@@ -200,7 +201,8 @@ public class CategoryServiceImpl implements CategoryService {
                 categoryRepository.findByCategoryNameContainingIgnoreCase(keyword);
 
         List<Product> products =
-                productRepository.findByNameContainingIgnoreCase(keyword);
+                productRepository.findTop20ByNameContainingIgnoreCaseAndStatus(
+                        keyword, ProductCatalogVisibility.USER_VISIBLE_STATUS);
 
         result.put("categories", categories);
         result.put("products", products);

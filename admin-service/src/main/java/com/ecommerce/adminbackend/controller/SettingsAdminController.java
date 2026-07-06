@@ -3,6 +3,7 @@ package com.ecommerce.adminbackend.controller;
 import com.ecommerce.adminbackend.logging.LogFactory;
 import org.slf4j.Logger;
 import com.ecommerce.adminbackend.dto.settings.CommissionRequest;
+import com.ecommerce.adminbackend.dto.settings.IntegrationSettingsRequest;
 import com.ecommerce.adminbackend.service.SettingsAdminService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,5 +33,19 @@ public class SettingsAdminController {
         return settingsAdminService.updateCommission(
                 request != null ? request.getB2c() : null,
                 request != null ? request.getB2b() : null);
+    }
+
+    @GetMapping("/integrations")
+    public Map<String, Object> getIntegrations() {
+        return settingsAdminService.getIntegrations();
+    }
+
+    @PutMapping("/integrations")
+    public Map<String, Object> updateIntegrations(@RequestBody IntegrationSettingsRequest request) {
+        return settingsAdminService.updateIntegrations(
+                request != null ? request.getSendgridApiKey() : null,
+                request != null ? request.getTwilioAccountSid() : null,
+                request != null ? request.getTwilioAuthToken() : null,
+                request != null ? request.getTwilioPhoneNumber() : null);
     }
 }

@@ -6,6 +6,7 @@ import com.ecommerce.authdemo.entity.ProductVariant;
 import com.ecommerce.authdemo.entity.ProductColor;
 import com.ecommerce.authdemo.entity.ProductSize;
 import com.ecommerce.authdemo.entity.Category;
+import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import jakarta.persistence.criteria.*;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -21,8 +22,8 @@ public class ProductSpecification {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            // Only ACTIVE products
-            predicates.add(cb.equal(root.get("status"), "active"));
+            // Only ACTIVE (admin-approved) products
+            predicates.add(cb.equal(cb.lower(root.get("status")), ProductCatalogVisibility.USER_VISIBLE_STATUS));
 
             // Keyword search in name and description
             if (request.getKeyword() != null && !request.getKeyword().trim().isEmpty()) {
@@ -145,8 +146,8 @@ public class ProductSpecification {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            // Only ACTIVE products
-            predicates.add(cb.equal(root.get("status"), "active"));
+            // Only ACTIVE (admin-approved) products
+            predicates.add(cb.equal(cb.lower(root.get("status")), ProductCatalogVisibility.USER_VISIBLE_STATUS));
 
             // Keyword search in name and description
             if (request.getKeyword() != null && !request.getKeyword().trim().isEmpty()) {

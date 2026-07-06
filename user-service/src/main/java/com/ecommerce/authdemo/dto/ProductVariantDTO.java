@@ -17,13 +17,17 @@ public class ProductVariantDTO {
 
     private BigDecimal mrpPrice;
     private BigDecimal sellingPrice;
+    private BigDecimal sellingPriceExclGst;
     private BigDecimal finalPrice;
+    private BigDecimal customerPrice;
 
     private BigDecimal discountPercentage;
     private BigDecimal discountAmount;
 
     private BigDecimal taxPercentage;
     private BigDecimal taxAmount;
+    private BigDecimal commissionPercentage;
+    private BigDecimal commissionAmount;
 
     private Integer stock;
     private Boolean inStock;
