@@ -119,28 +119,22 @@ public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdf
         table.addCell(bodyCell("Annual Seller Registration Fee (per annum)"));
         table.addCell(bodyCell("1"));
         table.addCell(bodyCell("Rs " + formatMoney(registrationFee)));
-        if (sameState) {
-            table.addCell(bodyCell("CGST @ 9%"));
-            table.addCell(bodyCell("1"));
-            table.addCell(bodyCell("Rs " + formatMoney(cgst)));
-            table.addCell(bodyCell("SGST @ 9%"));
-            table.addCell(bodyCell("1"));
-            table.addCell(bodyCell("Rs " + formatMoney(sgst)));
-        } else {
-            table.addCell(bodyCell("IGST @ 18%"));
-            table.addCell(bodyCell("1"));
-            table.addCell(bodyCell("Rs " + formatMoney(igst)));
-        }
+        table.addCell(bodyCell("CGST @ 9%"));
+        table.addCell(bodyCell("1"));
+        table.addCell(bodyCell("Rs " + formatMoney(cgst)));
+        table.addCell(bodyCell("SGST @ 9%"));
+        table.addCell(bodyCell("1"));
+        table.addCell(bodyCell("Rs " + formatMoney(sgst)));
+        table.addCell(bodyCell("IGST @ 18%"));
+        table.addCell(bodyCell("1"));
+        table.addCell(bodyCell("Rs " + formatMoney(igst)));
         document.add(table);
         document.add(spacer(12f));
 
         document.add(new Paragraph("Registration Fee (per annum): Rs " + formatMoney(registrationFee), headingFont));
-        if (sameState) {
-            document.add(new Paragraph("CGST (9%): Rs " + formatMoney(cgst), bodyFont));
-            document.add(new Paragraph("SGST (9%): Rs " + formatMoney(sgst), bodyFont));
-        } else {
-            document.add(new Paragraph("IGST (18%): Rs " + formatMoney(igst), bodyFont));
-        }
+        document.add(new Paragraph("CGST (9%): Rs " + formatMoney(cgst), bodyFont));
+        document.add(new Paragraph("SGST (9%): Rs " + formatMoney(sgst), bodyFont));
+        document.add(new Paragraph("IGST (18%): Rs " + formatMoney(igst), bodyFont));
         document.add(new Paragraph("TOTAL PAID: Rs " + formatMoney(totalAmount), totalFont));
         document.add(new Paragraph("Status: PAID", headingFont));
         document.add(spacer(14f));
@@ -177,6 +171,14 @@ public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdf
         } else {
             logoCell.addElement(new Paragraph(companyName, headingFont));
         }
+        logoCell.addElement(spacer(6f));
+        logoCell.addElement(leftLine(companyName, headingFont));
+        logoCell.addElement(leftLine(companyAddress, bodyFont));
+        logoCell.addElement(leftLine(companyEmail, bodyFont));
+        logoCell.addElement(leftLine(companyPhone, bodyFont));
+        if (hasText(companyGstin)) {
+            logoCell.addElement(leftLine("GSTIN: " + companyGstin.trim(), bodyFont));
+        }
         header.addCell(logoCell);
 
         PdfPCell metaCell = new PdfPCell();
@@ -184,14 +186,6 @@ public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdf
         metaCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
         metaCell.setVerticalAlignment(Element.ALIGN_TOP);
         metaCell.setPadding(0f);
-        metaCell.addElement(rightLine(companyName, headingFont));
-        metaCell.addElement(rightLine(companyAddress, bodyFont));
-        metaCell.addElement(rightLine(companyEmail, bodyFont));
-        metaCell.addElement(rightLine(companyPhone, bodyFont));
-        if (hasText(companyGstin)) {
-            metaCell.addElement(rightLine("GSTIN: " + companyGstin.trim(), bodyFont));
-        }
-        metaCell.addElement(spacer(6f));
         metaCell.addElement(rightLine("INVOICE", FontFactory.getFont(FontFactory.HELVETICA_BOLD, 14, new Color(249, 115, 22))));
         metaCell.addElement(rightLine(invoiceNumber, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12)));
         metaCell.addElement(rightLine("Order: #" + orderId, bodyFont));
@@ -203,6 +197,13 @@ public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdf
 
         document.add(header);
         document.add(spacer(12f));
+    }
+
+    private Paragraph leftLine(String text, Font font) {
+        Paragraph paragraph = new Paragraph(text, font);
+        paragraph.setAlignment(Element.ALIGN_LEFT);
+        paragraph.setSpacingAfter(2f);
+        return paragraph;
     }
 
     private Paragraph rightLine(String text, Font font) {

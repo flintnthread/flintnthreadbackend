@@ -9,13 +9,22 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class SellerEmailVerificationUrlHelper {
 
-    @Value("${app.seller.backend.public-url:http://localhost:8083}")
-    private String sellerBackendPublicUrl;
+    @Value("${app.seller.frontend.base-url:http://localhost:8081}")
+    private String sellerFrontendBaseUrl;
+
+    @Value("${app.seller.frontend.email-verify-redirect-url:}")
+    private String sellerEmailVerifyRedirectUrl;
 
     public String buildEmailLinkClickUrl(String emailVerificationToken) {
-        String base = trimTrailingSlash(sellerBackendPublicUrl);
-        return base + "/api/auth/verify-email?token="
-                + URLEncoder.encode(emailVerificationToken, StandardCharsets.UTF_8);
+        String base = trimTrailingSlash(resolveVerifyPageBaseUrl());
+        return base + "?token=" + URLEncoder.encode(emailVerificationToken, StandardCharsets.UTF_8);
+    }
+
+    private String resolveVerifyPageBaseUrl() {
+        if (sellerEmailVerifyRedirectUrl != null && !sellerEmailVerifyRedirectUrl.isBlank()) {
+            return sellerEmailVerifyRedirectUrl.trim();
+        }
+        return trimTrailingSlash(sellerFrontendBaseUrl) + "/verify-email";
     }
 
     private String trimTrailingSlash(String url) {

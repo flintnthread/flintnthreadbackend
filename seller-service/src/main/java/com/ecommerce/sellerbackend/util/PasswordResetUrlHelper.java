@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class PasswordResetUrlHelper {
 
-    @Value("${app.backend.public-url:http://localhost:8080}")
+    @Value("${app.backend.public-url:http://localhost:8083}")
     private String backendPublicUrl;
 
     @Value("${app.frontend.base-url:http://localhost:8081}")
@@ -19,13 +19,10 @@ public class PasswordResetUrlHelper {
     private String passwordResetRedirectUrl;
 
     /**
-     * Link placed in the password reset email. Opens the backend, validates the token,
-     * and redirects to the reset-password page (web or mobile browser).
+     * Link placed in the password reset email. Opens the seller app reset-password page.
      */
     public String buildEmailLinkClickUrl(String resetToken) {
-        String base = trimTrailingSlash(backendPublicUrl);
-        return base + "/api/auth/reset-password?token="
-                + URLEncoder.encode(resetToken, StandardCharsets.UTF_8);
+        return buildResetPageRedirect(resetToken);
     }
 
     public String buildResetPageRedirect(String token) {
