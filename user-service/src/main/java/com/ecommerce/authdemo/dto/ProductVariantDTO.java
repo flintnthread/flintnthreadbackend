@@ -29,6 +29,12 @@ public class ProductVariantDTO {
     private BigDecimal commissionPercentage;
     private BigDecimal commissionAmount;
 
+    private BigDecimal intraCityDeliveryCharge;
+    private BigDecimal metroMetroDeliveryCharge;
+    private BigDecimal deliveryCharge;
+    private BigDecimal totalPriceIntraCity;
+    private BigDecimal totalPriceMetroMetro;
+
     private Integer stock;
     private Boolean inStock;
 

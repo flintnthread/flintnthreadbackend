@@ -3,6 +3,8 @@ package com.ecommerce.authdemo.config;
 import com.ecommerce.authdemo.service.PlatformIntegrationSettings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.mail.MailProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -12,6 +14,7 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import java.util.Properties;
 
 @Configuration
+@EnableConfigurationProperties(MailProperties.class)
 @RequiredArgsConstructor
 public class DynamicMailSenderConfiguration {
 

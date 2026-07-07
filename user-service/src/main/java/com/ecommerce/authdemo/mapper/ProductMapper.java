@@ -125,6 +125,11 @@ public class ProductMapper {
                                 vd.setTaxAmount(pricing.taxAmount());
                                 vd.setCommissionPercentage(pricing.commissionPercent());
                                 vd.setCommissionAmount(pricing.commissionAmount());
+                                vd.setIntraCityDeliveryCharge(pricing.intraCityDeliveryCharge());
+                                vd.setMetroMetroDeliveryCharge(pricing.metroMetroDeliveryCharge());
+                                vd.setDeliveryCharge(pricing.deliveryCharge());
+                                vd.setTotalPriceIntraCity(pricing.totalPriceIntraCity());
+                                vd.setTotalPriceMetroMetro(pricing.totalPriceMetroMetro());
                             } else {
                                 vd.setSellingPrice(v.getSellingPrice());
                                 vd.setSellingPriceExclGst(v.getSellingPrice());

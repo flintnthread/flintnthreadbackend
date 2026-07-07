@@ -55,9 +55,12 @@ public class CartController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<CartResponseDTO>> getCart() {
+    public ResponseEntity<ApiResponse<CartResponseDTO>> getCart(
+            @RequestParam(required = false) Integer addressId) {
         try {
-            CartResponseDTO response = cartService.getCart();
+            CartResponseDTO response = addressId != null
+                    ? cartService.getCart(addressId)
+                    : cartService.getCart();
             return ResponseEntity.ok(
                     new ApiResponse<>(true, "Cart fetched successfully", response)
             );

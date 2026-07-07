@@ -87,7 +87,9 @@ public class OrderServiceImpl implements OrderService {
                                     new RuntimeException(
                                             "User not found"
                                     ));
-            CartResponseDTO cart = cartService.getCart();
+            CartResponseDTO cart = dto.getAddressId() != null
+                    ? cartService.getCart(Math.toIntExact(dto.getAddressId()))
+                    : cartService.getCart();
 
             List<CartItemResponseDTO> checkoutItems =
                     resolveCheckoutCartItems(cart.getItems(), dto.getItemIds());
