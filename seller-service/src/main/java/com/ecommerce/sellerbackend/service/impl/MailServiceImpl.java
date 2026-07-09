@@ -278,16 +278,16 @@ public class MailServiceImpl implements MailService {
     }
 
     private static final String EMAIL_VERIFICATION_HEADER = """
-            <div style="background:linear-gradient(135deg,#F97316 0%%,#B45309 100%%);padding:28px 32px;text-align:center;">
+            <div style="background-color:#F97316;background:linear-gradient(135deg,#F97316 0%%,#B45309 100%%);padding:28px 32px;text-align:center;">
               <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;font-family:Arial,sans-serif;">Welcome to Flint &amp; Thread!</h1>
-              <p style="color:#fff7ed;margin:0;font-size:15px;font-family:Arial,sans-serif;">Seller Platform Email Verification</p>
+              <p style="color:#ffffff;margin:0;font-size:15px;font-family:Arial,sans-serif;">Seller Platform Email Verification</p>
             </div>
             """;
 
     private static final String OTP_VERIFICATION_HEADER = """
-            <div style="background:linear-gradient(135deg,#F97316 0%%,#B45309 100%%);padding:28px 32px;text-align:center;">
+            <div style="background-color:#F97316;background:linear-gradient(135deg,#F97316 0%%,#B45309 100%%);padding:28px 32px;text-align:center;">
               <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;font-family:Arial,sans-serif;">OTP Verification</h1>
-              <p style="color:#fff7ed;margin:0;font-size:15px;font-family:Arial,sans-serif;">Flint &amp; Thread Seller Platform</p>
+              <p style="color:#ffffff;margin:0;font-size:15px;font-family:Arial,sans-serif;">Flint &amp; Thread Seller Platform</p>
             </div>
             """;
 
@@ -378,9 +378,9 @@ public class MailServiceImpl implements MailService {
                 <html>
                 <body style="font-family:Arial,sans-serif;background:#f3f4f6;padding:24px;margin:0;">
                   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-                    <div style="background:linear-gradient(135deg,#F97316 0%%,#92400E 100%%);padding:28px 32px;text-align:center;">
+                    <div style="background-color:#F97316;background:linear-gradient(135deg,#F97316 0%%,#92400E 100%%);padding:28px 32px;text-align:center;">
                       <p style="color:#ffffff;margin:0 0 8px;font-size:22px;font-weight:bold;font-family:Arial,sans-serif;">&#128274; Security Alert</p>
-                      <p style="color:#fff7ed;margin:0;font-size:15px;font-family:Arial,sans-serif;">New Device Login Detected</p>
+                      <p style="color:#ffffff;margin:0;font-size:15px;font-family:Arial,sans-serif;">New Device Login Detected</p>
                     </div>
                     <div style="padding:32px;">
                       <p style="color:#111827;font-size:20px;font-weight:bold;line-height:1.4;margin:0 0 16px;">Hello %s,</p>
@@ -498,9 +498,9 @@ public class MailServiceImpl implements MailService {
                 <html>
                 <body style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;margin:0;">
                   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-                    <div style="background:linear-gradient(135deg,#F97316 0%%,#1E3A6E 100%%);padding:28px 32px;text-align:center;">
+                    <div style="background-color:#F97316;background:linear-gradient(135deg,#F97316 0%%,#1E3A6E 100%%);padding:28px 32px;text-align:center;">
                       <h1 style="color:#ffffff;margin:0 0 8px;font-size:22px;">Password Reset</h1>
-                      <p style="color:#fff7ed;margin:0;font-size:15px;">Flint &amp; Thread Seller Account</p>
+                      <p style="color:#ffffff;margin:0;font-size:15px;">Flint &amp; Thread Seller Account</p>
                     </div>
                     <div style="padding:32px;">
                       <p style="color:#374151;line-height:1.6;margin:0 0 12px;">Hello %s,</p>

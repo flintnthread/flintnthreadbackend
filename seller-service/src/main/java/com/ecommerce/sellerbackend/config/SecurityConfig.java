@@ -59,25 +59,31 @@ public class SecurityConfig {
         return http.build();
     }
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of(
-                "Authorization",
-                "Content-Type",
-                "Accept",
-                "X-Seller-Id",
-                "X-Admin-Key",
-                "Cache-Control",
-                "Pragma"
-        ));
-        config.setExposedHeaders(List.of("*"));
-        config.setAllowCredentials(false);
+   @Bean
+public CorsConfigurationSource corsConfigurationSource() {
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", config);
-        return source;
-    }
-}
+    CorsConfiguration config = new CorsConfiguration();
+
+    config.setAllowedOrigins(List.of(
+            "https://seller.flintnthread.online",
+            "https://admin.flintnthread.online",
+            "https://flintnthread.online"
+    ));
+
+    config.setAllowedMethods(List.of(
+            "GET","POST","PUT","PATCH","DELETE","OPTIONS"
+    ));
+
+    config.setAllowedHeaders(List.of("*"));
+
+    config.setAllowCredentials(true);
+
+    config.setExposedHeaders(List.of("*"));
+
+    UrlBasedCorsConfigurationSource source =
+            new UrlBasedCorsConfigurationSource();
+
+    source.registerCorsConfiguration("/**", config);
+
+    return source;
+}}

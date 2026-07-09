@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class EmailVerificationUrlHelper {
 
-    @Value("${app.backend.public-url:http://localhost:8080}")
+    @Value("${app.backend.public-url:http://localhost:8083}")
     private String backendPublicUrl;
 
     @Value("${app.frontend.base-url:http://localhost:8081}")
@@ -19,13 +19,11 @@ public class EmailVerificationUrlHelper {
     private String emailVerifyRedirectUrl;
 
     /**
-     * Link placed in the signup verification email. Opens the backend, which sends the OTP
-     * and redirects to the OTP entry page (web or mobile web).
+     * Link placed in the signup verification email. Opens the seller app, which confirms the
+     * token via the API and shows the OTP entry page.
      */
     public String buildEmailLinkClickUrl(String emailVerificationToken) {
-        String base = trimTrailingSlash(backendPublicUrl);
-        return base + "/api/auth/verify-email?token="
-                + URLEncoder.encode(emailVerificationToken, StandardCharsets.UTF_8);
+        return buildFrontendTokenUrl(emailVerificationToken);
     }
 
     /**

@@ -22,6 +22,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
@@ -31,8 +33,10 @@ import java.util.Optional;
 @Slf4j
 public class AuthServiceImpl implements AuthService {
 
+    private static final ZoneId LOGIN_ZONE = ZoneId.of("Asia/Kolkata");
     private static final DateTimeFormatter LOGIN_TIME_FORMAT =
-            DateTimeFormatter.ofPattern("MMMM d, yyyy 'at' h:mm a", Locale.US);
+            DateTimeFormatter.ofPattern("MMMM d, yyyy 'at' h:mm a", Locale.ENGLISH)
+                    .withZone(LOGIN_ZONE);
 
     private final SellerRepository sellerRepository;
     private final SellerRegistrationPaymentRepository registrationPaymentRepository;
@@ -57,8 +61,8 @@ public class AuthServiceImpl implements AuthService {
 
         assertCanLogin(seller);
 
-        LocalDateTime loginAt = LocalDateTime.now();
-        seller.setLastLoginAt(loginAt);
+        ZonedDateTime loginAt = ZonedDateTime.now(LOGIN_ZONE);
+        seller.setLastLoginAt(loginAt.toLocalDateTime());
         String resolvedIp = null;
         if (clientIp != null && !clientIp.isBlank()) {
             resolvedIp = clientIp.trim();
@@ -137,7 +141,7 @@ public class AuthServiceImpl implements AuthService {
 
     private void sendLoginSecurityAlertAfterCommit(
             Seller seller,
-            LocalDateTime loginAt,
+            ZonedDateTime loginAt,
             String userAgent,
             String clientIp) {
         final String mailTo = seller.getEmail();
@@ -145,7 +149,7 @@ public class AuthServiceImpl implements AuthService {
             return;
         }
         final String displayName = buildDisplayName(seller);
-        final String loginTime = LOGIN_TIME_FORMAT.format(loginAt);
+        final String loginTime = LOGIN_TIME_FORMAT.format(loginAt) + " IST";
         final String device = describeDevice(userAgent);
         final String ipAddress = clientIp != null ? clientIp : "Unknown";
 

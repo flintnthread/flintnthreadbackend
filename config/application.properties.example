@@ -48,6 +48,7 @@ ADMIN_JWT_SECRET=your-admin-jwt-secret-min-32-chars
 GST_LOOKUP_API_KEY=
 MEDIA_PUBLIC_BASE_URL=https://flintnthread.in
 APP_BACKEND_PUBLIC_URL=https://flintnthread.online
-APP_FRONTEND_BASE_URL=https://flintnthread.online
+# Seller web app is served under /Seller on production (see deploy-frontends-vps.sh)
+APP_FRONTEND_BASE_URL=https://flintnthread.online/Seller
 ADMIN_FRONTEND_URL=https://flintnthread.online
 ADMIN_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006,https://flintnthread.online,https://www.flintnthread.online
