@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -235,6 +236,19 @@ public class WalletServiceImpl implements WalletService {
                 .filter(amount -> amount != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    @Override
+    public Optional<BigDecimal> findOrderCancellationRefundAmount(Integer userId, Long orderId) {
+        if (userId == null || orderId == null || orderId <= 0) {
+            return Optional.empty();
+        }
+        String description = CANCEL_REFUND_DESC_PREFIX + orderId;
+        return walletTransactionRepo
+                .findFirstByUserIdAndDescription(userId, description)
+                .map(WalletTransaction::getAmount)
+                .filter(amount -> amount != null && amount.compareTo(BigDecimal.ZERO) > 0)
+                .map(amount -> amount.setScale(2, RoundingMode.HALF_UP));
     }
 
     @Override

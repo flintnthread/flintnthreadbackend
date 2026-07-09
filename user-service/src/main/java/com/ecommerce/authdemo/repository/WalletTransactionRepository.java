@@ -18,5 +18,10 @@ import java.util.List;
         List<WalletTransaction> findByUserIdAndOrderId(Integer userId, Integer orderId);
 
         boolean existsByUserIdAndDescription(Integer userId, String description);
+
+        java.util.Optional<WalletTransaction> findFirstByUserIdAndDescription(
+                Integer userId,
+                String description
+        );
     }
 

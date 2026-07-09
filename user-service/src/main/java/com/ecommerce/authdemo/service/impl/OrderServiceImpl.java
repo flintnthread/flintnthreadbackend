@@ -551,6 +551,38 @@ public class OrderServiceImpl implements OrderService {
 
         if ("cancelled".equals(status)) {
             log.info("Order already cancelled orderId={}", orderId);
+            if (refundToWallet && shouldCreditWalletOnCancel(order)) {
+                BigDecimal walletCreditAmount = resolveOrderRefundAmount(order, true);
+                boolean walletCredited = false;
+                if (walletCreditAmount.compareTo(BigDecimal.ZERO) > 0) {
+                    walletCredited = walletService.creditOrderCancellationRefund(
+                            Math.toIntExact(order.getUserId()),
+                            order.getId(),
+                            walletCreditAmount,
+                            order.getOrderNumber()
+                    );
+                    if (!walletCredited) {
+                        walletCredited = walletService
+                                .findOrderCancellationRefundAmount(
+                                        Math.toIntExact(order.getUserId()),
+                                        order.getId()
+                                )
+                                .isPresent();
+                    }
+                }
+                String message = walletCredited
+                        ? "Order already cancelled. "
+                                + walletCreditAmount
+                                + " has been added to your FNT Wallet."
+                        : "Order already cancelled";
+                return CancelOrderResponseDTO.builder()
+                        .walletCredited(walletCredited)
+                        .walletCreditAmount(
+                                walletCredited ? walletCreditAmount : BigDecimal.ZERO
+                        )
+                        .message(message)
+                        .build();
+            }
             return CancelOrderResponseDTO.builder()
                     .walletCredited(false)
                     .walletCreditAmount(BigDecimal.ZERO)
@@ -1402,8 +1434,17 @@ public class OrderServiceImpl implements OrderService {
 
     private OrderResponseDTO buildOrderSummaryResponseLite(Order order) {
         List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+        List<OrderItemDTO> itemDTOList = items.stream()
+                .map(this::buildOrderItemDTO)
+                .toList();
+        int totalQuantity = items.stream()
+                .mapToInt(item -> item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1)
+                .sum();
+
         String firstImage = null;
-        if (!items.isEmpty()) {
+        if (!itemDTOList.isEmpty() && itemDTOList.get(0).getProductImage() != null) {
+            firstImage = itemDTOList.get(0).getProductImage();
+        } else if (!items.isEmpty()) {
             OrderItem first = items.get(0);
             firstImage = first.getProductImagePath();
             if (firstImage == null || firstImage.isBlank()) {
@@ -1433,8 +1474,9 @@ public class OrderServiceImpl implements OrderService {
                 .discountAmount(order.getDiscountAmount())
                 .createdDate(formatOrderCreatedDate(order.getCreatedAt()))
                 .totalItems(items.size())
+                .totalQuantity(totalQuantity > 0 ? totalQuantity : items.size())
                 .firstProductImage(firstImage)
-                .items(List.of())
+                .items(itemDTOList)
                 .shiprocketAwbCode(order.getShiprocketAwbCode())
                 .shiprocketCourierName(order.getShiprocketCourierName())
                 .shiprocketTrackingUrl(order.getShiprocketTrackingUrl())
@@ -1486,6 +1528,10 @@ public class OrderServiceImpl implements OrderService {
                 .totalWeight(totalWeight)
 
                 .totalItems(items.size())
+
+                .totalQuantity(items.stream()
+                        .mapToInt(item -> item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1)
+                        .sum())
 
                 .firstProductImage(firstImage)
 
