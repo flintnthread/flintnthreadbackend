@@ -1,6 +1,8 @@
 package com.ecommerce.sellerbackend.service;
 
 import com.ecommerce.sellerbackend.dto.profile.GstVerifyResponse;
+import com.ecommerce.sellerbackend.entity.SellerGstDetails;
+import com.ecommerce.sellerbackend.repository.SellerGstDetailsRepository;
 import com.ecommerce.sellerbackend.repository.SellerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,8 +15,13 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class GstVerificationService {
 
+    private static final String DUPLICATE_GST_MESSAGE =
+            "This GSTIN is already registered with another seller account. "
+                    + "Each GSTIN can only be used once. Please contact support if you need help.";
+
     private final GstExternalLookupClient externalLookupClient;
     private final SellerRepository sellerRepository;
+    private final SellerGstDetailsRepository sellerGstDetailsRepository;
 
     /** Known GSTINs for local/dev verification with full business details. */
     private static final Map<String, GstVerifyResponse> KNOWN_GST = Map.of(
@@ -90,15 +97,25 @@ public class GstVerificationService {
         if (!isValidGstFormat(gst)) {
             return GstVerifyResponse.builder()
                     .verified(false)
+                    .alreadyExists(false)
                     .gstNumber(gst)
                     .message("Invalid GST number format.")
                     .build();
         }
 
         if (isGstRegisteredToAnotherSeller(gst, currentSellerId)) {
-            return gstAlreadyRegisteredResponse(gst);
+            return duplicateGstResponse(gst);
         }
 
+        GstVerifyResponse lookup = lookupGstDetails(gst);
+        if (lookup.isVerified()) {
+            return lookup;
+        }
+        return withAlreadyExists(lookup, false);
+    }
+
+    /** Fetches GST portal / fixture details without duplicate checks. */
+    private GstVerifyResponse lookupGstDetails(String gst) {
         GstVerifyResponse known = KNOWN_GST.get(gst);
         if (known != null) {
             return known;
@@ -112,6 +129,85 @@ public class GstVerificationService {
         return gstNotFoundResponse(gst);
     }
 
+    private GstVerifyResponse duplicateGstResponse(String gst) {
+        Optional<SellerGstDetails> saved = sellerGstDetailsRepository.findByGstin(gst);
+        if (saved.isPresent()) {
+            return fromSavedDetails(saved.get());
+        }
+
+        GstVerifyResponse lookup = lookupGstDetails(gst);
+        if (hasRegistryDetails(lookup)) {
+            return withAlreadyExists(lookup, true);
+        }
+
+        return GstVerifyResponse.builder()
+                .verified(false)
+                .alreadyExists(true)
+                .gstNumber(gst)
+                .panNumber(extractPanFromGst(gst))
+                .message(DUPLICATE_GST_MESSAGE)
+                .build();
+    }
+
+    private GstVerifyResponse fromSavedDetails(SellerGstDetails gst) {
+        return GstVerifyResponse.builder()
+                .verified(false)
+                .alreadyExists(true)
+                .gstNumber(gst.getGstin())
+                .message(DUPLICATE_GST_MESSAGE)
+                .businessName(gst.getLegalName())
+                .tradeName(gst.getTradeName())
+                .businessType(gst.getConstitution())
+                .panNumber(gst.getPan())
+                .address(gst.getAddress())
+                .city(gst.getCity())
+                .state(gst.getState())
+                .pincode(gst.getPincode())
+                .status(gst.getGstStatus())
+                .taxpayerType(gst.getTaxpayerType())
+                .registrationDate(gst.getRegistrationDate())
+                .cancellationDate(gst.getCancellationDate())
+                .stateJurisdiction(gst.getStateJurisdiction())
+                .centreJurisdiction(gst.getCentreJurisdiction())
+                .principalPlaceType(gst.getPrincipalPlace())
+                .build();
+    }
+
+    private GstVerifyResponse withAlreadyExists(GstVerifyResponse source, boolean alreadyExists) {
+        return GstVerifyResponse.builder()
+                .verified(source.isVerified())
+                .alreadyExists(alreadyExists)
+                .gstNumber(source.getGstNumber())
+                .message(alreadyExists ? DUPLICATE_GST_MESSAGE : source.getMessage())
+                .businessName(source.getBusinessName())
+                .tradeName(source.getTradeName())
+                .businessType(source.getBusinessType())
+                .panNumber(source.getPanNumber())
+                .address(source.getAddress())
+                .city(source.getCity())
+                .state(source.getState())
+                .pincode(source.getPincode())
+                .status(source.getStatus())
+                .taxpayerType(source.getTaxpayerType())
+                .registrationDate(source.getRegistrationDate())
+                .cancellationDate(source.getCancellationDate())
+                .stateJurisdiction(source.getStateJurisdiction())
+                .centreJurisdiction(source.getCentreJurisdiction())
+                .principalPlaceType(source.getPrincipalPlaceType())
+                .build();
+    }
+
+    private boolean hasRegistryDetails(GstVerifyResponse response) {
+        return !isBlank(response.getBusinessName())
+                || !isBlank(response.getTradeName())
+                || !isBlank(response.getAddress())
+                || !isBlank(response.getStatus());
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     public boolean isGstRegisteredToAnotherSeller(String gst, Long currentSellerId) {
         if (currentSellerId == null || currentSellerId <= 0) {
             return sellerRepository.findFirstByGstNumberIgnoreCase(gst).isPresent();
@@ -119,20 +215,10 @@ public class GstVerificationService {
         return sellerRepository.existsByGstNumberIgnoreCaseAndIdNot(gst, currentSellerId);
     }
 
-    private GstVerifyResponse gstAlreadyRegisteredResponse(String gst) {
-        return GstVerifyResponse.builder()
-                .verified(false)
-                .gstNumber(gst)
-                .message(
-                        "This GSTIN is already registered with another seller account. "
-                                + "Each GSTIN can only be used once. Please contact support if you need help."
-                )
-                .build();
-    }
-
     private GstVerifyResponse gstNotFoundResponse(String gst) {
         return GstVerifyResponse.builder()
                 .verified(false)
+                .alreadyExists(false)
                 .gstNumber(gst)
                 .panNumber(extractPanFromGst(gst))
                 .message(
