@@ -44,10 +44,12 @@ import java.util.Comparator;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -65,6 +67,12 @@ public class SearchServiceImpl implements SearchService {
             "purple", "yellow", "pink", "multicolor", "orange"
     );
     private static final int MAX_ONLINE_HASH_COMPUTES_PER_REQUEST = 20;
+    private static final int STRONG_VISUAL_HASH_DISTANCE = 12;
+    private static final int ACCEPTABLE_VISUAL_HASH_DISTANCE = 16;
+    private static final List<String> ACCESSORY_SEARCH_TERMS = List.of(
+            "bangle", "bracelet", "ring", "earring", "necklace",
+            "jewellery", "jewelry", "accessory", "accessories", "anklet", "brooch"
+    );
     private volatile boolean signatureTableAvailable = true;
 
     @Value("${app.media.public-base-url:}")
@@ -301,25 +309,28 @@ public class SearchServiceImpl implements SearchService {
                 return new ApiResponse<>(false, "Image size should be less than 8MB", null);
             }
 
+            BufferedImage bufferedImage = ImageIO.read(image.getInputStream());
+            if (bufferedImage == null) {
+                return new ApiResponse<>(false, "Could not read image file", null);
+            }
+
+            List<Product> localMatches = findSimilarProductsByVisualSignature(image, bufferedImage);
+
             ApiResponse<SearchResponseDTO> aiResponse =
                     aiImageSearchDecorator.performImageSearch(image, userId, sessionId);
             List<Product> aiProducts = extractSearchProducts(aiResponse);
-            if (aiResponse.isSuccess() && !aiProducts.isEmpty()) {
-                return aiResponse;
-            }
 
-            log.info("AI camera search unavailable or had no matches — running local visual similarity search");
-            List<Product> localMatches = findSimilarProductsByVisualSignature(image);
-            if (!localMatches.isEmpty()) {
+            List<Product> merged = mergeCameraSearchResults(bufferedImage, localMatches, aiProducts);
+            if (!merged.isEmpty()) {
                 SearchResponseDTO response = new SearchResponseDTO(
                         Collections.emptyList(),
                         Collections.emptyList(),
-                        localMatches
+                        hydrateSearchProducts(merged)
                 );
                 return new ApiResponse<>(true, "Camera search completed successfully", response);
             }
 
-            if (aiResponse.isSuccess()) {
+            if (aiResponse != null && aiResponse.isSuccess() && aiResponse.getData() != null) {
                 return aiResponse;
             }
 
@@ -339,6 +350,198 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
+    private List<Product> mergeCameraSearchResults(
+            BufferedImage bufferedImage,
+            List<Product> localMatches,
+            List<Product> aiProducts
+    ) {
+        Long uploadedHash = computeDHash(bufferedImage);
+        boolean accessoryPhoto = looksLikeAccessoryPhoto(bufferedImage);
+        LinkedHashMap<Long, Product> merged = new LinkedHashMap<>();
+
+        appendUniqueProducts(
+                merged,
+                filterByVisualHashDistance(localMatches, uploadedHash, STRONG_VISUAL_HASH_DISTANCE),
+                accessoryPhoto,
+                20
+        );
+        appendUniqueProducts(
+                merged,
+                rankProductsByVisualHashOnly(aiProducts, uploadedHash, ACCEPTABLE_VISUAL_HASH_DISTANCE, 20),
+                accessoryPhoto,
+                20
+        );
+        appendUniqueProducts(merged, localMatches, accessoryPhoto, 20);
+
+        if (merged.isEmpty() && accessoryPhoto) {
+            appendUniqueProducts(merged, fetchAccessoryProducts(), false, 20);
+        }
+
+        if (merged.isEmpty() && aiProducts != null && !aiProducts.isEmpty() && !accessoryPhoto) {
+            appendUniqueProducts(merged, aiProducts, false, 20);
+        }
+
+        return new ArrayList<>(merged.values());
+    }
+
+    private void appendUniqueProducts(
+            LinkedHashMap<Long, Product> merged,
+            List<Product> products,
+            boolean accessoryPhoto,
+            int limit
+    ) {
+        if (products == null || products.isEmpty()) {
+            return;
+        }
+        for (Product product : products) {
+            if (merged.size() >= limit) {
+                return;
+            }
+            if (product == null || product.getId() == null || merged.containsKey(product.getId())) {
+                continue;
+            }
+            if (accessoryPhoto && isApparelProduct(product)) {
+                continue;
+            }
+            merged.put(product.getId(), product);
+        }
+    }
+
+    private List<Product> filterByVisualHashDistance(
+            List<Product> products,
+            Long uploadedHash,
+            int maxDistance
+    ) {
+        if (products == null || products.isEmpty() || uploadedHash == null) {
+            return List.of();
+        }
+        Map<String, Long> pathHashCache = new HashMap<>();
+        Map<String, Long> persistedHashMap = loadPersistedHashes(products);
+        int[] remainingHashBudget = new int[]{MAX_ONLINE_HASH_COMPUTES_PER_REQUEST};
+
+        return products.stream()
+                .filter(product -> product.getId() != null)
+                .map(product -> Map.entry(product, computeBestImageDistance(
+                        product,
+                        uploadedHash,
+                        pathHashCache,
+                        persistedHashMap,
+                        remainingHashBudget
+                )))
+                .filter(entry -> entry.getValue() >= 0 && entry.getValue() <= maxDistance)
+                .sorted(Comparator.comparingInt(Map.Entry::getValue))
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    private List<Product> rankProductsByVisualHashOnly(
+            List<Product> products,
+            Long uploadedHash,
+            int maxDistance,
+            int limit
+    ) {
+        if (products == null || products.isEmpty() || uploadedHash == null) {
+            return List.of();
+        }
+        Map<String, Long> pathHashCache = new HashMap<>();
+        Map<String, Long> persistedHashMap = loadPersistedHashes(products);
+        int[] remainingHashBudget = new int[]{MAX_ONLINE_HASH_COMPUTES_PER_REQUEST};
+
+        return products.stream()
+                .filter(product -> product.getId() != null)
+                .map(product -> Map.entry(product, computeBestImageDistance(
+                        product,
+                        uploadedHash,
+                        pathHashCache,
+                        persistedHashMap,
+                        remainingHashBudget
+                )))
+                .filter(entry -> entry.getValue() >= 0 && entry.getValue() <= maxDistance)
+                .sorted(Comparator.comparingInt(Map.Entry::getValue))
+                .limit(limit)
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    private boolean looksLikeAccessoryPhoto(BufferedImage image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        if (width <= 0 || height <= 0) {
+            return false;
+        }
+
+        int greenPixels = 0;
+        int accentPixels = 0;
+        int sampled = 0;
+        int stepX = Math.max(width / 24, 1);
+        int stepY = Math.max(height / 24, 1);
+
+        for (int y = 0; y < height; y += stepY) {
+            for (int x = 0; x < width; x += stepX) {
+                int rgb = image.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                sampled++;
+
+                if (g > r + 18 && g > b + 18 && g > 70) {
+                    greenPixels++;
+                }
+
+                int max = Math.max(r, Math.max(g, b));
+                int min = Math.min(r, Math.min(g, b));
+                int saturation = max == 0 ? 0 : (max - min) * 100 / max;
+                if (saturation >= 28 && max >= 90 && !(g > r + 18 && g > b + 18)) {
+                    accentPixels++;
+                }
+            }
+        }
+
+        if (sampled == 0) {
+            return false;
+        }
+
+        double greenRatio = (double) greenPixels / sampled;
+        double accentRatio = (double) accentPixels / sampled;
+        return accentRatio >= 0.05 && (greenRatio >= 0.12 || accentRatio >= 0.14);
+    }
+
+    private boolean isApparelProduct(Product product) {
+        String text = buildSearchText(product).toLowerCase(Locale.ROOT);
+        return text.contains("saree") || text.contains("sari") || text.contains("lehenga")
+                || text.contains("kurta") || text.contains("dress") || text.contains("shirt")
+                || text.contains("blouse") || text.contains("dupatta") || text.contains("gown")
+                || text.contains("suit") || text.contains("ethnic");
+    }
+
+    private boolean isAccessoryProduct(Product product) {
+        String text = buildSearchText(product).toLowerCase(Locale.ROOT);
+        for (String term : ACCESSORY_SEARCH_TERMS) {
+            if (text.contains(term)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<Product> fetchAccessoryProducts() {
+        Set<Long> seenIds = new HashSet<>();
+        List<Product> accessories = new ArrayList<>();
+        addAccessoryCandidateProducts(accessories, seenIds);
+        return accessories.stream().limit(20).toList();
+    }
+
+    private void addAccessoryCandidateProducts(List<Product> candidates, Set<Long> seenIds) {
+        for (String term : ACCESSORY_SEARCH_TERMS) {
+            List<Product> matches = productRepository.findTop20ByNameContainingIgnoreCaseAndStatus(term, ACTIVE_STATUS);
+            for (Product product : matches) {
+                if (product.getId() != null && seenIds.add(product.getId())) {
+                    candidates.add(product);
+                }
+            }
+        }
+    }
+
     private List<Product> extractSearchProducts(ApiResponse<SearchResponseDTO> response) {
         if (response == null || !response.isSuccess() || response.getData() == null) {
             return Collections.emptyList();
@@ -347,15 +550,20 @@ public class SearchServiceImpl implements SearchService {
         return products == null ? Collections.emptyList() : products;
     }
 
-    private List<Product> findSimilarProductsByVisualSignature(MultipartFile image) throws IOException {
-        BufferedImage bufferedImage = ImageIO.read(image.getInputStream());
+    private List<Product> findSimilarProductsByVisualSignature(MultipartFile image, BufferedImage bufferedImage) throws IOException {
         if (bufferedImage == null) {
             return Collections.emptyList();
         }
 
+        boolean accessoryPhoto = looksLikeAccessoryPhoto(bufferedImage);
         LinkedHashSet<String> keywords = new LinkedHashSet<>();
         keywords.addAll(extractKeywordsFromFilename(image.getOriginalFilename()));
         keywords.addAll(extractDominantColorKeywords(bufferedImage));
+        if (accessoryPhoto) {
+            keywords.add("bangle");
+            keywords.add("bracelet");
+            keywords.add("jewellery");
+        }
         keywords = new LinkedHashSet<>(expandKeywords(keywords));
         if (keywords.isEmpty()) {
             return Collections.emptyList();
@@ -363,8 +571,8 @@ public class SearchServiceImpl implements SearchService {
 
         Long uploadedHash = computeDHash(bufferedImage);
         String uploadedStem = toFileStem(image.getOriginalFilename());
-        List<Product> candidates = fetchCandidateProducts(keywords);
-        return rankProductsByImageKeywords(candidates, keywords, uploadedStem, uploadedHash);
+        List<Product> candidates = fetchCandidateProducts(keywords, accessoryPhoto);
+        return rankProductsByImageKeywords(candidates, keywords, uploadedStem, uploadedHash, accessoryPhoto);
     }
 
     @Override
@@ -543,7 +751,34 @@ public class SearchServiceImpl implements SearchService {
         return expanded;
     }
 
+    private List<Product> hydrateSearchProducts(List<Product> products) {
+        if (products == null || products.isEmpty()) {
+            return List.of();
+        }
+        List<Long> ids = products.stream()
+                .map(Product::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Product> hydrated = productRepository.findAllWithImagesAndVariantsByIdIn(ids).stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(Product::getId, product -> product, (a, b) -> a, LinkedHashMap::new));
+        List<Product> ordered = new ArrayList<>();
+        for (Product product : products) {
+            if (product.getId() != null && hydrated.containsKey(product.getId())) {
+                ordered.add(hydrated.get(product.getId()));
+            }
+        }
+        return ordered;
+    }
+
     private List<Product> fetchCandidateProducts(Set<String> keywords) {
+        return fetchCandidateProducts(keywords, false);
+    }
+
+    private List<Product> fetchCandidateProducts(Set<String> keywords, boolean includeAccessoryPool) {
         Set<Long> seenIds = new HashSet<>();
         List<Product> candidates = new ArrayList<>();
 
@@ -554,6 +789,10 @@ public class SearchServiceImpl implements SearchService {
                     candidates.add(product);
                 }
             }
+        }
+
+        if (includeAccessoryPool) {
+            addAccessoryCandidateProducts(candidates, seenIds);
         }
 
         // Always blend with recent catalog so color/spec/model matches can still be found
@@ -571,6 +810,16 @@ public class SearchServiceImpl implements SearchService {
             Set<String> keywords,
             String uploadedNameStem,
             Long uploadedImageHash
+    ) {
+        return rankProductsByImageKeywords(candidates, keywords, uploadedNameStem, uploadedImageHash, false);
+    }
+
+    private List<Product> rankProductsByImageKeywords(
+            List<Product> candidates,
+            Set<String> keywords,
+            String uploadedNameStem,
+            Long uploadedImageHash,
+            boolean preferAccessories
     ) {
         if (candidates.isEmpty() || keywords.isEmpty()) {
             return candidates.stream().limit(20).toList();
@@ -630,6 +879,15 @@ public class SearchServiceImpl implements SearchService {
             if (colorHits > 0) score += 10;
             if (modelHits > 0) score += 12;
 
+            if (preferAccessories) {
+                if (isApparelProduct(product)) {
+                    score -= 90;
+                }
+                if (isAccessoryProduct(product)) {
+                    score += 45;
+                }
+            }
+
             if (exactTokenHits == 0 && fuzzyHits == 0 && colorHits == 0 && modelHits == 0) {
                 // allow very soft match using overlap with product attributes
                 int overlap = tokenOverlapCount(productTokens, keywords);
@@ -684,16 +942,24 @@ public class SearchServiceImpl implements SearchService {
                         .thenComparing(Product::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
         if (!strongVisualMatches.isEmpty()) {
-            return diversifyByCategory(strongVisualMatches, 20, 4);
+            if (preferAccessories) {
+                strongVisualMatches = strongVisualMatches.stream()
+                        .filter(product -> !isApparelProduct(product))
+                        .toList();
+            }
+            if (!strongVisualMatches.isEmpty()) {
+                return diversifyByCategory(strongVisualMatches, 20, preferAccessories ? 6 : 4);
+            }
         }
 
         List<Product> sortedByScore = candidates.stream()
                 .filter(product -> product.getId() != null && scoreMap.containsKey(product.getId()))
+                .filter(product -> !preferAccessories || !isApparelProduct(product) || scoreMap.get(product.getId()) >= 180)
                 .sorted(Comparator
                         .comparingInt((Product product) -> scoreMap.get(product.getId())).reversed()
                         .thenComparing(Product::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
-        return diversifyByCategory(sortedByScore, 20, 3);
+        return diversifyByCategory(sortedByScore, 20, preferAccessories ? 6 : 3);
     }
 
     private List<Product> diversifyByCategory(List<Product> products, int limit, int maxPerCategory) {
