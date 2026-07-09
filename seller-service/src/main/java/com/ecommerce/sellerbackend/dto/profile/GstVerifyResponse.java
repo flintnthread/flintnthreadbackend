@@ -9,6 +9,9 @@ import lombok.Getter;
 public class GstVerifyResponse {
     @JsonProperty("verified")
     private final boolean verified;
+    /** True when this GSTIN is already registered to another seller account. */
+    @JsonProperty("alreadyExists")
+    private final boolean alreadyExists;
     private final String gstNumber;
     private final String message;
     private final String businessName;
