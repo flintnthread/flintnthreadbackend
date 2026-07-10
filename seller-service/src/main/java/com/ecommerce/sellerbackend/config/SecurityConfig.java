@@ -64,11 +64,14 @@ public CorsConfigurationSource corsConfigurationSource() {
 
     CorsConfiguration config = new CorsConfiguration();
 
-    config.setAllowedOrigins(List.of(
-            "https://seller.flintnthread.online",
-            "https://admin.flintnthread.online",
-            "https://flintnthread.online"
-    ));
+   config.setAllowedOrigins(List.of(
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "http://localhost:19006",
+    "https://seller.flintnthread.online",
+    "https://admin.flintnthread.online",
+    "https://flintnthread.online"
+));
 
     config.setAllowedMethods(List.of(
             "GET","POST","PUT","PATCH","DELETE","OPTIONS"
