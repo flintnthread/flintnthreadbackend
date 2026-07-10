@@ -41,7 +41,6 @@ import java.util.*;
 public class OrderServiceImpl implements OrderService {
 
     private static final ZoneId ORDER_DISPLAY_ZONE = ZoneId.of("Asia/Kolkata");
-    private static final BigDecimal FNT_WALLET_MAX_ORDER_FRACTION = new BigDecimal("0.25");
     private static final DateTimeFormatter ORDER_CREATED_DISPLAY_FORMAT =
             DateTimeFormatter.ofPattern("dd-MMM-yyyy, h:mm a", Locale.ENGLISH);
 
@@ -151,6 +150,9 @@ public class OrderServiceImpl implements OrderService {
                 finalAmount = cart.getPriceSummary().getFinalTotal();
             }
 
+            shipping = BigDecimal.ZERO;
+            finalAmount = subtotal.subtract(discount).max(BigDecimal.ZERO);
+
             // ✅ Apply inviter referral reward (10% off subtotal) when unlocked — not on referee signup
             double referralDiscountPercent = 0.0d;
 
@@ -179,21 +181,19 @@ public class OrderServiceImpl implements OrderService {
                         .multiply(BigDecimal.valueOf(referralDiscountPercent))
                         .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
                 discount = discount.add(extraDiscount);
-                finalAmount = subtotal.add(shipping).subtract(discount).max(BigDecimal.ZERO);
+                finalAmount = subtotal.subtract(discount).max(BigDecimal.ZERO);
             }
 
             BigDecimal walletApplied = BigDecimal.ZERO;
             if (Boolean.TRUE.equals(dto.getUseWallet())
                     && dto.getWalletAmount() != null
                     && dto.getWalletAmount() > 0) {
-                BigDecimal maxWalletAllowed = finalAmount
-                        .multiply(FNT_WALLET_MAX_ORDER_FRACTION)
-                        .setScale(2, java.math.RoundingMode.HALF_UP);
+                BigDecimal maxWalletAllowed = finalAmount.setScale(2, java.math.RoundingMode.HALF_UP);
                 BigDecimal requestedWallet = BigDecimal.valueOf(dto.getWalletAmount())
                         .setScale(2, java.math.RoundingMode.HALF_UP);
                 if (requestedWallet.compareTo(maxWalletAllowed) > 0) {
                     throw new OrderException(
-                            "FNT Wallet can be used for at most 25% of the order amount (max "
+                            "FNT Wallet amount exceeds order payable (max "
                                     + maxWalletAllowed + " INR)"
                     );
                 }
