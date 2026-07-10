@@ -5,6 +5,7 @@ import com.ecommerce.authdemo.dto.WalletTransactionResponse;
 import com.ecommerce.authdemo.entity.UserWallet;
 import com.ecommerce.authdemo.entity.WalletTransaction;
 import com.ecommerce.authdemo.exception.ResourceNotFoundException;
+import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.UserWalletRepository;
 import com.ecommerce.authdemo.repository.WalletTransactionRepository;
 import com.ecommerce.authdemo.service.WalletService;
@@ -27,6 +28,7 @@ public class WalletServiceImpl implements WalletService {
 
     private final UserWalletRepository walletRepo;
     private final WalletTransactionRepository walletTransactionRepo;
+    private final OrderRepository orderRepository;
 
     @Override
     @Transactional
@@ -298,10 +300,26 @@ public class WalletServiceImpl implements WalletService {
     }
 
     private WalletTransactionResponse toTransactionResponse(WalletTransaction row) {
+        String orderNumber = null;
+        if (row.getOrderId() != null && row.getOrderId() > 0) {
+            orderNumber = orderRepository.findById(row.getOrderId().longValue())
+                    .map(order -> order.getOrderNumber())
+                    .filter(num -> num != null && !num.isBlank())
+                    .orElse(null);
+        }
+        if (orderNumber == null) {
+            String desc = row.getDescription() != null ? row.getDescription() : "";
+            java.util.regex.Matcher matcher =
+                    java.util.regex.Pattern.compile("(FNT\\d{10,})").matcher(desc);
+            if (matcher.find()) {
+                orderNumber = matcher.group(1);
+            }
+        }
         return WalletTransactionResponse.builder()
                 .id(row.getId())
                 .userId(row.getUserId())
                 .orderId(row.getOrderId())
+                .orderNumber(orderNumber)
                 .amount(row.getAmount())
                 .type(row.getType())
                 .description(row.getDescription())
