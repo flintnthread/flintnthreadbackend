@@ -16,9 +16,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * Customer-facing price:
- * sellingPrice (ex-GST) + GST + commission + delivery (from variant DB columns).
- * Default display uses metro-metro delivery (higher charge).
+ * Customer-facing price — same stack as admin displayPrice:
+ * sellingPrice (ex-GST) + GST + commission + highest delivery charge.
+ * Cart may pass a concrete {@link DeliveryType} to use that zone's delivery instead of max().
  */
 @Service
 @RequiredArgsConstructor
@@ -48,16 +48,19 @@ public class CustomerPriceResolver {
             BigDecimal totalPriceIntraCity,
             BigDecimal totalPriceMetroMetro) {}
 
+    /** Catalog / wishlist / activity: admin-aligned total (highest delivery). */
     public ResolvedPrice resolve(Product product, ProductVariant variant) {
-        return resolve(product, variant, DeliveryType.metro_metro);
+        return resolve(product, variant, null);
     }
 
+    /**
+     * @param deliveryType when null, uses highest of Intra-City / Metro-Metro (admin Total Price).
+     *                     when set, uses that zone's delivery (cart / checkout).
+     */
     public ResolvedPrice resolve(Product product, ProductVariant variant, DeliveryType deliveryType) {
         if (variant == null) {
             return null;
         }
-
-        DeliveryType effectiveType = deliveryType != null ? deliveryType : DeliveryType.metro_metro;
 
         BigDecimal sellingExcl = firstPositive(variant.getSellingPrice(), variant.getBasePrice());
         if (sellingExcl == null) {
@@ -101,19 +104,27 @@ public class CustomerPriceResolver {
 
         BigDecimal intraDelivery = nonNegative(variant.getIntraCityDeliveryCharge());
         BigDecimal metroDelivery = nonNegative(variant.getMetroMetroDeliveryCharge());
+        BigDecimal highestDelivery = intraDelivery.max(metroDelivery);
 
-        BigDecimal totalIntra = positiveOrNull(variant.getTotalPriceIntraCity());
-        if (totalIntra == null) {
-            totalIntra = priceBeforeDelivery.add(intraDelivery).setScale(2, RoundingMode.HALF_UP);
+        // Always recompute like admin enrich() — do not trust stale DB totals (often missing commission).
+        BigDecimal totalIntra = priceBeforeDelivery.add(intraDelivery).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalMetro = priceBeforeDelivery.add(metroDelivery).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal displayPrice = priceBeforeDelivery.add(highestDelivery).setScale(2, RoundingMode.HALF_UP);
+
+        DeliveryType effectiveType;
+        BigDecimal deliveryCharge;
+        BigDecimal customerPrice;
+        if (deliveryType == null) {
+            effectiveType = metroDelivery.compareTo(intraDelivery) >= 0
+                    ? DeliveryType.metro_metro
+                    : DeliveryType.intra_city;
+            deliveryCharge = highestDelivery;
+            customerPrice = displayPrice;
+        } else {
+            effectiveType = deliveryType;
+            deliveryCharge = effectiveType == DeliveryType.intra_city ? intraDelivery : metroDelivery;
+            customerPrice = effectiveType == DeliveryType.intra_city ? totalIntra : totalMetro;
         }
-
-        BigDecimal totalMetro = positiveOrNull(variant.getTotalPriceMetroMetro());
-        if (totalMetro == null) {
-            totalMetro = priceBeforeDelivery.add(metroDelivery).setScale(2, RoundingMode.HALF_UP);
-        }
-
-        BigDecimal deliveryCharge = effectiveType == DeliveryType.intra_city ? intraDelivery : metroDelivery;
-        BigDecimal customerPrice = effectiveType == DeliveryType.intra_city ? totalIntra : totalMetro;
 
         return new ResolvedPrice(
                 sellingExcl,
@@ -133,7 +144,7 @@ public class CustomerPriceResolver {
     }
 
     public BigDecimal resolveCustomerUnitPrice(Product product, ProductVariant variant) {
-        return resolveCustomerUnitPrice(product, variant, DeliveryType.metro_metro);
+        return resolveCustomerUnitPrice(product, variant, null);
     }
 
     public BigDecimal resolveCustomerUnitPrice(Product product, ProductVariant variant, DeliveryType deliveryType) {
@@ -145,10 +156,12 @@ public class CustomerPriceResolver {
         if (variant == null) {
             return BigDecimal.ZERO;
         }
-        DeliveryType effectiveType = deliveryType != null ? deliveryType : DeliveryType.metro_metro;
-        return effectiveType == DeliveryType.intra_city
-                ? nonNegative(variant.getIntraCityDeliveryCharge())
-                : nonNegative(variant.getMetroMetroDeliveryCharge());
+        BigDecimal intra = nonNegative(variant.getIntraCityDeliveryCharge());
+        BigDecimal metro = nonNegative(variant.getMetroMetroDeliveryCharge());
+        if (deliveryType == null) {
+            return intra.max(metro);
+        }
+        return deliveryType == DeliveryType.intra_city ? intra : metro;
     }
 
     private BigDecimal resolveGstPercent(Product product, ProductVariant variant) {
@@ -255,13 +268,6 @@ public class CustomerPriceResolver {
             if (candidate != null && candidate.compareTo(BigDecimal.ZERO) > 0) {
                 return candidate;
             }
-        }
-        return null;
-    }
-
-    private static BigDecimal positiveOrNull(BigDecimal value) {
-        if (value != null && value.compareTo(BigDecimal.ZERO) > 0) {
-            return value.setScale(2, RoundingMode.HALF_UP);
         }
         return null;
     }
