@@ -47,4 +47,7 @@ public interface WalletService {
 
     /** Sum of wallet debits for a specific order (checkout payment). */
     BigDecimal getWalletDebitTotalForOrder(Integer userId, Long orderId);
+
+    /** Returns amount already credited for a cancelled order refund, if any. */
+    java.util.Optional<BigDecimal> findOrderCancellationRefundAmount(Integer userId, Long orderId);
 }

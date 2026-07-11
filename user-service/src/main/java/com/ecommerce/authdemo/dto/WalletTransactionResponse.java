@@ -15,6 +15,7 @@ public class WalletTransactionResponse {
     private Integer id;
     private Integer userId;
     private Integer orderId;
+    private String orderNumber;
     private BigDecimal amount;
     private WalletTransaction.Type type;
     private String description;

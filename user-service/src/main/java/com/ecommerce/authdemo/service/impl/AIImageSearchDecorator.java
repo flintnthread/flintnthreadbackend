@@ -103,7 +103,10 @@ public class AIImageSearchDecorator {
     }
 
     private List<Product> loadProductsInOrder(List<Long> similarProductIds) {
-        Map<Long, Product> byId = productRepository.findAllById(similarProductIds).stream()
+        if (similarProductIds == null || similarProductIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Product> byId = productRepository.findAllWithImagesAndVariantsByIdIn(similarProductIds).stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(Product::getId, product -> product, (a, b) -> a, LinkedHashMap::new));
 

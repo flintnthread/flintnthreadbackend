@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -73,7 +74,16 @@ public class WalletController {
             @PathVariable Integer userId,
             @Valid @RequestBody WalletAmountRequest request) {
         assertCurrentUser(userId);
-        walletService.deductMoney(userId, request.getAmount());
+        if (request.getOrderId() != null && request.getOrderId() > 0) {
+            walletService.debitForOrderPayment(
+                    userId,
+                    request.getOrderId(),
+                    BigDecimal.valueOf(request.getAmount()).setScale(2, java.math.RoundingMode.HALF_UP),
+                    request.getOrderNumber()
+            );
+        } else {
+            walletService.deductMoney(userId, request.getAmount());
+        }
         return ResponseEntity.ok(new ApiResponse<>(true, "Wallet debited successfully", "OK"));
     }
 

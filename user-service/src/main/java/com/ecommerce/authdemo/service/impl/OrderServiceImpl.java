@@ -41,7 +41,6 @@ import java.util.*;
 public class OrderServiceImpl implements OrderService {
 
     private static final ZoneId ORDER_DISPLAY_ZONE = ZoneId.of("Asia/Kolkata");
-    private static final BigDecimal FNT_WALLET_MAX_ORDER_FRACTION = new BigDecimal("0.25");
     private static final DateTimeFormatter ORDER_CREATED_DISPLAY_FORMAT =
             DateTimeFormatter.ofPattern("dd-MMM-yyyy, h:mm a", Locale.ENGLISH);
 
@@ -151,6 +150,9 @@ public class OrderServiceImpl implements OrderService {
                 finalAmount = cart.getPriceSummary().getFinalTotal();
             }
 
+            shipping = BigDecimal.ZERO;
+            finalAmount = subtotal.subtract(discount).max(BigDecimal.ZERO);
+
             // ✅ Apply inviter referral reward (10% off subtotal) when unlocked — not on referee signup
             double referralDiscountPercent = 0.0d;
 
@@ -179,21 +181,19 @@ public class OrderServiceImpl implements OrderService {
                         .multiply(BigDecimal.valueOf(referralDiscountPercent))
                         .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
                 discount = discount.add(extraDiscount);
-                finalAmount = subtotal.add(shipping).subtract(discount).max(BigDecimal.ZERO);
+                finalAmount = subtotal.subtract(discount).max(BigDecimal.ZERO);
             }
 
             BigDecimal walletApplied = BigDecimal.ZERO;
             if (Boolean.TRUE.equals(dto.getUseWallet())
                     && dto.getWalletAmount() != null
                     && dto.getWalletAmount() > 0) {
-                BigDecimal maxWalletAllowed = finalAmount
-                        .multiply(FNT_WALLET_MAX_ORDER_FRACTION)
-                        .setScale(2, java.math.RoundingMode.HALF_UP);
+                BigDecimal maxWalletAllowed = finalAmount.setScale(2, java.math.RoundingMode.HALF_UP);
                 BigDecimal requestedWallet = BigDecimal.valueOf(dto.getWalletAmount())
                         .setScale(2, java.math.RoundingMode.HALF_UP);
                 if (requestedWallet.compareTo(maxWalletAllowed) > 0) {
                     throw new OrderException(
-                            "FNT Wallet can be used for at most 25% of the order amount (max "
+                            "FNT Wallet amount exceeds order payable (max "
                                     + maxWalletAllowed + " INR)"
                     );
                 }
@@ -551,6 +551,38 @@ public class OrderServiceImpl implements OrderService {
 
         if ("cancelled".equals(status)) {
             log.info("Order already cancelled orderId={}", orderId);
+            if (refundToWallet && shouldCreditWalletOnCancel(order)) {
+                BigDecimal walletCreditAmount = resolveOrderRefundAmount(order, true);
+                boolean walletCredited = false;
+                if (walletCreditAmount.compareTo(BigDecimal.ZERO) > 0) {
+                    walletCredited = walletService.creditOrderCancellationRefund(
+                            Math.toIntExact(order.getUserId()),
+                            order.getId(),
+                            walletCreditAmount,
+                            order.getOrderNumber()
+                    );
+                    if (!walletCredited) {
+                        walletCredited = walletService
+                                .findOrderCancellationRefundAmount(
+                                        Math.toIntExact(order.getUserId()),
+                                        order.getId()
+                                )
+                                .isPresent();
+                    }
+                }
+                String message = walletCredited
+                        ? "Order already cancelled. "
+                                + walletCreditAmount
+                                + " has been added to your FNT Wallet."
+                        : "Order already cancelled";
+                return CancelOrderResponseDTO.builder()
+                        .walletCredited(walletCredited)
+                        .walletCreditAmount(
+                                walletCredited ? walletCreditAmount : BigDecimal.ZERO
+                        )
+                        .message(message)
+                        .build();
+            }
             return CancelOrderResponseDTO.builder()
                     .walletCredited(false)
                     .walletCreditAmount(BigDecimal.ZERO)
@@ -1402,8 +1434,17 @@ public class OrderServiceImpl implements OrderService {
 
     private OrderResponseDTO buildOrderSummaryResponseLite(Order order) {
         List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+        List<OrderItemDTO> itemDTOList = items.stream()
+                .map(this::buildOrderItemDTO)
+                .toList();
+        int totalQuantity = items.stream()
+                .mapToInt(item -> item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1)
+                .sum();
+
         String firstImage = null;
-        if (!items.isEmpty()) {
+        if (!itemDTOList.isEmpty() && itemDTOList.get(0).getProductImage() != null) {
+            firstImage = itemDTOList.get(0).getProductImage();
+        } else if (!items.isEmpty()) {
             OrderItem first = items.get(0);
             firstImage = first.getProductImagePath();
             if (firstImage == null || firstImage.isBlank()) {
@@ -1433,8 +1474,9 @@ public class OrderServiceImpl implements OrderService {
                 .discountAmount(order.getDiscountAmount())
                 .createdDate(formatOrderCreatedDate(order.getCreatedAt()))
                 .totalItems(items.size())
+                .totalQuantity(totalQuantity > 0 ? totalQuantity : items.size())
                 .firstProductImage(firstImage)
-                .items(List.of())
+                .items(itemDTOList)
                 .shiprocketAwbCode(order.getShiprocketAwbCode())
                 .shiprocketCourierName(order.getShiprocketCourierName())
                 .shiprocketTrackingUrl(order.getShiprocketTrackingUrl())
@@ -1486,6 +1528,10 @@ public class OrderServiceImpl implements OrderService {
                 .totalWeight(totalWeight)
 
                 .totalItems(items.size())
+
+                .totalQuantity(items.stream()
+                        .mapToInt(item -> item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1)
+                        .sum())
 
                 .firstProductImage(firstImage)
 

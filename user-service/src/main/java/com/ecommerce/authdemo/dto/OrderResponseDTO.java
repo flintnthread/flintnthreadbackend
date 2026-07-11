@@ -23,8 +23,10 @@ public class OrderResponseDTO {
     private Double shippingAmount;
     private Double discountAmount;
 
-    private Integer totalItems;
-    private String firstProductImage;
+  private Integer totalItems;
+  /** Sum of line quantities (e.g. 2 units of one SKU = 2). */
+  private Integer totalQuantity;
+  private String firstProductImage;
     private String createdDate;
 
     private String shippingAddress;
