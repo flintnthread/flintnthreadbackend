@@ -156,13 +156,8 @@ public class DashboardQueryRepository {
 
     public long countNewCustomersSince(LocalDateTime since) {
         Number count = (Number) entityManager.createNativeQuery("""
-                SELECT COUNT(*) FROM (
-                    SELECT shipping_email
-                    FROM orders
-                    WHERE shipping_email IS NOT NULL AND shipping_email != ''
-                    GROUP BY shipping_email
-                    HAVING MIN(created_at) >= :since
-                ) t
+                SELECT COUNT(*) FROM users
+                WHERE created_at >= :since
                 """)
                 .setParameter("since", since)
                 .getSingleResult();
@@ -171,13 +166,10 @@ public class DashboardQueryRepository {
 
     public long countActiveCustomers(LocalDateTime since) {
         Number count = (Number) entityManager.createNativeQuery("""
-                SELECT COUNT(*) FROM (
-                    SELECT shipping_email
-                    FROM orders
-                    WHERE shipping_email IS NOT NULL AND shipping_email != ''
-                    GROUP BY shipping_email
-                    HAVING MAX(created_at) >= :since
-                ) t
+                SELECT COUNT(DISTINCT user_id)
+                FROM orders
+                WHERE user_id IS NOT NULL
+                  AND created_at >= :since
                 """)
                 .setParameter("since", since)
                 .getSingleResult();

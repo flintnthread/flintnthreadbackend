@@ -1,6 +1,8 @@
 package com.ecommerce.adminbackend.service;
 
 import com.ecommerce.adminbackend.common.PageResponse;
+import com.ecommerce.adminbackend.dto.product.CreateProductRequest;
+import com.ecommerce.adminbackend.dto.product.UpdateProductRequest;
 
 import java.util.Map;
 
@@ -24,6 +26,12 @@ public interface ProductAdminService {
     Map<String, Object> catalog();
 
     Map<String, Object> getProduct(Long id);
+
+    Map<String, Object> create(CreateProductRequest request);
+
+    Map<String, Object> update(Long id, UpdateProductRequest request);
+
+    void delete(Long id);
 
     Map<String, Object> approve(Long id, String note);
 

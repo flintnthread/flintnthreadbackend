@@ -6,7 +6,9 @@ import com.ecommerce.adminbackend.repository.CategoryRepository;
 import com.ecommerce.adminbackend.service.SubcategoryAdminService;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
@@ -38,39 +40,48 @@ public class SubcategoryAdminController {
         return subcategoryAdminService.getCounts();
     }
 
+    @GetMapping("/{id}")
+    public Map<String, Object> getSubcategory(@PathVariable Integer id) {
+        return toSubcategoryMap(subcategoryAdminService.getSubcategory(id));
+    }
+
     @PostMapping
     public Map<String, Object> createSubcategory(@RequestBody Map<String, Object> request) {
         Subcategory subcategory = subcategoryAdminService.createSubcategory(
-                (Integer) request.get("categoryId"),
-                (String) request.get("subcategoryName"),
-                (String) request.get("subcategoryImage"),
-                (String) request.get("mobileImage"),
-                (String) request.get("materialSlabs"),
-                (String) request.get("weightSlabs"),
-                request.get("gstPercentage") != null ? new BigDecimal(request.get("gstPercentage").toString()) : null,
-                request.get("status") != null ? Boolean.valueOf(request.get("status").toString()) : true
+                toInteger(request.get("categoryId")),
+                toStringValue(request.get("subcategoryName")),
+                toStringValue(request.get("subcategoryImage")),
+                toStringValue(request.get("mobileImage")),
+                toStringValue(request.get("materialSlabs")),
+                toStringValue(request.get("weightSlabs")),
+                toBigDecimal(request.get("gstPercentage")),
+                toBoolean(request.get("status"), true)
         );
         return toSubcategoryMap(subcategory);
     }
 
     @PutMapping("/{id}")
     public Map<String, Object> updateSubcategory(@PathVariable Integer id, @RequestBody Map<String, Object> request) {
-        subcategoryAdminService.updateSubcategory(
+        Subcategory subcategory = subcategoryAdminService.updateSubcategory(
                 id,
-                (Integer) request.get("categoryId"),
-                (String) request.get("subcategoryName"),
-                (String) request.get("subcategoryImage"),
-                (String) request.get("mobileImage"),
-                (String) request.get("materialSlabs"),
-                (String) request.get("weightSlabs"),
-                request.get("gstPercentage") != null ? new BigDecimal(request.get("gstPercentage").toString()) : null,
-                request.get("status") != null ? Boolean.valueOf(request.get("status").toString()) : true
+                toInteger(request.get("categoryId")),
+                toStringValue(request.get("subcategoryName")),
+                toStringValue(request.get("subcategoryImage")),
+                toStringValue(request.get("mobileImage")),
+                toStringValue(request.get("materialSlabs")),
+                toStringValue(request.get("weightSlabs")),
+                toBigDecimal(request.get("gstPercentage")),
+                request.containsKey("status") ? toBoolean(request.get("status"), true) : null
         );
-        Subcategory subcategory = subcategoryAdminService.listSubcategories(null, null).stream()
-                .filter(s -> s.getId().equals(id))
-                .findFirst()
-                .orElse(null);
-        return subcategory != null ? toSubcategoryMap(subcategory) : Map.of("id", id);
+        return toSubcategoryMap(subcategory);
+    }
+
+    @PostMapping(value = "/{id}/upload-images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> uploadImages(
+            @PathVariable Integer id,
+            @RequestParam(value = "image", required = false) MultipartFile image,
+            @RequestParam(value = "mobileImage", required = false) MultipartFile mobileImage) {
+        return toSubcategoryMap(subcategoryAdminService.uploadImages(id, image, mobileImage));
     }
 
     @DeleteMapping("/{id}")
@@ -92,7 +103,6 @@ public class SubcategoryAdminController {
         map.put("createdAt", subcategory.getCreatedAt());
         map.put("sellerId", subcategory.getSellerId());
 
-        // Add category information
         Optional<Category> categoryOpt = categoryRepository.findById(subcategory.getCategoryId());
         if (categoryOpt.isPresent()) {
             Category category = categoryOpt.get();
@@ -100,18 +110,53 @@ public class SubcategoryAdminController {
             map.put("categoryImage", mediaUrlHelper.toPublicUrl(category.getCategoryImage(), "categories"));
             map.put("mobileCategoryImage", mediaUrlHelper.toPublicUrl(category.getMobileImage(), "categories"));
 
-            // Add main category information if this category has a parent
             if (category.getParentId() != null) {
                 Optional<Category> mainCategoryOpt = categoryRepository.findById(category.getParentId());
                 if (mainCategoryOpt.isPresent()) {
                     map.put("mainCat", mainCategoryOpt.get().getCategoryName());
                 }
             } else {
-                // If the category itself is a main category (no parent)
                 map.put("mainCat", category.getCategoryName());
             }
         }
 
         return map;
+    }
+
+    private static Integer toInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        String text = value.toString().trim();
+        return text.isEmpty() ? null : Integer.valueOf(text);
+    }
+
+    private static BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim();
+        return text.isEmpty() ? null : new BigDecimal(text);
+    }
+
+    private static Boolean toBoolean(Object value, boolean defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.valueOf(value.toString());
+    }
+
+    private static String toStringValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim();
+        return text.isEmpty() ? null : text;
     }
 }
