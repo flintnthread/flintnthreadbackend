@@ -183,7 +183,11 @@ public class CustomerQueryRepository {
                 .getResultList();
     }
 
-    private static final String CUSTOMER_USER_WHERE = " WHERE o.user_id = :customerId";
+    /**
+     * Trailing newline is required: Java text-block concatenation would otherwise
+     * glue {@code :customerId} onto the next keyword (e.g. {@code :customerIdGROUP}).
+     */
+    private static final String CUSTOMER_USER_WHERE = " WHERE o.user_id = :customerId\n";
 
     @SuppressWarnings("unchecked")
     public List<Object[]> orderStatusCountsByCustomerId(Long customerId) {
