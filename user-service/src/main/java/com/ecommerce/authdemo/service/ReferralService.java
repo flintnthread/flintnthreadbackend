@@ -4,8 +4,10 @@ import com.ecommerce.authdemo.dto.ReferralDashboardDto;
 import com.ecommerce.authdemo.dto.ReferralResponse;
 import com.ecommerce.authdemo.dto.ReferralRewardStatusDto;
 import com.ecommerce.authdemo.dto.ShareDto;
+import com.ecommerce.authdemo.entity.User;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 public interface ReferralService {
 
@@ -13,6 +15,9 @@ public interface ReferralService {
     int getRequiredReferralsForReward();
 
     void generateCodes(Long userId, String username);
+
+    /** Resolve referrer by code; accepts both {@code FNT…} and legacy {@code REF…} prefixes. */
+    Optional<User> findReferrerByReferralCode(String referralCode);
 
     ReferralResponse applyReferral(Long userId, String referralCode);
 

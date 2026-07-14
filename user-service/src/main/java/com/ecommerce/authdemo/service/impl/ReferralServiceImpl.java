@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +39,8 @@ public class ReferralServiceImpl implements ReferralService {
      * ({@code SAIK}) + random 6 digits ({@code 482917}).
      */
     private static final String REF_CODE_TAG = "FNT";
+    /** Legacy brand prefix previously used before {@link #REF_CODE_TAG}. */
+    private static final String LEGACY_REF_CODE_TAG = "REF";
 
     @Override
     public int getRequiredReferralsForReward() {
@@ -79,6 +82,78 @@ public class ReferralServiceImpl implements ReferralService {
         return code.trim().toUpperCase().endsWith(legacySuffix);
     }
 
+    private boolean hasObsoleteRefBrandPrefix(String code) {
+        if (code == null || code.isBlank()) {
+            return false;
+        }
+        String upper = code.trim().toUpperCase();
+        return upper.startsWith(LEGACY_REF_CODE_TAG) && !upper.startsWith(REF_CODE_TAG);
+    }
+
+    /** {@code REFSRAV004716} → {@code FNTSRAV004716} */
+    private String toFntBrandPrefix(String code) {
+        String upper = code.trim().toUpperCase();
+        if (upper.startsWith(LEGACY_REF_CODE_TAG) && upper.length() > LEGACY_REF_CODE_TAG.length()) {
+            return REF_CODE_TAG + upper.substring(LEGACY_REF_CODE_TAG.length());
+        }
+        return upper;
+    }
+
+    /**
+     * Persist FNT prefix for legacy REF codes (and regenerate truly legacy id-suffix codes).
+     */
+    private User ensureModernReferralCode(User user) {
+        Long userId = user.getId();
+        String code = user.getReferralCode();
+        if (code == null || code.isBlank()) {
+            generateCodes(userId, user.getUsername());
+            return userRepository.findById(userId).orElseThrow();
+        }
+        if (hasLegacyUserIdSuffix(code, userId)) {
+            generateCodes(userId, user.getUsername());
+            return userRepository.findById(userId).orElseThrow();
+        }
+        if (hasObsoleteRefBrandPrefix(code)) {
+            String migrated = toFntBrandPrefix(code);
+            if (userRepository.findByReferralCode(migrated).isEmpty()) {
+                user.setReferralCode(migrated);
+                userRepository.save(user);
+                return user;
+            }
+            // Collision on migrated value — generate a fresh FNT code.
+            generateCodes(userId, user.getUsername());
+            return userRepository.findById(userId).orElseThrow();
+        }
+        return user;
+    }
+
+    @Override
+    public Optional<User> findReferrerByReferralCode(String referralCode) {
+        String code = referralCode == null ? "" : referralCode.trim().toUpperCase();
+        if (code.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<User> direct = userRepository.findByReferralCode(code);
+        if (direct.isPresent()) {
+            return direct;
+        }
+        // Accept FNT… when DB still has legacy REF… (and the reverse during migration).
+        if (code.startsWith(REF_CODE_TAG) && code.length() > REF_CODE_TAG.length()) {
+            Optional<User> legacy = userRepository.findByReferralCode(
+                    LEGACY_REF_CODE_TAG + code.substring(REF_CODE_TAG.length())
+            );
+            if (legacy.isPresent()) {
+                return legacy;
+            }
+        }
+        if (code.startsWith(LEGACY_REF_CODE_TAG) && code.length() > LEGACY_REF_CODE_TAG.length()) {
+            return userRepository.findByReferralCode(
+                    REF_CODE_TAG + code.substring(LEGACY_REF_CODE_TAG.length())
+            );
+        }
+        return Optional.empty();
+    }
+
     private String refSlugFourChars(String username) {
         String raw = username == null ? "USER" : username.trim();
         if (raw.contains("@")) {
@@ -112,10 +187,8 @@ public class ReferralServiceImpl implements ReferralService {
             return new ReferralResponse(false, "Enter a referral code");
         }
 
-        User referrer = userRepository
-                .findByReferralCode(code)
-                .orElseThrow(() ->
-                        new RuntimeException("Invalid referral code"));
+        User referrer = findReferrerByReferralCode(code)
+                .orElseThrow(() -> new RuntimeException("Invalid referral code"));
 
         if (referrer.getId().equals(userId)) {
             return new ReferralResponse(false, "Own code not allowed");
@@ -191,15 +264,7 @@ public class ReferralServiceImpl implements ReferralService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found: " + userId));
 
-        if (user.getReferralCode() == null || user.getReferralCode().isEmpty()) {
-            generateCodes(userId, user.getUsername());
-            user = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("User not found after generation"));
-        } else if (hasLegacyUserIdSuffix(user.getReferralCode(), userId)) {
-            generateCodes(userId, user.getUsername());
-            user = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("User not found after generation"));
-        }
+        user = ensureModernReferralCode(user);
 
         int invites = user.getReferralCount() != null ? user.getReferralCount() : 0;
 
@@ -270,12 +335,7 @@ public class ReferralServiceImpl implements ReferralService {
     public String refreshReferralCode(Long userId) {
 
         User user = userRepository.findById(userId).orElseThrow();
-
-        if (user.getReferralCode() == null || user.getReferralCode().isEmpty()) {
-            generateCodes(userId, user.getUsername());
-            user = userRepository.findById(userId).orElseThrow();
-        }
-
+        user = ensureModernReferralCode(user);
         return user.getReferralCode();
     }
 
@@ -283,13 +343,8 @@ public class ReferralServiceImpl implements ReferralService {
     public ShareDto getShareData(Long userId) {
 
         User user = userRepository.findById(userId).orElseThrow();
-
+        user = ensureModernReferralCode(user);
         String code = user.getReferralCode();
-        if (code == null || code.isEmpty()) {
-            generateCodes(userId, user.getUsername());
-            user = userRepository.findById(userId).orElseThrow();
-            code = user.getReferralCode();
-        }
 
         return new ShareDto(
                 "Join Flint & Thread using my referral code "
