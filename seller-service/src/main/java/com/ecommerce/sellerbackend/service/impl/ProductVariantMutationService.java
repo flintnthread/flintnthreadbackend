@@ -11,6 +11,7 @@ import com.ecommerce.sellerbackend.exception.ResourceNotFoundException;
 import com.ecommerce.sellerbackend.repository.ProductImageRepository;
 import com.ecommerce.sellerbackend.repository.ProductRepository;
 import com.ecommerce.sellerbackend.repository.ProductVariantRepository;
+import com.ecommerce.sellerbackend.service.AdminSettingsLookupService;
 import com.ecommerce.sellerbackend.service.ProductMediaStorageService;
 import com.ecommerce.sellerbackend.service.support.ProductCatalogResolver;
 import com.ecommerce.sellerbackend.service.support.ProductVariantPricingCalculator;
@@ -32,6 +33,7 @@ public class ProductVariantMutationService {
     private final ProductImageRepository productImageRepository;
     private final ProductCatalogResolver catalogResolver;
     private final ProductMediaStorageService productMediaStorageService;
+    private final AdminSettingsLookupService adminSettingsLookupService;
 
     @Transactional
     public CreateProductResponse.CreatedVariantRef createVariant(
@@ -80,11 +82,17 @@ public class ProductVariantMutationService {
                 ? product.getGstPercentage()
                 : ProductVariantPricingCalculator.DEFAULT_GST;
 
+        BigDecimal commissionPercent =
+                adminSettingsLookupService.getSellerCommissionPercent(product.getSellerId());
+
         VariantPricing pricing = ProductVariantPricingCalculator.calculate(
                 request.getMrp(),
                 request.getSellingPrice(),
                 request.getDiscount(),
-                gstPercent);
+                gstPercent,
+                ProductVariantPricingCalculator.DEFAULT_INTRA_CITY,
+                ProductVariantPricingCalculator.DEFAULT_METRO_METRO,
+                commissionPercent);
 
         if (variant == null) {
             variant = new ProductVariant();
@@ -109,7 +117,7 @@ public class ProductVariantMutationService {
         variant.setMrpInclGst(pricing.mrpInclGst());
         variant.setIntraCityDeliveryCharge(ProductVariantPricingCalculator.DEFAULT_INTRA_CITY);
         variant.setMetroMetroDeliveryCharge(ProductVariantPricingCalculator.DEFAULT_METRO_METRO);
-        variant.setCommissionPercentage(ProductVariantPricingCalculator.COMMISSION_PERCENT);
+        variant.setCommissionPercentage(commissionPercent);
         variant.setCommissionAmount(pricing.commissionAmount());
         variant.setTotalPriceIntraCity(pricing.totalIntraCity());
         variant.setTotalPriceMetroMetro(pricing.totalMetroMetro());

@@ -65,6 +65,26 @@ public class GstVerificationService {
                     .centreJurisdiction("RANGE-II")
                     .principalPlaceType("Office / Sale Office")
                     .build(),
+            "36AAGCF5402J1ZP",
+            GstVerifyResponse.builder()
+                    .verified(true)
+                    .gstNumber("36AAGCF5402J1ZP")
+                    .message("GST verified successfully.")
+                    .businessName("FLINT & THREAD (INDIA) PRIVATE LIMITED")
+                    .tradeName("FLINT & THREAD (INDIA) PRIVATE LIMITED")
+                    .businessType("Private Limited")
+                    .panNumber("AAGCF5402J")
+                    .address("H NO 1-179/9/620/KDC, KRUSHI DEFENCE COLONY, Hyderabad")
+                    .city("Hyderabad")
+                    .state("Telangana")
+                    .pincode("502319")
+                    .status("Active")
+                    .taxpayerType("Regular")
+                    .registrationDate("31/07/2025")
+                    .stateJurisdiction("Patancheruvu")
+                    .centreJurisdiction("PATANCHERU")
+                    .principalPlaceType("Others")
+                    .build(),
             "36AGQCF5402J1ZP",
             GstVerifyResponse.builder()
                     .verified(true)
@@ -123,7 +143,13 @@ public class GstVerificationService {
 
         Optional<GstVerifyResponse> external = externalLookupClient.lookup(gst);
         if (external.isPresent()) {
-            return external.get();
+            GstVerifyResponse response = external.get();
+            if (response.isVerified() || hasRegistryDetails(response)) {
+                return response;
+            }
+            if (!isBlank(response.getMessage())) {
+                return response;
+            }
         }
 
         return gstNotFoundResponse(gst);

@@ -14,6 +14,7 @@ import com.ecommerce.sellerbackend.repository.ProductImageRepository;
 import com.ecommerce.sellerbackend.repository.ProductRepository;
 import com.ecommerce.sellerbackend.repository.ProductVariantRepository;
 import com.ecommerce.sellerbackend.repository.SubcategoryRepository;
+import com.ecommerce.sellerbackend.service.AdminSettingsLookupService;
 import com.ecommerce.sellerbackend.service.DeliverySlabLookupService;
 import com.ecommerce.sellerbackend.service.ProductMediaStorageService;
 import com.ecommerce.sellerbackend.service.support.ProductCatalogResolver;
@@ -45,6 +46,7 @@ public class ProductUpdateService {
     private final ProductCatalogResolver catalogResolver;
     private final ProductMediaStorageService productMediaStorageService;
     private final DeliverySlabLookupService deliverySlabLookupService;
+    private final AdminSettingsLookupService adminSettingsLookupService;
 
     @Transactional
     public CreateProductResponse update(Long sellerId, Long productId, UpdateProductRequest request) {
@@ -66,6 +68,7 @@ public class ProductUpdateService {
         DeliveryWeightSlabResponse slab = deliverySlabLookupService.resolveForWeight(request.getProductWeight());
         BigDecimal intraCity = slab.getIntraCityCharge();
         BigDecimal metroMetro = slab.getMetroMetroCharge();
+        BigDecimal commissionPercent = adminSettingsLookupService.getSellerCommissionPercent(sellerId);
 
         product.setCategoryId(ids.categoryId());
         product.setSubcategoryId(ids.subcategoryId());
@@ -131,7 +134,8 @@ public class ProductUpdateService {
                     variantReq.getDiscount(),
                     gstPercent,
                     intraCity,
-                    metroMetro);
+                    metroMetro,
+                    commissionPercent);
 
             String colorName = variantReq.getColor() != null ? variantReq.getColor().trim() : "";
             String sizeName = variantReq.getSize() != null ? variantReq.getSize().trim() : "";
@@ -163,7 +167,7 @@ public class ProductUpdateService {
             variant.setMrpInclGst(pricing.mrpInclGst());
             variant.setIntraCityDeliveryCharge(intraCity);
             variant.setMetroMetroDeliveryCharge(metroMetro);
-            variant.setCommissionPercentage(ProductVariantPricingCalculator.COMMISSION_PERCENT);
+            variant.setCommissionPercentage(commissionPercent);
             variant.setCommissionAmount(pricing.commissionAmount());
             variant.setTotalPriceIntraCity(pricing.totalIntraCity());
             variant.setTotalPriceMetroMetro(pricing.totalMetroMetro());

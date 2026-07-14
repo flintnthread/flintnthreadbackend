@@ -72,7 +72,7 @@ public class SellerSchemaBootstrap {
         }
 
         ensureProductVariantMinQuantityColumn();
-        normalizeVariantCommissionAndTotals();
+        // Do not zero commission on startup — rates come from admin_settings and product approval.
         syncLegacyProductSkusFromVariants();
     }
 
@@ -94,25 +94,6 @@ public class SellerSchemaBootstrap {
             log.info("product_variants.min_quantity column is ready");
         } catch (Exception ex) {
             log.warn("Could not ensure product_variants.min_quantity column: {}", ex.getMessage());
-        }
-    }
-
-    private void normalizeVariantCommissionAndTotals() {
-        try {
-            int updated = jdbcTemplate.update("""
-                    UPDATE product_variants
-                    SET commission_percentage = 0,
-                        commission_amount = 0,
-                        total_price_intra_city = ROUND(final_price + IFNULL(intra_city_delivery_charge, 0), 2),
-                        total_price_metro_metro = ROUND(final_price + IFNULL(metro_metro_delivery_charge, 0), 2)
-                    WHERE IFNULL(commission_percentage, 0) <> 0
-                       OR IFNULL(commission_amount, 0) <> 0
-                    """);
-            if (updated > 0) {
-                log.info("Normalized commission/totals on {} product_variants rows", updated);
-            }
-        } catch (Exception ex) {
-            log.warn("Could not normalize product_variants commission totals: {}", ex.getMessage());
         }
     }
 

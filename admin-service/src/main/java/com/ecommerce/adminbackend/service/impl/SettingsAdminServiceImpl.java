@@ -1,15 +1,25 @@
 package com.ecommerce.adminbackend.service.impl;
 
 import com.ecommerce.adminbackend.entity.AdminSetting;
+import com.ecommerce.adminbackend.entity.Product;
+import com.ecommerce.adminbackend.entity.ProductVariant;
+import com.ecommerce.adminbackend.entity.Seller;
+import com.ecommerce.adminbackend.entity.SellerCategory;
 import com.ecommerce.adminbackend.repository.AdminSettingRepository;
+import com.ecommerce.adminbackend.repository.ProductRepository;
+import com.ecommerce.adminbackend.repository.ProductVariantRepository;
+import com.ecommerce.adminbackend.repository.SellerRepository;
 import com.ecommerce.adminbackend.service.PlatformIntegrationSettings;
 import com.ecommerce.adminbackend.service.SettingsAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
+import com.ecommerce.adminbackend.service.support.ProductVariantCommissionSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -23,6 +33,10 @@ public class SettingsAdminServiceImpl extends BaseAdminService implements Settin
 
     private final AdminSettingRepository settingRepository;
     private final PlatformIntegrationSettings integrationSettings;
+    private final SellerRepository sellerRepository;
+    private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
+    private final ProductVariantCommissionSupport commissionSupport;
 
     @Override
     @Transactional(readOnly = true)
@@ -36,14 +50,58 @@ public class SettingsAdminServiceImpl extends BaseAdminService implements Settin
     @Override
     @Transactional
     public Map<String, String> updateCommission(String b2c, String b2b) {
+        boolean updatedB2c = false;
+        boolean updatedB2b = false;
         if (b2c != null && !b2c.isBlank()) {
             upsert(KEY_B2C, b2c.trim());
+            updatedB2c = true;
         }
         if (b2b != null && !b2b.isBlank()) {
             upsert(KEY_B2B, b2b.trim());
+            updatedB2b = true;
         }
         log.info("Commission rates updated: b2c={}, b2b={}", b2c, b2b);
+
+        if (updatedB2c) {
+            int count = reapplyCommissionForCategory(
+                    SellerCategory.b2c,
+                    new BigDecimal(readSetting(KEY_B2C, DEFAULT_B2C).trim()));
+            log.info("Reapplied B2C commission to {} product variants", count);
+        }
+        if (updatedB2b) {
+            int count = reapplyCommissionForCategory(
+                    SellerCategory.b2b,
+                    new BigDecimal(readSetting(KEY_B2B, DEFAULT_B2B).trim()));
+            log.info("Reapplied B2B commission to {} product variants", count);
+        }
         return getCommission();
+    }
+
+    /**
+     * Force-refresh commission % / amount / totals on all variants for sellers
+     * in the given category — same pricing path used on product approval.
+     */
+    private int reapplyCommissionForCategory(SellerCategory category, BigDecimal commissionPercent) {
+        List<Seller> sellers = sellerRepository.findBySellerCategory(category);
+        // Sellers with null category are treated as B2C (profile default).
+        if (category == SellerCategory.b2c) {
+            List<Seller> all = sellerRepository.findAll();
+            sellers = all.stream()
+                    .filter(s -> s.getSellerCategory() == null || s.getSellerCategory() == SellerCategory.b2c)
+                    .toList();
+        }
+        int updated = 0;
+        for (Seller seller : sellers) {
+            for (Product product : productRepository.findBySellerId(seller.getId())) {
+                for (ProductVariant variant : productVariantRepository.findByProductIdOrderByIdAsc(product.getId())) {
+                    commissionSupport.applyCommission(
+                            variant, commissionPercent, product.getGstPercentage(), true);
+                    productVariantRepository.save(variant);
+                    updated++;
+                }
+            }
+        }
+        return updated;
     }
 
     @Override
