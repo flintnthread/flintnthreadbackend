@@ -32,8 +32,12 @@ public class GstExternalLookupClient {
     @Value("${app.gst.lookup.api-key:}")
     private String apiKey;
 
+    /**
+     * @return verified/details response, provider error response, or empty if lookup is not configured
+     */
     public Optional<GstVerifyResponse> lookup(String gst) {
         if (apiKey == null || apiKey.isBlank()) {
+            log.warn("GST AppyFlow lookup skipped — app.gst.lookup.api-key is not configured");
             return Optional.empty();
         }
 
@@ -55,91 +59,104 @@ public class GstExternalLookupClient {
             JsonNode root = objectMapper.readTree(body);
             if (root.path("error").asBoolean(false)) {
                 String errMsg = firstText(root, "message", "errorMessage", "msg");
-                log.debug("GST lookup provider error for {}: {}", gst, errMsg);
-                return Optional.empty();
+                log.info("AppyFlow GST lookup rejected {}: {}", gst, errMsg);
+                return Optional.of(GstVerifyResponse.builder()
+                        .verified(false)
+                        .alreadyExists(false)
+                        .gstNumber(gst)
+                        .message(errMsg.isBlank()
+                                ? "GST portal could not verify this GSTIN."
+                                : errMsg)
+                        .build());
             }
 
             JsonNode taxpayer = firstNode(root, "taxpayerInfo", "data", "result", "taxpayer");
             if (taxpayer == null || taxpayer.isMissingNode() || taxpayer.isNull()) {
+                log.warn("AppyFlow GST lookup returned no taxpayerInfo for {}", gst);
                 return Optional.empty();
             }
 
-            String legalName = firstText(taxpayer, "lgnm", "legal_name", "legalName", "businessName");
-            String tradeName = firstText(taxpayer, "tradeNam", "trade_name", "tradeName");
-            if (tradeName.isBlank()) {
-                tradeName = legalName;
-            }
-
-            String status = firstText(taxpayer, "sts", "status");
-            String taxpayerType = firstText(taxpayer, "dty", "taxpayer_type", "taxpayerType");
-            String registrationDate = firstText(taxpayer, "rgdt", "registration_date", "registrationDate");
-            String cancellationDate = firstText(taxpayer, "cxdt", "cancellation_date", "cancellationDate");
-            String stateJurisdiction = firstText(taxpayer, "stj", "state_jurisdiction");
-            String centreJurisdiction = firstText(taxpayer, "ctj", "centre_jurisdiction");
-
-            JsonNode pradr = firstNode(taxpayer, "pradr");
-            String principalPlaceType = pradr != null ? firstText(pradr, "ntr", "nature") : "";
-
-            JsonNode addressNode = pradr != null ? pradr : firstNode(taxpayer, "registered_address", "address");
-            JsonNode addr = addressNode != null ? firstNode(addressNode, "addr", "address") : null;
-            if (addr == null || addr.isMissingNode()) {
-                addr = addressNode;
-            }
-
-            String street = joinNonBlank(
-                    text(addr, "bno"),
-                    text(addr, "bnm"),
-                    text(addr, "st"),
-                    text(addr, "flno"),
-                    text(addr, "loc")
-            );
-            if (street.isBlank()) {
-                street = firstText(addressNode, "address", "street");
-            }
-
-            String city = firstText(addr, "loc", "city", "dst");
-            String state = firstText(addr, "stcd", "state");
-            String pincode = firstText(addr, "pncd", "pincode", "pin");
-
-            String businessType = firstText(taxpayer, "ctb", "constitution", "business_type", "businessType");
-            String pan = firstText(taxpayer, "pan", "panNumber");
-            if (pan.isBlank() && gst.length() == 15) {
-                pan = gst.substring(2, 12);
-            }
-
-            if (legalName.isBlank() && tradeName.isBlank()) {
-                return Optional.empty();
-            }
-
-            boolean active = status.isBlank() || "active".equalsIgnoreCase(status);
-            String message = active
-                    ? "GST verified successfully."
-                    : "GSTIN found but status is " + status + ".";
-
-            return Optional.of(GstVerifyResponse.builder()
-                    .verified(active)
-                    .gstNumber(gst)
-                    .message(message)
-                    .businessName(legalName.isBlank() ? tradeName : legalName)
-                    .tradeName(tradeName.isBlank() ? legalName : tradeName)
-                    .businessType(businessNameToType(businessType))
-                    .panNumber(pan.isBlank() ? null : pan.toUpperCase(Locale.ROOT))
-                    .address(street.isBlank() ? null : street)
-                    .city(city.isBlank() ? null : city)
-                    .state(state.isBlank() ? null : state)
-                    .pincode(pincode.isBlank() ? null : pincode)
-                    .status(status.isBlank() ? null : status)
-                    .taxpayerType(taxpayerType.isBlank() ? null : taxpayerType)
-                    .registrationDate(registrationDate.isBlank() ? null : registrationDate)
-                    .cancellationDate(cancellationDate.isBlank() ? null : cancellationDate)
-                    .stateJurisdiction(stateJurisdiction.isBlank() ? null : stateJurisdiction)
-                    .centreJurisdiction(centreJurisdiction.isBlank() ? null : centreJurisdiction)
-                    .principalPlaceType(principalPlaceType.isBlank() ? null : principalPlaceType)
-                    .build());
+            return Optional.of(mapTaxpayer(gst, taxpayer));
         } catch (Exception e) {
             log.warn("GST external lookup failed for {}: {}", gst, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    private GstVerifyResponse mapTaxpayer(String gst, JsonNode taxpayer) {
+        String legalName = firstText(taxpayer, "lgnm", "legal_name", "legalName", "businessName");
+        String tradeName = firstText(taxpayer, "tradeNam", "trade_name", "tradeName");
+        if (tradeName.isBlank()) {
+            tradeName = legalName;
+        }
+
+        String status = firstText(taxpayer, "sts", "status");
+        String taxpayerType = firstText(taxpayer, "dty", "taxpayer_type", "taxpayerType");
+        String registrationDate = firstText(taxpayer, "rgdt", "registration_date", "registrationDate");
+        String cancellationDate = firstText(taxpayer, "cxdt", "cancellation_date", "cancellationDate");
+        String stateJurisdiction = firstText(taxpayer, "stj", "state_jurisdiction");
+        String centreJurisdiction = firstText(taxpayer, "ctj", "centre_jurisdiction");
+
+        JsonNode pradr = firstNode(taxpayer, "pradr");
+        String principalPlaceType = pradr != null ? firstText(pradr, "ntr", "nature") : "";
+
+        JsonNode addressNode = pradr != null ? pradr : firstNode(taxpayer, "registered_address", "address");
+        JsonNode addr = addressNode != null ? firstNode(addressNode, "addr", "address") : null;
+        if (addr == null || addr.isMissingNode()) {
+            addr = addressNode;
+        }
+
+        String street = joinNonBlank(
+                text(addr, "bno"),
+                text(addr, "bnm"),
+                text(addr, "st"),
+                text(addr, "flno"),
+                text(addr, "loc")
+        );
+        if (street.isBlank()) {
+            street = firstText(addressNode, "address", "street");
+        }
+
+        String city = firstText(addr, "loc", "city", "locality", "dst");
+        String state = firstText(addr, "stcd", "state");
+        String pincode = firstText(addr, "pncd", "pincode", "pin");
+
+        String businessType = firstText(taxpayer, "ctb", "constitution", "business_type", "businessType");
+        String pan = firstText(taxpayer, "panNo", "pan", "panNumber");
+        if (pan.isBlank() && gst.length() == 15) {
+            pan = gst.substring(2, 12);
+        }
+
+        if (legalName.isBlank() && tradeName.isBlank()) {
+            throw new IllegalStateException("AppyFlow response missing business name");
+        }
+
+        boolean active = status.isBlank() || "active".equalsIgnoreCase(status);
+        String message = active
+                ? "GST verified successfully via AppyFlow."
+                : "GSTIN found but status is " + status + ".";
+
+        return GstVerifyResponse.builder()
+                .verified(active)
+                .alreadyExists(false)
+                .gstNumber(gst)
+                .message(message)
+                .businessName(legalName.isBlank() ? tradeName : legalName)
+                .tradeName(tradeName.isBlank() ? legalName : tradeName)
+                .businessType(businessNameToType(businessType))
+                .panNumber(pan.isBlank() ? null : pan.toUpperCase(Locale.ROOT))
+                .address(street.isBlank() ? null : street)
+                .city(city.isBlank() ? null : city)
+                .state(state.isBlank() ? null : state)
+                .pincode(pincode.isBlank() ? null : pincode)
+                .status(status.isBlank() ? null : status)
+                .taxpayerType(taxpayerType.isBlank() ? null : taxpayerType)
+                .registrationDate(registrationDate.isBlank() ? null : registrationDate)
+                .cancellationDate(cancellationDate.isBlank() ? null : cancellationDate)
+                .stateJurisdiction(stateJurisdiction.isBlank() ? null : stateJurisdiction)
+                .centreJurisdiction(centreJurisdiction.isBlank() ? null : centreJurisdiction)
+                .principalPlaceType(principalPlaceType.isBlank() ? null : principalPlaceType)
+                .build();
     }
 
     private static String businessNameToType(String raw) {
