@@ -102,11 +102,21 @@ public class AddressServiceImpl implements AddressService {
 
         User user = getCurrentUser();
 
-        Address address = Address.builder()
-                .userId(userId)
-                .name(request.getName() != null ? request.getName() : "Current Location")
-                .email(request.getEmail() != null ? request.getEmail() : user.getEmail())
-                .phone(request.getPhone() != null ? request.getPhone() : user.getContactNumber())
+String phone = request.getPhone();
+
+if (phone == null || phone.trim().isEmpty()) {
+    phone = user.getContactNumber();
+}
+
+if (phone == null || phone.trim().isEmpty()) {
+    throw new IllegalArgumentException("Phone number is required");
+}
+
+Address address = Address.builder()
+        .userId(userId)
+        .name(request.getName() != null ? request.getName() : "Current Location")
+        .email(request.getEmail() != null ? request.getEmail() : user.getEmail())
+        .phone(phone)
                 .addressLine1(request.getAddressLine1())
                 .addressLine2(request.getAddressLine2())
                 .city(request.getCity())
@@ -300,7 +310,17 @@ public class AddressServiceImpl implements AddressService {
 
         address.setName(request.getName());
         address.setEmail(request.getEmail());
-        address.setPhone(request.getPhone());
+String phone = request.getPhone();
+
+if (phone == null || phone.trim().isEmpty()) {
+    phone = getCurrentUser().getContactNumber();
+}
+
+if (phone == null || phone.trim().isEmpty()) {
+    throw new IllegalArgumentException("Phone number is required");
+}
+
+address.setPhone(phone);
         address.setAddressLine1(request.getAddressLine1());
         address.setAddressLine2(request.getAddressLine2());
         address.setCity(request.getCity());
