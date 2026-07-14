@@ -195,7 +195,8 @@ public class WishlistServiceImpl implements WishlistService {
                     .orElse(product.getVariants().iterator().next()); // Fallback to first variant
 
             BigDecimal customerPrice = customerPriceResolver.resolveCustomerUnitPrice(product, variant);
-            response.setMrpPrice(variant.getMrpPrice());
+            BigDecimal strikeMrp = customerPriceResolver.resolveCustomerStrikeMrp(variant, customerPrice);
+            response.setMrpPrice(strikeMrp != null ? strikeMrp : variant.resolveMrpUnitPrice());
             response.setSellingPrice(customerPrice != null ? customerPrice : variant.getSellingPrice());
             response.setSize(sizeColorMapper.getSizeName(variant.getSize()));
             response.setColor(sizeColorMapper.getColorName(variant.getColor()));

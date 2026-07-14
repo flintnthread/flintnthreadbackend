@@ -141,6 +141,22 @@ public class CustomerPriceResolver {
         return resolved != null ? resolved.customerPrice() : null;
     }
 
+    /**
+     * Admin panel strike MRP for the user app: {@code mrp_excl_gst} only.
+     * Does not add GST, commission, or delivery — selling/customer price stays unchanged.
+     */
+    public BigDecimal resolveCustomerStrikeMrp(ProductVariant variant, BigDecimal customerUnitPrice) {
+        if (variant == null) {
+            return null;
+        }
+        BigDecimal mrpExcl = firstPositive(variant.getMrpExclGst());
+        if (mrpExcl != null) {
+            return mrpExcl.setScale(2, RoundingMode.HALF_UP);
+        }
+        // Legacy / incomplete rows: never invent fees on top of MRP.
+        return variant.resolveMrpUnitPrice();
+    }
+
     public BigDecimal resolveDeliveryCharge(ProductVariant variant, DeliveryType deliveryType) {
         if (variant == null) {
             return BigDecimal.ZERO;
