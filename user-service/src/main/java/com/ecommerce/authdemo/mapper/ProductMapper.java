@@ -115,12 +115,16 @@ public class ProductMapper {
                         if (inStock) {
                             CustomerPriceResolver.ResolvedPrice pricing =
                                     customerPriceResolver.resolve(p, v);
-                            vd.setMrpPrice(v.getMrpPrice());
+                            vd.setMrpExclGst(v.getMrpExclGst());
+                            vd.setMrpInclGst(v.getMrpInclGst());
                             if (pricing != null) {
                                 vd.setSellingPriceExclGst(pricing.sellingExclGst());
                                 vd.setSellingPrice(pricing.customerPrice());
                                 vd.setFinalPrice(pricing.priceAfterGst());
                                 vd.setCustomerPrice(pricing.customerPrice());
+                                vd.setMrpPrice(
+                                        customerPriceResolver.resolveCustomerStrikeMrp(
+                                                v, pricing.customerPrice()));
                                 vd.setTaxPercentage(pricing.gstPercent());
                                 vd.setTaxAmount(pricing.taxAmount());
                                 vd.setCommissionPercentage(pricing.commissionPercent());
@@ -134,11 +138,14 @@ public class ProductMapper {
                                 vd.setSellingPrice(v.getSellingPrice());
                                 vd.setSellingPriceExclGst(v.getSellingPrice());
                                 vd.setFinalPrice(v.getFinalPrice());
+                                vd.setMrpPrice(v.resolveMrpUnitPrice());
                                 vd.setTaxPercentage(v.getTaxPercentage());
                                 vd.setTaxAmount(v.getTaxAmount());
                             }
                         } else {
                             vd.setMrpPrice(null);
+                            vd.setMrpExclGst(null);
+                            vd.setMrpInclGst(null);
                             vd.setSellingPrice(null);
                             vd.setSellingPriceExclGst(null);
                             vd.setFinalPrice(null);
