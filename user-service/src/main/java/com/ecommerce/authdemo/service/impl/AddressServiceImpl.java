@@ -39,6 +39,7 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    @Transactional
     public Address addAddress(AddressRequest request) {
 
         Long userId = getUserId();
@@ -172,6 +173,7 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    @Transactional
     public Address updateAddress(Integer id, AddressRequest request) {
 
         Long userId = getUserId();
@@ -218,18 +220,34 @@ public class AddressServiceImpl implements AddressService {
     }
 
     @Override
+    @Transactional
     public void deleteAddress(Integer id) {
-
         Long userId = getUserId();
 
         Address address = addressRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Address not found"));
 
+        boolean wasDefault = Boolean.TRUE.equals(address.getIsDefault());
+
+        // Detach from orders first so FK / address_id references do not block delete
         orderRepository.clearAddressId(Long.valueOf(id));
+
         addressRepository.delete(address);
+        addressRepository.flush();
+
+        if (wasDefault) {
+            List<Address> remaining = addressRepository.findByUserId(userId);
+            if (!remaining.isEmpty()) {
+                Address nextDefault = remaining.get(0);
+                nextDefault.setIsDefault(true);
+                nextDefault.setUpdatedAt(LocalDateTime.now());
+                addressRepository.save(nextDefault);
+            }
+        }
     }
 
     @Override
+    @Transactional
     public Address setDefaultAddress(Integer addressId) {
 
         Long userId = getUserId();
