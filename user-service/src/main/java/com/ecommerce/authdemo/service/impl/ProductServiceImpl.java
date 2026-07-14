@@ -47,8 +47,11 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public ProductDTO getProduct(Long id) {
-        Product product = productRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+        Product product = productRepo.findAllWithImagesAndVariantsByIdIn(List.of(id))
+                .stream()
+                .findFirst()
+                .orElseGet(() -> productRepo.findById(id)
+                        .orElseThrow(() -> new RuntimeException("Product not found")));
         if (!ProductCatalogVisibility.isVisibleToUsers(product)) {
             throw new RuntimeException("Product not found");
         }
@@ -86,14 +89,32 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public Page<ProductDTO> getAllProducts(Pageable pageable) {
-        return productRepo.findAll(ProductCatalogVisibility.visibleToUsers(), pageable)
-                .map(mapper::toDTO);
+        Page<Product> page = productRepo.findAll(ProductCatalogVisibility.visibleToUsers(), pageable);
+        return mapPageWithImages(page, pageable);
     }
 
     @Override
     public Page<ProductDTO> getByCategory(Long categoryId, Pageable pageable) {
-        return productRepo.findByCategoryIdAndStatus(categoryId, ProductCatalogVisibility.USER_VISIBLE_STATUS, pageable)
-                .map(mapper::toDTO);
+        Page<Product> page = productRepo.findByCategoryIdAndStatus(
+                categoryId, ProductCatalogVisibility.USER_VISIBLE_STATUS, pageable);
+        return mapPageWithImages(page, pageable);
+    }
+
+    /** Re-load images/variants in one query so list cards always get image URLs. */
+    private Page<ProductDTO> mapPageWithImages(Page<Product> page, Pageable pageable) {
+        List<Long> ids = page.getContent().stream().map(Product::getId).toList();
+        if (ids.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        Map<Long, ProductDTO> byId = new LinkedHashMap<>();
+        productRepo.findAllWithImagesAndVariantsByIdIn(ids).stream()
+                .filter(ProductCatalogVisibility::isVisibleToUsers)
+                .forEach(p -> byId.put(p.getId(), mapper.toDTO(p)));
+        List<ProductDTO> mapped = ids.stream()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        return new PageImpl<>(mapped, pageable, page.getTotalElements());
     }
 
     @Override
@@ -511,7 +532,10 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private List<ProductDTO> mapProductsByIdOrder(List<Long> productIds) {
-        List<Product> products = productRepo.findAllById(productIds);
+        if (productIds == null || productIds.isEmpty()) {
+            return List.of();
+        }
+        List<Product> products = productRepo.findAllWithImagesAndVariantsByIdIn(productIds);
         Map<Long, ProductDTO> dtoById = new LinkedHashMap<>();
         products.stream()
                 .filter(ProductCatalogVisibility::isVisibleToUsers)
