@@ -2,6 +2,7 @@ package com.ecommerce.adminbackend.repository;
 
 import com.ecommerce.adminbackend.entity.Seller;
 import com.ecommerce.adminbackend.entity.SellerAccountStatus;
+import com.ecommerce.adminbackend.entity.SellerCategory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface SellerRepository extends JpaRepository<Seller, Long> {
+
+    List<Seller> findBySellerCategory(SellerCategory sellerCategory);
 
     @Query("""
             SELECT s FROM Seller s

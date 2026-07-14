@@ -64,11 +64,28 @@ public class ProductVariant {
     }
 
     /**
-     * Unit MRP for UI original price:
-     * mrpPrice → mrpInclGst → mrpExclGst
+     * Unit MRP for UI original / strike price.
+     * Admin form stores MRP excl. GST in {@code mrp_excl_gst} — prefer that.
+     * DB {@code mrp_price} is often selling+GST and is only used when clearly higher than sell.
      */
     public BigDecimal resolveMrpUnitPrice() {
-        return firstPositive(mrpPrice, mrpInclGst, mrpExclGst);
+        BigDecimal excl = firstPositive(mrpExclGst);
+        if (excl != null) {
+            return excl.setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        BigDecimal incl = firstPositive(mrpInclGst);
+        if (incl != null) {
+            return incl;
+        }
+        BigDecimal legacy = firstPositive(mrpPrice);
+        if (legacy == null) {
+            return null;
+        }
+        BigDecimal sell = firstPositive(finalPrice, sellingPrice, basePrice);
+        if (sell != null && legacy.compareTo(sell) > 0) {
+            return legacy;
+        }
+        return null;
     }
 
     private static BigDecimal firstPositive(BigDecimal... candidates) {

@@ -53,6 +53,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     long countBySellerId(Long sellerId);
 
+    List<Product> findBySellerId(Long sellerId);
+
     @Query("""
             SELECT LOWER(p.status), COUNT(p)
             FROM Product p

@@ -65,6 +65,8 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
             priceMin = DEFAULT_PRICE_MIN;
         }
 
+        BigDecimal commissionPercent = adminSettingsLookupService.getSellerCommissionPercent(sellerId);
+
         return ProductFormCatalogResponse.builder()
                 .categories(categoryResponses)
                 .colors(colors)
@@ -72,7 +74,7 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
                 .deliverySlabs(deliverySlabLookupService.listActiveSlabs())
                 .priceMin(priceMin)
                 .priceMax(priceMax.max(DEFAULT_PRICE_MAX))
-                .commissionPercent(adminSettingsLookupService.getSellerCommissionPercent())
+                .commissionPercent(commissionPercent)
                 .build();
     }
 }

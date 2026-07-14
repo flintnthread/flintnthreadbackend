@@ -18,13 +18,13 @@ public class VariantPricingPreviewService {
     private final SubcategoryRepository subcategoryRepository;
     private final AdminSettingsLookupService adminSettingsLookupService;
 
-    public VariantPricingPreviewResponse preview(VariantPricingPreviewRequest request) {
+    public VariantPricingPreviewResponse preview(Long sellerId, VariantPricingPreviewRequest request) {
         BigDecimal mrpExcl = request.getMrpExcl() != null ? request.getMrpExcl() : BigDecimal.ZERO;
         BigDecimal sellingExcl = request.getSellingExcl() != null ? request.getSellingExcl() : BigDecimal.ZERO;
         BigDecimal gstPercent = request.getGstPercent() != null
                 ? request.getGstPercent()
                 : resolveGstPercent(request.getCategorySubId(), request.getSubcategoryId());
-        BigDecimal commissionPercent = adminSettingsLookupService.getSellerCommissionPercent();
+        BigDecimal commissionPercent = adminSettingsLookupService.getSellerCommissionPercent(sellerId);
 
         var slab = deliverySlabLookupService.resolveForWeight(request.getWeightKg());
         var pricing = ProductVariantPricingCalculator.calculate(
