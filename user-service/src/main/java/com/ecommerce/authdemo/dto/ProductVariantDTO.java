@@ -15,7 +15,12 @@ public class ProductVariantDTO {
     private String size;
     private String sku;
 
+    /** Strike / list MRP for UI (admin MRP, scaled to customer unit when applicable). */
     private BigDecimal mrpPrice;
+    /** Admin panel MRP excl. GST ({@code mrp_excl_gst}). */
+    private BigDecimal mrpExclGst;
+    /** Admin panel MRP incl. GST ({@code mrp_incl_gst}). */
+    private BigDecimal mrpInclGst;
     private BigDecimal sellingPrice;
     private BigDecimal sellingPriceExclGst;
     private BigDecimal finalPrice;
