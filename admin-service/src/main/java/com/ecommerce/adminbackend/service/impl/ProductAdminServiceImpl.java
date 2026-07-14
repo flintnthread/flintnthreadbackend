@@ -19,8 +19,11 @@ import com.ecommerce.adminbackend.repository.SellerRepository;
 import com.ecommerce.adminbackend.repository.SizeChartRepository;
 import com.ecommerce.adminbackend.repository.SizeRepository;
 import com.ecommerce.adminbackend.repository.SubcategoryRepository;
+import com.ecommerce.adminbackend.dto.product.CreateProductRequest;
+import com.ecommerce.adminbackend.dto.product.UpdateProductRequest;
 import com.ecommerce.adminbackend.service.ProductAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
+import com.ecommerce.adminbackend.service.support.ProductVariantCommissionSupport;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -61,6 +64,8 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
     private final SizeChartRepository sizeChartRepository;
     private final MediaUrlHelper mediaUrlHelper;
     private final ObjectMapper objectMapper;
+    private final ProductVariantCommissionSupport commissionSupport;
+    private final ProductAdminMutationService productAdminMutationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -136,7 +141,34 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
             row.put("subcategories", subcategories);
             categories.add(row);
         }
-        return Map.of("categories", categories);
+
+        List<Map<String, Object>> colors = colorRepository.findAllByOrderByColorNameAsc().stream()
+                .filter(c -> Boolean.TRUE.equals(c.getStatus()))
+                .map(c -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", c.getId());
+                    row.put("name", c.getColorName());
+                    row.put("code", c.getColorCode());
+                    return row;
+                })
+                .toList();
+
+        List<Map<String, Object>> sizes = sizeRepository.findAllByOrderBySizeNameAsc().stream()
+                .filter(s -> Boolean.TRUE.equals(s.getStatus()))
+                .map(s -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", s.getId());
+                    row.put("name", s.getSizeName());
+                    row.put("code", s.getSizeCode());
+                    return row;
+                })
+                .toList();
+
+        Map<String, Object> catalog = new LinkedHashMap<>();
+        catalog.put("categories", categories);
+        catalog.put("colors", colors);
+        catalog.put("sizes", sizes);
+        return catalog;
     }
 
     @Override
@@ -196,7 +228,14 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         detail.put("categoryName", resolveCategoryName(product.getCategoryId()));
         detail.put("subcategoryName", resolveSubcategoryName(product.getSubcategoryId()));
         detail.put("variants", variants.stream()
-                .map(variant -> toVariant(variant, images, product.getGstPercentage(), colorById, sizeById, fallbackImage))
+                .map(variant -> toVariant(
+                        variant,
+                        images,
+                        product.getGstPercentage(),
+                        colorById,
+                        sizeById,
+                        fallbackImage,
+                        seller))
                 .toList());
         detail.put("images", images.stream().map(this::toImage).toList());
         if (product.getSizeChartId() != null) {
@@ -211,6 +250,24 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
 
     @Override
     @Transactional
+    public Map<String, Object> create(CreateProductRequest request) {
+        return productAdminMutationService.create(request);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> update(Long id, UpdateProductRequest request) {
+        return productAdminMutationService.update(id, request);
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long id) {
+        productAdminMutationService.delete(id);
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> approve(Long id, String note) {
         Product product = requireProduct(id);
         product.setStatus("active");
@@ -218,6 +275,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         if (note != null && !note.isBlank()) {
             product.setAdminNotes(note.trim());
         }
+        applyCommissionToVariants(product);
         productRepository.save(product);
         log.info("Product approved: id={}", id);
         return Map.of("productId", id, "status", "approved", "message", "Product approved.");
@@ -254,18 +312,15 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         List<ProductVariant> variants = productVariantRepository.findByProductIdOrderByIdAsc(product.getId());
         List<ProductImage> images = productImageRepository.findByProductIdOrderBySortOrderAsc(product.getId());
         int totalStock = variants.stream().mapToInt(v -> v.getStock() != null ? v.getStock() : 0).sum();
-        BigDecimal price = variants.stream()
-                .map(v -> v.getFinalPrice() != null ? v.getFinalPrice()
-                        : (v.getSellingPrice() != null ? v.getSellingPrice() : BigDecimal.ZERO))
-                .filter(p -> p.compareTo(BigDecimal.ZERO) > 0)
-                .findFirst()
-                .orElse(BigDecimal.ZERO);
         ProductVariant firstVariant = variants.isEmpty() ? null : variants.get(0);
-        String imageUrl = resolveListProductImage(images, firstVariant);
-
         Seller listSeller = product.getSellerId() != null
                 ? sellerRepository.findById(product.getSellerId()).orElse(null)
                 : null;
+        BigDecimal commissionPercent = commissionSupport.resolveCommissionPercent(listSeller);
+        BigDecimal price = firstVariant != null
+                ? commissionSupport.enrich(firstVariant, commissionPercent, product.getGstPercentage()).displayPrice()
+                : BigDecimal.ZERO;
+        String imageUrl = resolveListProductImage(images, firstVariant);
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", product.getId());
@@ -381,13 +436,25 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         return productVariantRepository.countLowStockProducts();
     }
 
+    private void applyCommissionToVariants(Product product) {
+        Seller seller = product.getSellerId() != null
+                ? sellerRepository.findById(product.getSellerId()).orElse(null)
+                : null;
+        BigDecimal commissionPercent = commissionSupport.resolveCommissionPercent(seller);
+        for (ProductVariant variant : productVariantRepository.findByProductIdOrderByIdAsc(product.getId())) {
+            commissionSupport.applyCommission(variant, commissionPercent, product.getGstPercentage());
+            productVariantRepository.save(variant);
+        }
+    }
+
     private Map<String, Object> toVariant(
             ProductVariant variant,
             List<ProductImage> images,
             BigDecimal defaultGst,
             Map<Long, Color> colorById,
             Map<Long, Size> sizeById,
-            String fallbackImage) {
+            String fallbackImage,
+            Seller seller) {
         String colorName = resolveColorName(variant.getColor(), colorById);
         String colorHex = resolveColorHex(variant.getColor(), colorById);
         String sizeName = resolveSizeName(variant.getSize(), sizeById);
@@ -399,8 +466,12 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         if (taxAmt.compareTo(BigDecimal.ZERO) == 0 && sellingWith != null && sellingExcl != null) {
             taxAmt = sellingWith.subtract(sellingExcl).max(BigDecimal.ZERO);
         }
-        BigDecimal commissionPct = variant.getCommissionPercentage() != null ? variant.getCommissionPercentage() : BigDecimal.ZERO;
-        BigDecimal commissionAmt = variant.getCommissionAmount() != null ? variant.getCommissionAmount() : BigDecimal.ZERO;
+        BigDecimal commissionPercent = commissionSupport.resolveCommissionPercent(seller);
+        ProductVariantCommissionSupport.EnrichedPricing pricing =
+                commissionSupport.enrich(variant, commissionPercent, defaultGst);
+        BigDecimal sellingWithGst = pricing.sellingPriceWithGst();
+        BigDecimal commissionPct = pricing.commissionPercentage();
+        BigDecimal commissionAmt = pricing.commissionAmount();
         BigDecimal intraCity = variant.getIntraCityDeliveryCharge() != null ? variant.getIntraCityDeliveryCharge() : BigDecimal.ZERO;
         BigDecimal metroMetro = variant.getMetroMetroDeliveryCharge() != null ? variant.getMetroMetroDeliveryCharge() : BigDecimal.ZERO;
         BigDecimal discountPct = variant.getDiscountPercentage() != null
@@ -410,8 +481,10 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", variant.getId());
         row.put("color", colorName);
+        row.put("colorId", parseCatalogId(variant.getColor()).orElse(null));
         row.put("colorHex", colorHex);
         row.put("size", sizeName);
+        row.put("sizeId", parseCatalogId(variant.getSize()).orElse(null));
         row.put("sku", variant.getSku());
         row.put("stock", variant.getStock());
         row.put("basePrice", variant.getBasePrice());
@@ -424,12 +497,17 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         row.put("taxPercentage", taxPct);
         row.put("taxAmount", taxAmt);
         row.put("finalPrice", variant.getFinalPrice());
+        row.put("sellingPriceWithGst", sellingWithGst);
         row.put("commissionPercentage", commissionPct);
         row.put("commissionAmount", commissionAmt);
+        row.put("priceWithCommission", pricing.priceWithCommission());
+        row.put("highestDeliveryCharge", pricing.highestDeliveryCharge());
+        row.put("displayPrice", pricing.displayPrice());
         row.put("intraCityDeliveryCharge", intraCity);
         row.put("metroMetroDeliveryCharge", metroMetro);
-        row.put("totalPriceIntraCity", variant.getTotalPriceIntraCity());
-        row.put("totalPriceMetroMetro", variant.getTotalPriceMetroMetro());
+        row.put("totalPriceIntraCity", pricing.totalPriceIntraCity());
+        row.put("totalPriceMetroMetro", pricing.totalPriceMetroMetro());
+        row.put("customerPrice", pricing.displayPrice());
         row.put("imageUrl", resolveVariantImage(images, variant.getId(), fallbackImage));
         row.put("weight", variant.getWeight());
         return row;

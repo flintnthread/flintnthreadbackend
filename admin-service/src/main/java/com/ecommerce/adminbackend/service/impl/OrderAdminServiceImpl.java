@@ -438,11 +438,10 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     }
 
     private Long resolveCustomerAnchorId(Order order) {
-        if (order.getShippingEmail() == null || order.getShippingEmail().isBlank()) {
-            return order.getId();
+        if (order.getUserId() != null) {
+            return order.getUserId();
         }
-        return orderRepository.findMinIdByShippingEmailIgnoreCase(order.getShippingEmail())
-                .orElse(order.getId());
+        return order.getId();
     }
 
     private Map<String, Object> toOrderSummary(Order order) {

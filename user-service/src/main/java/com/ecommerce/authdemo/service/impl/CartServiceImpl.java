@@ -396,7 +396,7 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
             throw new CartException("Product is not available for purchase");
         }
 
-        DeliveryType deliveryType = DeliveryType.metro_metro;
+        DeliveryType deliveryType = null;
         if (address != null && product.getSellerId() != null) {
             Seller seller = sellerRepository.findById(product.getSellerId()).orElse(null);
             String sellerPincode = seller != null ? seller.getPincode() : null;

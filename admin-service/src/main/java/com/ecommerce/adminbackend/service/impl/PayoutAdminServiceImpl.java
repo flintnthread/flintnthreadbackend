@@ -1,17 +1,20 @@
 package com.ecommerce.adminbackend.service.impl;
 
 import com.ecommerce.adminbackend.common.PageResponse;
+import com.ecommerce.adminbackend.entity.AdminSetting;
 import com.ecommerce.adminbackend.entity.Order;
 import com.ecommerce.adminbackend.entity.OrderItem;
+import com.ecommerce.adminbackend.entity.Product;
 import com.ecommerce.adminbackend.entity.ProductVariant;
 import com.ecommerce.adminbackend.entity.Seller;
 import com.ecommerce.adminbackend.entity.SellerPayoutRequest;
+import com.ecommerce.adminbackend.repository.AdminSettingRepository;
 import com.ecommerce.adminbackend.repository.OrderItemRepository;
 import com.ecommerce.adminbackend.repository.OrderRepository;
+import com.ecommerce.adminbackend.repository.ProductRepository;
+import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SellerPayoutRequestRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
-import com.ecommerce.adminbackend.repository.AdminSettingRepository;
-import com.ecommerce.adminbackend.entity.AdminSetting;
 import com.ecommerce.adminbackend.service.PayoutAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import lombok.RequiredArgsConstructor;
@@ -24,10 +27,13 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -39,6 +45,8 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
     private final SellerRepository sellerRepository;
     private final SellerPayoutRequestRepository payoutRequestRepository;
     private final AdminSettingRepository adminSettingRepository;
+    private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
 
     private static final String KEY_B2C = "commission_b2c";
     private static final String KEY_B2B = "commission_b2b";
@@ -320,20 +328,105 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
             detail.put("sellerCity", seller != null ? seller.getCity() : null);
             detail.put("sellerState", seller != null ? seller.getState() : null);
             detail.put("sellerPincode", seller != null ? seller.getPincode() : null);
-            detail.put("items", items.stream().map(this::toItemRow).toList());
+            Map<Long, Product> productsById = loadProducts(items);
+            Map<Long, ProductVariant> variantsById = loadVariants(items);
+            detail.put("items", items.stream()
+                    .map(item -> toItemRow(item, productsById, variantsById))
+                    .toList());
         }
         return detail;
     }
 
-    private Map<String, Object> toItemRow(OrderItem item) {
+    private Map<String, Object> toItemRow(
+            OrderItem item,
+            Map<Long, Product> productsById,
+            Map<Long, ProductVariant> variantsById) {
+        Product product = item.getProductId() != null ? productsById.get(item.getProductId()) : null;
+        ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
+
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("productName", item.getProductName());
-        row.put("sku", item.getSku());
-        row.put("hsnCode", item.getHsnCode());
+        row.put("productId", item.getProductId());
+        row.put("variantId", item.getVariantId());
+        row.put("productName", resolveProductName(item, product));
+        row.put("sku", resolveSku(item, product, variant));
+        row.put("hsnCode", resolveHsnCode(item, product));
+        row.put("color", blankToEmpty(item.getColor()));
+        row.put("size", blankToEmpty(item.getSize()));
         row.put("quantity", item.getQuantity());
         row.put("price", item.getPrice());
         row.put("total", itemTotal(item));
         return row;
+    }
+
+    private Map<Long, Product> loadProducts(List<OrderItem> items) {
+        Set<Long> productIds = items.stream()
+                .map(OrderItem::getProductId)
+                .filter(id -> id != null && id > 0)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Product> byId = new HashMap<>();
+        for (Product product : productRepository.findAllById(productIds)) {
+            byId.put(product.getId(), product);
+        }
+        return byId;
+    }
+
+    private Map<Long, ProductVariant> loadVariants(List<OrderItem> items) {
+        Set<Long> variantIds = items.stream()
+                .map(OrderItem::getVariantId)
+                .filter(id -> id != null && id > 0)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (variantIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, ProductVariant> byId = new HashMap<>();
+        for (ProductVariant variant : productVariantRepository.findAllById(variantIds)) {
+            byId.put(variant.getId(), variant);
+        }
+        return byId;
+    }
+
+    private String resolveProductName(OrderItem item, Product product) {
+        if (!isBlank(item.getProductName())) {
+            return item.getProductName().trim();
+        }
+        if (product != null && !isBlank(product.getName())) {
+            return product.getName().trim();
+        }
+        return "";
+    }
+
+    private String resolveSku(OrderItem item, Product product, ProductVariant variant) {
+        if (!isBlank(item.getSku())) {
+            return item.getSku().trim();
+        }
+        if (variant != null && !isBlank(variant.getSku())) {
+            return variant.getSku().trim();
+        }
+        if (product != null && !isBlank(product.getSku())) {
+            return product.getSku().trim();
+        }
+        return "";
+    }
+
+    private String resolveHsnCode(OrderItem item, Product product) {
+        if (!isBlank(item.getHsnCode())) {
+            return item.getHsnCode().trim();
+        }
+        if (product != null && !isBlank(product.getHsnCode())) {
+            return product.getHsnCode().trim();
+        }
+        return "";
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private String blankToEmpty(String value) {
+        return isBlank(value) ? "" : value.trim();
     }
 
     private BigDecimal resolveCommissionRate(Seller seller) {

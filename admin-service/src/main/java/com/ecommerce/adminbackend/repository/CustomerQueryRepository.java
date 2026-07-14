@@ -17,23 +17,50 @@ public class CustomerQueryRepository {
     @PersistenceContext
     private EntityManager entityManager;
 
+    private static final String USER_SEARCH_FILTER = """
+            (:search IS NULL OR :search = '' OR
+             LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) OR
+             LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')) OR
+             u.contact_number LIKE CONCAT('%', :search, '%'))
+            """;
+
+    private static final String ORDER_STATS_JOIN = """
+            LEFT JOIN (
+                SELECT user_id,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(total_amount), 0) AS total_spent,
+                       MIN(created_at) AS first_order_at,
+                       MAX(created_at) AS last_order_at
+                FROM orders
+                WHERE user_id IS NOT NULL
+                GROUP BY user_id
+            ) os ON os.user_id = u.id
+            LEFT JOIN orders lo ON lo.id = (
+                SELECT o2.id
+                FROM orders o2
+                WHERE o2.user_id = u.id
+                ORDER BY o2.created_at DESC
+                LIMIT 1
+            )
+            """;
+
     @SuppressWarnings("unchecked")
     public List<Object[]> listCustomers(String search, int offset, int limit) {
         return entityManager.createNativeQuery("""
-                SELECT MIN(id) AS customer_id, shipping_email, shipping_name, shipping_phone,
-                       shipping_city, shipping_state, shipping_country,
-                       COUNT(*) AS order_count,
-                       COALESCE(SUM(total_amount), 0) AS total_spent,
-                       MAX(created_at) AS last_order_at
-                FROM orders
-                WHERE shipping_email IS NOT NULL AND shipping_email != ''
-                  AND (:search IS NULL OR :search = '' OR
-                       LOWER(shipping_email) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                       LOWER(shipping_name) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                       shipping_phone LIKE CONCAT('%', :search, '%'))
-                GROUP BY shipping_email, shipping_name, shipping_phone,
-                         shipping_city, shipping_state, shipping_country
-                ORDER BY last_order_at DESC
+                SELECT u.id,
+                       u.email,
+                       u.username,
+                       u.contact_number,
+                       lo.shipping_city,
+                       lo.shipping_state,
+                       lo.shipping_country,
+                       COALESCE(os.order_count, 0),
+                       COALESCE(os.total_spent, 0),
+                       os.last_order_at
+                FROM users u
+                """ + ORDER_STATS_JOIN + """
+                WHERE """ + USER_SEARCH_FILTER + """
+                ORDER BY COALESCE(os.last_order_at, u.created_at) DESC
                 LIMIT :limit OFFSET :offset
                 """)
                 .setParameter("search", search)
@@ -44,17 +71,9 @@ public class CustomerQueryRepository {
 
     public long countCustomers(String search) {
         Number count = (Number) entityManager.createNativeQuery("""
-                SELECT COUNT(*) FROM (
-                    SELECT shipping_email
-                    FROM orders
-                    WHERE shipping_email IS NOT NULL AND shipping_email != ''
-                      AND (:search IS NULL OR :search = '' OR
-                           LOWER(shipping_email) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                           LOWER(shipping_name) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                           shipping_phone LIKE CONCAT('%', :search, '%'))
-                    GROUP BY shipping_email, shipping_name, shipping_phone,
-                             shipping_city, shipping_state, shipping_country
-                ) t
+                SELECT COUNT(*)
+                FROM users u
+                WHERE """ + USER_SEARCH_FILTER + """
                 """)
                 .setParameter("search", search)
                 .getSingleResult();
@@ -64,24 +83,23 @@ public class CustomerQueryRepository {
     @SuppressWarnings("unchecked")
     public Optional<Object[]> findCustomerById(Long customerId) {
         List<Object[]> rows = entityManager.createNativeQuery("""
-                SELECT MIN(o.id) AS customer_id,
-                       MAX(o.shipping_email) AS shipping_email,
-                       (SELECT o2.shipping_name FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_name,
-                       (SELECT o2.shipping_phone FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_phone,
-                       (SELECT o2.shipping_address1 FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_address1,
-                       (SELECT o2.shipping_address2 FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_address2,
-                       (SELECT o2.shipping_city FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_city,
-                       (SELECT o2.shipping_state FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_state,
-                       (SELECT o2.shipping_country FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_country,
-                       (SELECT o2.shipping_pincode FROM orders o2 WHERE o2.id = :customerId LIMIT 1) AS shipping_pincode,
-                       COUNT(*) AS order_count,
-                       COALESCE(SUM(o.total_amount), 0) AS total_spent,
-                       MIN(o.created_at) AS first_order_at,
-                       MAX(o.created_at) AS last_order_at
-                FROM orders o
-                WHERE LOWER(o.shipping_email) = (
-                    SELECT LOWER(shipping_email) FROM orders WHERE id = :customerId LIMIT 1
-                )
+                SELECT u.id,
+                       u.email,
+                       u.username,
+                       u.contact_number,
+                       lo.shipping_address1,
+                       lo.shipping_address2,
+                       lo.shipping_city,
+                       lo.shipping_state,
+                       lo.shipping_country,
+                       lo.shipping_pincode,
+                       COALESCE(os.order_count, 0),
+                       COALESCE(os.total_spent, 0),
+                       os.first_order_at,
+                       os.last_order_at
+                FROM users u
+                """ + ORDER_STATS_JOIN + """
+                WHERE u.id = :customerId
                 """)
                 .setParameter("customerId", customerId)
                 .getResultList();
@@ -91,18 +109,23 @@ public class CustomerQueryRepository {
     @SuppressWarnings("unchecked")
     public Optional<Object[]> findCustomerByEmail(String email) {
         List<Object[]> rows = entityManager.createNativeQuery("""
-                SELECT MIN(id) AS customer_id, shipping_email, shipping_name, shipping_phone,
-                       shipping_address1, shipping_address2, shipping_city,
-                       shipping_state, shipping_country, shipping_pincode,
-                       COUNT(*) AS order_count,
-                       COALESCE(SUM(total_amount), 0) AS total_spent,
-                       MIN(created_at) AS first_order_at,
-                       MAX(created_at) AS last_order_at
-                FROM orders
-                WHERE LOWER(shipping_email) = LOWER(:email)
-                GROUP BY shipping_email, shipping_name, shipping_phone,
-                         shipping_address1, shipping_address2, shipping_city,
-                         shipping_state, shipping_country, shipping_pincode
+                SELECT u.id,
+                       u.email,
+                       u.username,
+                       u.contact_number,
+                       lo.shipping_address1,
+                       lo.shipping_address2,
+                       lo.shipping_city,
+                       lo.shipping_state,
+                       lo.shipping_country,
+                       lo.shipping_pincode,
+                       COALESCE(os.order_count, 0),
+                       COALESCE(os.total_spent, 0),
+                       os.first_order_at,
+                       os.last_order_at
+                FROM users u
+                """ + ORDER_STATS_JOIN + """
+                WHERE LOWER(u.email) = LOWER(:email)
                 """)
                 .setParameter("email", email)
                 .getResultList();
@@ -110,10 +133,9 @@ public class CustomerQueryRepository {
     }
 
     public long countDistinctCustomers() {
-        log.debug("Counting distinct customers");
+        log.debug("Counting registered users");
         Number count = (Number) entityManager.createNativeQuery("""
-                SELECT COUNT(DISTINCT shipping_email) FROM orders
-                WHERE shipping_email IS NOT NULL AND shipping_email != ''
+                SELECT COUNT(*) FROM users
                 """).getSingleResult();
         return count.longValue();
     }
@@ -121,7 +143,7 @@ public class CustomerQueryRepository {
     public Number sumCustomerRevenue() {
         return (Number) entityManager.createNativeQuery("""
                 SELECT COALESCE(SUM(total_amount), 0) FROM orders
-                WHERE shipping_email IS NOT NULL AND shipping_email != ''
+                WHERE user_id IS NOT NULL
                 """).getSingleResult();
     }
 
@@ -139,9 +161,7 @@ public class CustomerQueryRepository {
                            SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.order_id = o.id
                        ), 0) AS item_count
                 FROM orders o
-                WHERE LOWER(o.shipping_email) = (
-                    SELECT LOWER(shipping_email) FROM orders WHERE id = :customerId LIMIT 1
-                )
+                WHERE o.user_id = :customerId
                 ORDER BY o.created_at DESC
                 """)
                 .setParameter("customerId", customerId)
@@ -154,9 +174,7 @@ public class CustomerQueryRepository {
                 SELECT MONTH(o.created_at) AS month_num,
                        COALESCE(SUM(o.total_amount), 0) AS amount
                 FROM orders o
-                WHERE LOWER(o.shipping_email) = (
-                    SELECT LOWER(shipping_email) FROM orders WHERE id = :customerId LIMIT 1
-                )
+                WHERE o.user_id = :customerId
                   AND YEAR(o.created_at) = YEAR(CURDATE())
                 GROUP BY MONTH(o.created_at)
                 ORDER BY MONTH(o.created_at)
@@ -165,15 +183,18 @@ public class CustomerQueryRepository {
                 .getResultList();
     }
 
-    private static final String CUSTOMER_EMAIL_WHERE =
-            " WHERE LOWER(o.shipping_email) = (SELECT LOWER(shipping_email) FROM orders WHERE id = :customerId LIMIT 1)";
+    /**
+     * Trailing newline is required: Java text-block concatenation would otherwise
+     * glue {@code :customerId} onto the next keyword (e.g. {@code :customerIdGROUP}).
+     */
+    private static final String CUSTOMER_USER_WHERE = " WHERE o.user_id = :customerId\n";
 
     @SuppressWarnings("unchecked")
     public List<Object[]> orderStatusCountsByCustomerId(Long customerId) {
         return entityManager.createNativeQuery("""
                 SELECT LOWER(COALESCE(o.order_status, 'pending')) AS status, COUNT(*) AS cnt
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 GROUP BY LOWER(COALESCE(o.order_status, 'pending'))
                 """)
                 .setParameter("customerId", customerId)
@@ -185,7 +206,7 @@ public class CustomerQueryRepository {
         return entityManager.createNativeQuery("""
                 SELECT MONTH(o.created_at) AS month_num, COUNT(*) AS order_count
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND YEAR(o.created_at) = YEAR(CURDATE())
                 GROUP BY MONTH(o.created_at)
                 ORDER BY MONTH(o.created_at)
@@ -199,7 +220,7 @@ public class CustomerQueryRepository {
         return entityManager.createNativeQuery("""
                 SELECT COALESCE(NULLIF(o.payment_method, ''), 'Unknown') AS method, COUNT(*) AS cnt
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 GROUP BY COALESCE(NULLIF(o.payment_method, ''), 'Unknown')
                 ORDER BY cnt DESC
                 """)
@@ -217,7 +238,7 @@ public class CustomerQueryRepository {
                 LEFT JOIN products p ON p.id = oi.product_id
                 LEFT JOIN categories c ON c.id = p.category_id
                 LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 GROUP BY COALESCE(c.category_name, sc.subcategory_name, 'Uncategorized')
                 ORDER BY qty DESC
                 """)
@@ -232,7 +253,7 @@ public class CustomerQueryRepository {
                        COALESCE(SUM(oi.quantity), 0) AS qty
                 FROM orders o
                 JOIN order_items oi ON oi.order_id = o.id
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 GROUP BY COALESCE(NULLIF(oi.seller_name, ''), 'Unknown Seller')
                 ORDER BY qty DESC
                 """)
@@ -248,7 +269,7 @@ public class CustomerQueryRepository {
                     SELECT DATE_SUB(DATE(o.created_at), INTERVAL WEEKDAY(o.created_at) DAY) AS week_start,
                            COUNT(*) AS week_count
                     FROM orders o
-                    """ + CUSTOMER_EMAIL_WHERE + """
+                    """ + CUSTOMER_USER_WHERE + """
                       AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 8 WEEK)
                     GROUP BY DATE_SUB(DATE(o.created_at), INTERVAL WEEKDAY(o.created_at) DAY)
                 ) w
@@ -263,7 +284,7 @@ public class CustomerQueryRepository {
         return entityManager.createNativeQuery("""
                 SELECT HOUR(o.created_at) AS hour_bucket, COUNT(*) AS cnt
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 GROUP BY HOUR(o.created_at)
                 ORDER BY hour_bucket
                 """)
@@ -276,7 +297,7 @@ public class CustomerQueryRepository {
         return entityManager.createNativeQuery("""
                 SELECT DAYOFWEEK(o.created_at) AS day_num, COUNT(*) AS cnt
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 GROUP BY DAYOFWEEK(o.created_at)
                 ORDER BY cnt DESC
                 LIMIT 1
@@ -292,7 +313,7 @@ public class CustomerQueryRepository {
                     SELECT o.id, COALESCE(SUM(oi.quantity), 0) AS item_count
                     FROM orders o
                     LEFT JOIN order_items oi ON oi.order_id = o.id
-                    """ + CUSTOMER_EMAIL_WHERE + """
+                    """ + CUSTOMER_USER_WHERE + """
                     GROUP BY o.id
                 ) t
                 """)
@@ -304,7 +325,7 @@ public class CustomerQueryRepository {
         return (Number) entityManager.createNativeQuery("""
                 SELECT COALESCE(AVG(TIMESTAMPDIFF(DAY, o.created_at, o.shiprocket_synced_at)), 0)
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND o.shiprocket_synced_at IS NOT NULL
                   AND LOWER(COALESCE(o.order_status, '')) LIKE '%deliver%'
                 """)
@@ -322,7 +343,7 @@ public class CustomerQueryRepository {
                         o.created_at
                     ) AS gap_days
                     FROM orders o
-                    """ + CUSTOMER_EMAIL_WHERE + """
+                    """ + CUSTOMER_USER_WHERE + """
                 ) gaps
                 """)
                 .setParameter("customerId", customerId)
@@ -332,7 +353,7 @@ public class CustomerQueryRepository {
     public long currentOrderStreakByCustomerId(Long customerId) {
         Number count = (Number) entityManager.createNativeQuery("""
                 SELECT COUNT(*) FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
                 """)
                 .setParameter("customerId", customerId)
@@ -344,7 +365,7 @@ public class CustomerQueryRepository {
         return (Number) entityManager.createNativeQuery("""
                 SELECT COALESCE(SUM(o.total_amount), 0)
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND LOWER(COALESCE(o.order_status, '')) IN ('cancelled', 'returned', 'refunded', 'rto')
                 """)
                 .setParameter("customerId", customerId)
@@ -363,7 +384,7 @@ public class CustomerQueryRepository {
                     END AS reason,
                     COUNT(*) AS cnt
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND LOWER(COALESCE(o.order_status, '')) IN ('cancelled', 'returned', 'refunded', 'rto')
                 GROUP BY reason
                 ORDER BY cnt DESC
@@ -374,7 +395,7 @@ public class CustomerQueryRepository {
 
     public long countOrdersForCustomer(Long customerId) {
         Number count = (Number) entityManager.createNativeQuery("""
-                SELECT COUNT(*) FROM orders o """ + CUSTOMER_EMAIL_WHERE + """
+                SELECT COUNT(*) FROM orders o """ + CUSTOMER_USER_WHERE + """
                 """)
                 .setParameter("customerId", customerId)
                 .getSingleResult();
@@ -384,7 +405,7 @@ public class CustomerQueryRepository {
     public long paidOrdersCountByCustomerId(Long customerId) {
         Number count = (Number) entityManager.createNativeQuery("""
                 SELECT COUNT(*) FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND LOWER(COALESCE(o.payment_status, '')) IN ('paid', 'success', 'captured', 'completed')
                 """)
                 .setParameter("customerId", customerId)
@@ -395,7 +416,7 @@ public class CustomerQueryRepository {
     public long failedPaymentsCountByCustomerId(Long customerId) {
         Number count = (Number) entityManager.createNativeQuery("""
                 SELECT COUNT(*) FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND LOWER(COALESCE(o.payment_status, '')) IN ('failed', 'cancelled', 'declined')
                 """)
                 .setParameter("customerId", customerId)
@@ -413,7 +434,7 @@ public class CustomerQueryRepository {
                            ELSE 'Refund processed'
                        END AS reason
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND LOWER(COALESCE(o.order_status, '')) IN ('cancelled', 'returned', 'refunded', 'rto')
                 ORDER BY o.created_at DESC
                 LIMIT 10
@@ -427,7 +448,7 @@ public class CustomerQueryRepository {
         return entityManager.createNativeQuery("""
                 SELECT o.shipping_city, COUNT(*) AS cnt
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND o.shipping_city IS NOT NULL AND o.shipping_city != ''
                 GROUP BY o.shipping_city
                 ORDER BY cnt DESC
@@ -486,7 +507,7 @@ public class CustomerQueryRepository {
                     COALESCE(o.referral_discount_amount, 0)
                 ), 0)
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 """)
                 .setParameter("customerId", customerId)
                 .getSingleResult();
@@ -495,7 +516,7 @@ public class CustomerQueryRepository {
     public long couponUsageCountByCustomerId(Long customerId) {
         Number count = (Number) entityManager.createNativeQuery("""
                 SELECT COUNT(*) FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND COALESCE(o.discount_amount, 0) > 0
                 """)
                 .setParameter("customerId", customerId)
@@ -530,7 +551,7 @@ public class CustomerQueryRepository {
                        o.order_status,
                        o.payment_method
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                 ORDER BY o.created_at DESC
                 LIMIT 6
                 """)
@@ -542,7 +563,7 @@ public class CustomerQueryRepository {
         return (Number) entityManager.createNativeQuery("""
                 SELECT COALESCE(SUM(o.total_amount), 0)
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
                 """)
                 .setParameter("customerId", customerId)
@@ -554,7 +575,7 @@ public class CustomerQueryRepository {
         return (Number) entityManager.createNativeQuery("""
                 SELECT COALESCE(SUM(o.total_amount), 0)
                 FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL :startDays DAY)
                   AND o.created_at < DATE_SUB(CURDATE(), INTERVAL :endDays DAY)
                 """)
@@ -567,7 +588,7 @@ public class CustomerQueryRepository {
     public long ordersInLastDays(Long customerId, int days) {
         Number count = (Number) entityManager.createNativeQuery("""
                 SELECT COUNT(*) FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
                 """)
                 .setParameter("customerId", customerId)
@@ -579,7 +600,7 @@ public class CustomerQueryRepository {
     public long ordersBetweenDays(Long customerId, int startDaysAgo, int endDaysAgo) {
         Number count = (Number) entityManager.createNativeQuery("""
                 SELECT COUNT(*) FROM orders o
-                """ + CUSTOMER_EMAIL_WHERE + """
+                """ + CUSTOMER_USER_WHERE + """
                   AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL :startDays DAY)
                   AND o.created_at < DATE_SUB(CURDATE(), INTERVAL :endDays DAY)
                 """)
