@@ -22,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -51,33 +52,46 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         List<ShiprocketTrackingEventDto> events = new ArrayList<>();
         String status = order.getShiprocketStatus();
         String trackingUrl = order.getShiprocketTrackingUrl();
+        String awb = order.getShiprocketAwbCode();
+        String shiprocketOrderId = order.getShiprocketOrderId();
+        String shipmentId = order.getShiprocketShipmentId();
+        String courierName = order.getShiprocketCourierName();
 
         if (order.getShiprocketAwbCode() != null && !order.getShiprocketAwbCode().isBlank()) {
             try {
                 String token = authenticate();
                 JsonNode track = fetchTracking(token, order.getShiprocketAwbCode());
                 if (track != null) {
-                    status = textOrNull(track.path("tracking_data").path("shipment_status"));
-                    if (status == null) {
-                        status = textOrNull(track.path("tracking_data").path("track_status"));
-                    }
-                    trackingUrl = textOrNull(track.path("tracking_data").path("track_url"));
-                    JsonNode activities = track.path("tracking_data").path("shipment_track_activities");
-                    if (activities.isArray()) {
-                        int idx = 0;
-                        for (JsonNode activity : activities) {
-                            String activityDate = textOrNull(activity.path("date"));
-                            String activityStatus = textOrNull(activity.path("activity"));
-                            String location = textOrNull(activity.path("location"));
+                    TrackingSnapshot snapshot = parseTrackingSnapshot(track);
+                    if (snapshot != null) {
+                        if (snapshot.status() != null) {
+                            status = snapshot.status();
+                        }
+                        if (snapshot.trackingUrl() != null) {
+                            trackingUrl = snapshot.trackingUrl();
+                        }
+                        if (snapshot.awb() != null) {
+                            awb = snapshot.awb();
+                        }
+                        if (snapshot.shiprocketOrderId() != null) {
+                            shiprocketOrderId = snapshot.shiprocketOrderId();
+                        }
+                        if (snapshot.shipmentId() != null) {
+                            shipmentId = snapshot.shipmentId();
+                        }
+                        if (snapshot.courierName() != null) {
+                            courierName = snapshot.courierName();
+                        }
+                        for (int idx = 0; idx < snapshot.activities().size(); idx++) {
+                            TrackingActivity activity = snapshot.activities().get(idx);
                             events.add(ShiprocketTrackingEventDto.builder()
-                                    .date(activityDate != null ? activityDate : "")
+                                    .date(activity.date() != null ? activity.date() : "")
                                     .time("")
-                                    .status(activityStatus != null ? activityStatus : "Update")
-                                    .location(location != null ? location : "")
-                                    .description(activityStatus != null ? activityStatus : "")
+                                    .status(activity.status() != null ? activity.status() : "Update")
+                                    .location(activity.location() != null ? activity.location() : "")
+                                    .description(activity.status() != null ? activity.status() : "")
                                     .type(idx == 0 ? "active" : "done")
                                     .build());
-                            idx++;
                         }
                     }
                 }
@@ -100,6 +114,10 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         }
 
         LocalDateTime syncedAt = LocalDateTime.now();
+        order.setShiprocketOrderId(shiprocketOrderId);
+        order.setShiprocketShipmentId(shipmentId);
+        order.setShiprocketAwbCode(awb);
+        order.setShiprocketCourierName(courierName);
         order.setShiprocketStatus(status);
         order.setShiprocketTrackingUrl(trackingUrl);
         order.setShiprocketSyncedAt(syncedAt);
@@ -108,15 +126,88 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         }
 
         return ShiprocketSyncResponse.builder()
-                .shiprocketOrderId(order.getShiprocketOrderId())
-                .shipmentId(order.getShiprocketShipmentId())
-                .awb(order.getShiprocketAwbCode())
-                .courier(order.getShiprocketCourierName())
+                .shiprocketOrderId(shiprocketOrderId)
+                .shipmentId(shipmentId)
+                .awb(awb)
+                .courier(courierName)
                 .status(status != null ? status : order.getOrderStatus())
                 .trackingUrl(trackingUrl != null ? trackingUrl : "")
                 .syncedAt(DISPLAY_DATE_TIME.format(syncedAt))
                 .events(events)
                 .build();
+    }
+
+    public static TrackingSnapshot parseTrackingSnapshot(JsonNode response) {
+        JsonNode trackingData = firstNode(
+                response.path("tracking_data"),
+                response.path("data").path("tracking_data"),
+                response.path("data").path("tracking"),
+                response.path("tracking")
+        );
+        if (trackingData == null || trackingData.isMissingNode() || trackingData.isNull()) {
+            return null;
+        }
+
+        String resolvedStatus = firstText(
+                trackingData.path("shipment_status"),
+                trackingData.path("track_status"),
+                trackingData.path("status")
+        );
+        String resolvedTrackingUrl = firstText(
+                trackingData.path("track_url"),
+                trackingData.path("tracking_url"),
+                trackingData.path("url")
+        );
+        String resolvedAwb = firstText(
+                trackingData.path("awb"),
+                trackingData.path("awb_code"),
+                trackingData.path("tracking_number"),
+                response.path("awb"),
+                response.path("awb_code"),
+                response.path("data").path("awb")
+        );
+        String resolvedShiprocketOrderId = firstText(
+                response.path("order_id"),
+                response.path("data").path("order_id"),
+                response.path("shiprocket_order_id"),
+                response.path("data").path("shiprocket_order_id"),
+                trackingData.path("order_id")
+        );
+        String resolvedShipmentId = firstText(
+                response.path("shipment_id"),
+                response.path("data").path("shipment_id"),
+                response.path("shipment_ids").path(0),
+                trackingData.path("shipment_id")
+        );
+        String resolvedCourierName = firstText(
+                trackingData.path("courier_name"),
+                trackingData.path("courier"),
+                response.path("courier_name"),
+                response.path("courier")
+        );
+
+        List<TrackingActivity> activities = new ArrayList<>();
+        JsonNode activitiesNode = firstNode(
+                trackingData.path("shipment_track_activities"),
+                trackingData.path("activities"),
+                trackingData.path("events")
+        );
+        if (activitiesNode != null && activitiesNode.isArray()) {
+            int idx = 0;
+            for (JsonNode activity : activitiesNode) {
+                String activityDate = textOrNull(activity.path("date"));
+                String activityStatus = textOrNull(activity.path("activity"));
+                String location = textOrNull(activity.path("location"));
+                activities.add(new TrackingActivity(
+                        activityDate,
+                        activityStatus != null ? activityStatus : "Update",
+                        location));
+                idx++;
+            }
+        }
+
+        return new TrackingSnapshot(resolvedStatus, resolvedTrackingUrl, resolvedAwb,
+                resolvedShiprocketOrderId, resolvedShipmentId, resolvedCourierName, activities);
     }
 
     private String authenticate() throws Exception {
@@ -132,7 +223,12 @@ public class ShiprocketServiceImpl implements ShiprocketService {
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         JsonNode node = objectMapper.readTree(response.body());
-        String token = textOrNull(node.path("token"));
+        String token = firstText(
+                node.path("token"),
+                node.path("data").path("token"),
+                node.path("access_token"),
+                node.path("data").path("accessToken")
+        );
         if (token == null) {
             throw new IllegalStateException("Shiprocket authentication failed.");
         }
@@ -153,9 +249,36 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         return objectMapper.readTree(response.body());
     }
 
-    private String textOrNull(JsonNode node) {
+    private static JsonNode firstNode(JsonNode... nodes) {
+        for (JsonNode node : nodes) {
+            if (node != null && !node.isMissingNode() && !node.isNull()) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    private static String firstText(JsonNode... nodes) {
+        for (JsonNode node : nodes) {
+            String text = textOrNull(node);
+            if (text != null) {
+                return text;
+            }
+        }
+        return null;
+    }
+
+    private static String textOrNull(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) return null;
         String text = node.asText();
         return text == null || text.isBlank() ? null : text;
+    }
+
+    public record TrackingSnapshot(String status, String trackingUrl, String awb,
+                                   String shiprocketOrderId, String shipmentId,
+                                   String courierName, List<TrackingActivity> activities) {
+    }
+
+    public record TrackingActivity(String date, String status, String location) {
     }
 }
