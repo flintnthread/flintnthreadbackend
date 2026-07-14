@@ -13,7 +13,7 @@ public interface AddressRepository extends JpaRepository<Address, Integer> {
 
     List<Address> findByUserId(Long userId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM Address a WHERE a.userId = :userId")
     void deleteByUserId(@Param("userId") Long userId);
 
