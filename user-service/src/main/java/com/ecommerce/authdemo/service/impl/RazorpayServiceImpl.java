@@ -173,6 +173,39 @@ public class RazorpayServiceImpl implements RazorpayService {
     }
 
     @Override
+    public String findCapturedPaymentId(String razorpayOrderId) {
+        if (!StringUtils.hasText(razorpayOrderId)) {
+            return null;
+        }
+        try {
+            RazorpayClient client = new RazorpayClient(resolveKeyId(), resolveKeySecret());
+            // Prefer payments list first — faster than waiting for order.status="paid".
+            java.util.List<Payment> payments = client.orders.fetchPayments(razorpayOrderId.trim());
+            if (payments != null) {
+                for (Payment p : payments) {
+                    String pStatus = p.has("status") ? String.valueOf(p.get("status")) : "";
+                    if ("captured".equalsIgnoreCase(pStatus)
+                            || "authorized".equalsIgnoreCase(pStatus)
+                            || "paid".equalsIgnoreCase(pStatus)) {
+                        String id = p.has("id") ? String.valueOf(p.get("id")) : "";
+                        if (StringUtils.hasText(id)) {
+                            return id;
+                        }
+                    }
+                }
+            }
+            Order order = client.orders.fetch(razorpayOrderId.trim());
+            String status = order.has("status") ? String.valueOf(order.get("status")) : "";
+            if ("paid".equalsIgnoreCase(status) || "attempted".equalsIgnoreCase(status)) {
+                return "razorpay_paid_" + razorpayOrderId.trim();
+            }
+            return null;
+        } catch (Exception e) {
+            throw new RuntimeException("Could not fetch Razorpay order status: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public JSONObject createRefund(
             String paymentId,
             Double amount,

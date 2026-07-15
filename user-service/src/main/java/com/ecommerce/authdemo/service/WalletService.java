@@ -16,6 +16,17 @@ public interface WalletService {
 
     void addMoney(Integer userId, Double amount);
 
+    /**
+     * Credit wallet after Razorpay recharge (idempotent per razorpayPaymentId).
+     * @return true if newly credited, false if already credited for this payment
+     */
+    boolean creditWalletRecharge(
+            Integer userId,
+            BigDecimal amount,
+            String razorpayPaymentId,
+            String razorpayOrderId
+    );
+
     void deductMoney(Integer userId, Double amount);
 
     /** Credit FNT wallet when a prepaid order is cancelled (idempotent per order). */
