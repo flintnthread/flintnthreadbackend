@@ -6,21 +6,25 @@ import org.springframework.stereotype.Component;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Builds public links for seller email verification.
+ * Production defaults point at {@code https://flintnthread.online} so links work on any device.
+ */
 @Component
 public class EmailVerificationUrlHelper {
 
-    @Value("${app.backend.public-url:http://localhost:8083}")
+    @Value("${app.backend.public-url:https://flintnthread.online}")
     private String backendPublicUrl;
 
-    @Value("${app.frontend.base-url:http://localhost:8081}")
+    @Value("${app.frontend.base-url:https://flintnthread.online/Seller}")
     private String frontendBaseUrl;
 
     @Value("${app.frontend.email-verify-redirect-url:}")
     private String emailVerifyRedirectUrl;
 
     /**
-     * Link in the signup email. Hits seller-service directly so verification works
-     * even when the Expo web app (localhost:8081) is not running.
+     * Link in the signup email. Hits seller-service ({@code /api/auth/verify-email})
+     * so verification works on any phone/PC without needing Expo local server.
      */
     public String buildEmailLinkClickUrl(String emailVerificationToken) {
         return trimTrailingSlash(backendPublicUrl)
@@ -60,6 +64,14 @@ public class EmailVerificationUrlHelper {
     public String buildOtpPageRedirectError(String message) {
         String base = trimTrailingSlash(resolveOtpPageBaseUrl());
         return base + "?error=" + URLEncoder.encode(message, StandardCharsets.UTF_8);
+    }
+
+    public String getBackendPublicUrl() {
+        return trimTrailingSlash(backendPublicUrl);
+    }
+
+    public String getFrontendBaseUrl() {
+        return trimTrailingSlash(frontendBaseUrl);
     }
 
     private String resolveOtpPageBaseUrl() {

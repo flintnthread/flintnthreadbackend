@@ -48,9 +48,11 @@ ADMIN_JWT_SECRET=your-admin-jwt-secret-min-32-chars
 # AppyFlow key_secret — get from https://appyflow.in/verify-gst/
 GST_LOOKUP_API_KEY=IPgE6ihOQuaMYxsmVgst1xGGA4K2
 MEDIA_PUBLIC_BASE_URL=https://flintnthread.in
-# Public seller-service URL — used in signup verification emails (must be reachable; not the Expo port)
+# Public seller-service URL — used in signup verification emails (must be reachable on any device)
 APP_BACKEND_PUBLIC_URL=https://flintnthread.online
-# Seller web app is served under /Seller on production (see deploy-frontends-vps.sh)
+# Seller web app path on production
 APP_FRONTEND_BASE_URL=https://flintnthread.online/Seller
 ADMIN_FRONTEND_URL=https://flintnthread.online
-ADMIN_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006,https://flintnthread.online,https://www.flintnthread.online
+# Never allow localhost in verification emails on VPS
+MAIL_ALLOW_LOCALHOST_LINKS=false
+ADMIN_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006,https://flintnthread.online,https://www.flintnthread.online,https://seller.flintnthread.online,https://admin.flintnthread.online
