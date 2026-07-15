@@ -22,6 +22,8 @@ public class OrderResponseDTO {
     private Double walletAmountUsed;
     private Double shippingAmount;
     private Double discountAmount;
+    /** Grand order value = payable (totalAmount) + wallet used. Shown as Order total on shopper UI. */
+    private Double grandTotal;
 
   private Integer totalItems;
   /** Sum of line quantities (e.g. 2 units of one SKU = 2). */

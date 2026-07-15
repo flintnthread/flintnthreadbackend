@@ -254,6 +254,9 @@ public class ProductUpdateService {
             return;
         }
         String path = productMediaStorageService.storeProductImage(source);
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("Failed to store product image.");
+        }
         ProductImage image = new ProductImage();
         image.setProductId(productId);
         image.setVariantId(variantId);

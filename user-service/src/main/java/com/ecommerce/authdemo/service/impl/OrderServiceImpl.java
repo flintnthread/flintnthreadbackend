@@ -802,7 +802,12 @@ public class OrderServiceImpl implements OrderService {
         builder
                 .totalAmount(payable > 0 ? payable : null)
                 .finalAmount(payable > 0 ? payable : null)
-                .walletAmountUsed(walletUsed > 0 ? walletUsed : null);
+                .walletAmountUsed(walletUsed > 0 ? walletUsed : null)
+                .grandTotal(
+                        (payable + walletUsed) > 0.009d
+                                ? Math.round((payable + walletUsed) * 100.0d) / 100.0d
+                                : null
+                );
     }
 
 
