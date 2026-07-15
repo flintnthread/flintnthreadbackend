@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 @RestController
@@ -57,6 +58,11 @@ public class ProductAdminController {
     @GetMapping("/catalog")
     public Map<String, Object> catalog() {
         return productAdminService.catalog();
+    }
+
+    @GetMapping("/catalog/delivery-charges")
+    public Map<String, Object> deliveryCharges(@RequestParam("weightKg") BigDecimal weightKg) {
+        return productAdminService.resolveDeliveryCharge(weightKg);
     }
 
     @GetMapping("/stats")
@@ -98,5 +104,17 @@ public class ProductAdminController {
     public Map<String, Object> reject(@PathVariable Long id, @RequestBody(required = false) NoteRequest request) {
         String note = request != null ? (request.getNote() != null ? request.getNote() : request.getReason()) : null;
         return productAdminService.reject(id, note);
+    }
+
+    @PostMapping("/{id}/deactivate")
+    public Map<String, Object> deactivate(@PathVariable Long id, @RequestBody(required = false) NoteRequest request) {
+        log.info("Admin deactivating product id={}", id);
+        return productAdminService.deactivate(id, request != null ? request.getNote() : null);
+    }
+
+    @PostMapping("/{id}/activate")
+    public Map<String, Object> activate(@PathVariable Long id, @RequestBody(required = false) NoteRequest request) {
+        log.info("Admin activating product id={}", id);
+        return productAdminService.activate(id, request != null ? request.getNote() : null);
     }
 }

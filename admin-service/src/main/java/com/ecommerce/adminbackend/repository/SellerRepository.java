@@ -14,6 +14,8 @@ import java.util.List;
 
 public interface SellerRepository extends JpaRepository<Seller, Long> {
 
+    boolean existsByEmailIgnoreCase(String email);
+
     List<Seller> findBySellerCategory(SellerCategory sellerCategory);
 
     @Query("""
@@ -61,6 +63,36 @@ public interface SellerRepository extends JpaRepository<Seller, Long> {
             ORDER BY s.updatedAt DESC
             """)
     Page<Seller> findPendingBankVerification(Pageable pageable);
+
+    @Query(value = """
+            SELECT * FROM sellers s
+            WHERE s.bank_name IS NOT NULL
+              AND (s.bank_verified IS NULL OR s.bank_verified = 0)
+              AND s.id NOT IN (SELECT DISTINCT sbv.seller_id FROM seller_bank_verifications sbv)
+            ORDER BY s.updated_at DESC
+            """,
+            countQuery = """
+            SELECT COUNT(*) FROM sellers s
+            WHERE s.bank_name IS NOT NULL
+              AND (s.bank_verified IS NULL OR s.bank_verified = 0)
+              AND s.id NOT IN (SELECT DISTINCT sbv.seller_id FROM seller_bank_verifications sbv)
+            """,
+            nativeQuery = true)
+    Page<Seller> findPendingBankWithoutVerificationRows(Pageable pageable);
+
+    @Query(value = """
+            SELECT * FROM sellers s
+            WHERE s.bank_verified = 1
+              AND s.id NOT IN (SELECT DISTINCT sbv.seller_id FROM seller_bank_verifications sbv)
+            ORDER BY s.updated_at DESC
+            """,
+            countQuery = """
+            SELECT COUNT(*) FROM sellers s
+            WHERE s.bank_verified = 1
+              AND s.id NOT IN (SELECT DISTINCT sbv.seller_id FROM seller_bank_verifications sbv)
+            """,
+            nativeQuery = true)
+    Page<Seller> findBankVerifiedWithoutVerificationRows(Pageable pageable);
 
     long countByStatus(SellerAccountStatus status);
 

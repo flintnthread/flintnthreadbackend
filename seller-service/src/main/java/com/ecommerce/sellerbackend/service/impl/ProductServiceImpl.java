@@ -442,8 +442,10 @@ public class ProductServiceImpl implements ProductService {
                 return "Pending";
             }
             if (normalized.equals("inactive")
-                    || normalized.equals("disabled")
-                    || normalized.equals("draft")
+                    || normalized.equals("disabled")) {
+                return "Deactivated";
+            }
+            if (normalized.equals("draft")
                     || normalized.equals("rejected")) {
                 return "Inactive";
             }

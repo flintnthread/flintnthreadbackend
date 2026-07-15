@@ -89,6 +89,8 @@ public class MailServiceImpl implements MailService {
                       <p style="color:#111827;font-size:20px;font-weight:bold;line-height:1.4;margin:0 0 16px;">Hello %s,</p>
                       <p style="color:#374151;line-height:1.7;margin:0 0 20px;font-size:15px;">
                         Please verify your email address to complete your seller registration.
+                        After you click the button below, we will send a <strong>6-digit OTP</strong> to this same email.
+                        Enter that OTP on the verification page to activate your account.
                       </p>
                       <p style="text-align:center;margin:28px 0;">
                         <a href="%s" style="background:linear-gradient(135deg,#1E3A6E 0%%,#2563EB 100%%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:bold;display:inline-block;font-size:16px;">
@@ -210,5 +212,41 @@ public class MailServiceImpl implements MailService {
         String local = parts[0];
         String maskedLocal = local.length() <= 2 ? "**" : local.charAt(0) + "***";
         return maskedLocal + "@" + parts[1];
+    }
+
+    @Override
+    public void sendHtmlEmail(String toEmail, String subject, String htmlBody) {
+        if (toEmail == null || toEmail.isBlank()) {
+            log.warn("[MAIL] Skipping HTML email — recipient missing");
+            return;
+        }
+        if (subject == null || subject.isBlank()) {
+            throw new IllegalArgumentException("Email subject is required.");
+        }
+        if (htmlBody == null || htmlBody.isBlank()) {
+            throw new IllegalArgumentException("Email message is required.");
+        }
+
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] HTML email to {} subject={}", maskEmail(toEmail), subject);
+            return;
+        }
+
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail.trim());
+            helper.setSubject(subject.trim());
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
+            log.info("HTML email sent to {}", maskEmail(toEmail));
+        } catch (MessagingException ex) {
+            log.error("Failed to compose HTML email for {}", maskEmail(toEmail), ex);
+            throw new IllegalStateException("Unable to send email. Please try again later.");
+        } catch (Exception ex) {
+            log.error("Failed to send HTML email for {}", maskEmail(toEmail), ex);
+            throw new IllegalStateException("Unable to send email. Please try again later.");
+        }
     }
 }

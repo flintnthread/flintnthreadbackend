@@ -12,9 +12,14 @@ class ProductServiceImplTest {
     }
 
     @Test
-    void resolveDisplayStatus_returnsInactiveForInactiveProduct() {
-        assertEquals("Inactive", ProductServiceImpl.resolveDisplayStatus("inactive", 10));
+    void resolveDisplayStatus_returnsDeactivatedForAdminInactiveProduct() {
+        assertEquals("Deactivated", ProductServiceImpl.resolveDisplayStatus("inactive", 10));
+    }
+
+    @Test
+    void resolveDisplayStatus_returnsInactiveForRejectedOrDraft() {
         assertEquals("Inactive", ProductServiceImpl.resolveDisplayStatus("Draft", 5));
+        assertEquals("Inactive", ProductServiceImpl.resolveDisplayStatus("rejected", 3));
     }
 
     @Test

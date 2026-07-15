@@ -39,53 +39,52 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
     @Value("${app.auth.email-verification-expiry-hours:1}")
     private int emailVerificationExpiryHours;
 
+    /**
+     * Step 2: seller clicked the link in the signup / admin verification email.
+     * Generates a 6-digit OTP, emails it, and leaves the account unverified until OTP is entered.
+     */
     @Override
     @Transactional
-    public EmailVerificationResponse verifyEmailFromLinkToken(String token) {
-        if (token == null || token.isBlank()) {
+    public StartEmailVerificationResponse confirmEmailLink(StartEmailVerificationRequest request) {
+        if (request.getToken() == null || request.getToken().isBlank()) {
             throw new IllegalArgumentException("Invalid or expired verification link.");
         }
-        Seller seller = sellerRepository.findByEmailVerificationToken(token.trim())
+        String token = request.getToken().trim();
+        Seller seller = sellerRepository.findByEmailVerificationToken(token)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired verification link."));
 
         String email = seller.getEmail().toLowerCase(Locale.ROOT);
 
         if (Boolean.TRUE.equals(seller.getEmailVerified())) {
-            return new EmailVerificationResponse(
+            return new StartEmailVerificationResponse(
                     "Your email is already verified. You can log in now.",
-                    true,
                     email,
-                    seller.getId()
+                    false,
+                    true
             );
         }
 
         assertVerificationLinkNotExpired(seller);
 
-        seller.setEmailVerified(true);
-        seller.setEmailVerifiedAt(LocalDateTime.now());
-        seller.setEmailVerificationToken(null);
-        seller.setOtp(null);
-        seller.setOtpExpiresAt(null);
-        seller.setStatus(SellerAccountStatus.active);
+        String otp = generateOtp();
+        LocalDateTime now = LocalDateTime.now();
+        seller.setOtp(otp);
+        seller.setOtpExpiresAt(now.plusMinutes(emailOtpExpiryMinutes));
+        seller.setOtpSentAt(now);
         sellerRepository.save(seller);
 
-        return new EmailVerificationResponse(
-                "Email verified successfully. You can now log in to your seller account.",
-                true,
-                email,
-                seller.getId()
-        );
-    }
+        mailService.sendEmailVerificationOtpEmail(
+                seller.getEmail(),
+                buildDisplayName(seller),
+                otp);
 
-    @Override
-    @Transactional
-    public StartEmailVerificationResponse confirmEmailLink(StartEmailVerificationRequest request) {
-        EmailVerificationResponse verified = verifyEmailFromLinkToken(request.getToken());
+        log.info("Email verification OTP sent for sellerId={} email={}", seller.getId(), maskEmail(email));
+
         return new StartEmailVerificationResponse(
-                verified.getMessage(),
-                verified.getEmail(),
-                false,
-                true
+                "OTP has been sent to your email address. Please enter the 6-digit code below.",
+                email,
+                true,
+                false
         );
     }
 
@@ -194,6 +193,19 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         String last = seller.getLastName() != null ? seller.getLastName().trim() : "";
         String full = (first + " " + last).trim();
         return full.isBlank() ? "Seller" : full;
+    }
+
+    private static String maskEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "***";
+        }
+        int at = email.indexOf('@');
+        String local = email.substring(0, at);
+        String domain = email.substring(at);
+        if (local.length() <= 2) {
+            return "***" + domain;
+        }
+        return local.charAt(0) + "***" + local.charAt(local.length() - 1) + domain;
     }
 
 }

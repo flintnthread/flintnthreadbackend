@@ -4,6 +4,7 @@ import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.dto.product.CreateProductRequest;
 import com.ecommerce.adminbackend.dto.product.UpdateProductRequest;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 public interface ProductAdminService {
@@ -25,6 +26,9 @@ public interface ProductAdminService {
 
     Map<String, Object> catalog();
 
+    /** Resolve active delivery slab for a product weight (kg), matching seller catalog behaviour. */
+    Map<String, Object> resolveDeliveryCharge(BigDecimal weightKg);
+
     Map<String, Object> getProduct(Long id);
 
     Map<String, Object> create(CreateProductRequest request);
@@ -36,4 +40,10 @@ public interface ProductAdminService {
     Map<String, Object> approve(Long id, String note);
 
     Map<String, Object> reject(Long id, String note);
+
+    /** Soft-hide approved product from customer store (status = inactive). */
+    Map<String, Object> deactivate(Long id, String note);
+
+    /** Re-publish a previously deactivated product (status = active). */
+    Map<String, Object> activate(Long id, String note);
 }

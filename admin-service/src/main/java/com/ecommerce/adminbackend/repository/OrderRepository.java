@@ -24,11 +24,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                    LOWER(o.shippingName) LIKE LOWER(CONCAT('%', :search, '%')) OR
                    LOWER(o.shippingEmail) LIKE LOWER(CONCAT('%', :search, '%')) OR
                    o.shippingPhone LIKE CONCAT('%', :search, '%'))
+              AND (:sellerId IS NULL OR EXISTS (
+                   SELECT 1 FROM OrderItem oi WHERE oi.orderId = o.id AND oi.sellerId = :sellerId
+              ))
             """)
     Page<Order> searchOrders(@Param("status") String status,
                              @Param("paymentStatus") String paymentStatus,
                              @Param("paymentMethod") String paymentMethod,
                              @Param("search") String search,
+                             @Param("sellerId") Long sellerId,
                              Pageable pageable);
 
     @Query("""
