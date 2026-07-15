@@ -99,4 +99,16 @@ public class ProductAdminController {
         String note = request != null ? (request.getNote() != null ? request.getNote() : request.getReason()) : null;
         return productAdminService.reject(id, note);
     }
+
+    @PostMapping("/{id}/deactivate")
+    public Map<String, Object> deactivate(@PathVariable Long id, @RequestBody(required = false) NoteRequest request) {
+        log.info("Admin deactivating product id={}", id);
+        return productAdminService.deactivate(id, request != null ? request.getNote() : null);
+    }
+
+    @PostMapping("/{id}/activate")
+    public Map<String, Object> activate(@PathVariable Long id, @RequestBody(required = false) NoteRequest request) {
+        log.info("Admin activating product id={}", id);
+        return productAdminService.activate(id, request != null ? request.getNote() : null);
+    }
 }

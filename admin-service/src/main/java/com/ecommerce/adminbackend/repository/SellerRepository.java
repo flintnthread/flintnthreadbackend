@@ -14,6 +14,8 @@ import java.util.List;
 
 public interface SellerRepository extends JpaRepository<Seller, Long> {
 
+    boolean existsByEmailIgnoreCase(String email);
+
     List<Seller> findBySellerCategory(SellerCategory sellerCategory);
 
     @Query("""

@@ -211,4 +211,40 @@ public class MailServiceImpl implements MailService {
         String maskedLocal = local.length() <= 2 ? "**" : local.charAt(0) + "***";
         return maskedLocal + "@" + parts[1];
     }
+
+    @Override
+    public void sendHtmlEmail(String toEmail, String subject, String htmlBody) {
+        if (toEmail == null || toEmail.isBlank()) {
+            log.warn("[MAIL] Skipping HTML email — recipient missing");
+            return;
+        }
+        if (subject == null || subject.isBlank()) {
+            throw new IllegalArgumentException("Email subject is required.");
+        }
+        if (htmlBody == null || htmlBody.isBlank()) {
+            throw new IllegalArgumentException("Email message is required.");
+        }
+
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] HTML email to {} subject={}", maskEmail(toEmail), subject);
+            return;
+        }
+
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail.trim());
+            helper.setSubject(subject.trim());
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
+            log.info("HTML email sent to {}", maskEmail(toEmail));
+        } catch (MessagingException ex) {
+            log.error("Failed to compose HTML email for {}", maskEmail(toEmail), ex);
+            throw new IllegalStateException("Unable to send email. Please try again later.");
+        } catch (Exception ex) {
+            log.error("Failed to send HTML email for {}", maskEmail(toEmail), ex);
+            throw new IllegalStateException("Unable to send email. Please try again later.");
+        }
+    }
 }

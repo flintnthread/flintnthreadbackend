@@ -36,4 +36,10 @@ public interface ProductAdminService {
     Map<String, Object> approve(Long id, String note);
 
     Map<String, Object> reject(Long id, String note);
+
+    /** Soft-hide approved product from customer store (status = inactive). */
+    Map<String, Object> deactivate(Long id, String note);
+
+    /** Re-publish a previously deactivated product (status = active). */
+    Map<String, Object> activate(Long id, String note);
 }

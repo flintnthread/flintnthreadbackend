@@ -16,9 +16,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * Customer-facing price — same stack as admin displayPrice:
- * sellingPrice (ex-GST) + GST + commission + highest delivery charge.
- * Cart may pass a concrete {@link DeliveryType} to use that zone's delivery instead of max().
+ * Customer-facing price — same stack as admin panel:
+ * sellingPrice (ex-GST) + GST + commission + Metro-Metro delivery
+ * (= admin "Total (Metro-Metro)").
+ * Cart may pass a concrete {@link DeliveryType} to use that zone's delivery.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,13 +49,13 @@ public class CustomerPriceResolver {
             BigDecimal totalPriceIntraCity,
             BigDecimal totalPriceMetroMetro) {}
 
-    /** Catalog / wishlist / activity: admin-aligned total (highest delivery). */
+    /** Catalog / wishlist / activity: admin "Total (Metro-Metro)". */
     public ResolvedPrice resolve(Product product, ProductVariant variant) {
         return resolve(product, variant, null);
     }
 
     /**
-     * @param deliveryType when null, uses highest of Intra-City / Metro-Metro (admin Total Price).
+     * @param deliveryType when null, uses Metro-Metro delivery (admin Total (Metro-Metro)).
      *                     when set, uses that zone's delivery (cart / checkout).
      */
     public ResolvedPrice resolve(Product product, ProductVariant variant, DeliveryType deliveryType) {
@@ -104,22 +105,19 @@ public class CustomerPriceResolver {
 
         BigDecimal intraDelivery = nonNegative(variant.getIntraCityDeliveryCharge());
         BigDecimal metroDelivery = nonNegative(variant.getMetroMetroDeliveryCharge());
-        BigDecimal highestDelivery = intraDelivery.max(metroDelivery);
 
         // Always recompute like admin enrich() — do not trust stale DB totals (often missing commission).
         BigDecimal totalIntra = priceBeforeDelivery.add(intraDelivery).setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalMetro = priceBeforeDelivery.add(metroDelivery).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal displayPrice = priceBeforeDelivery.add(highestDelivery).setScale(2, RoundingMode.HALF_UP);
 
         DeliveryType effectiveType;
         BigDecimal deliveryCharge;
         BigDecimal customerPrice;
         if (deliveryType == null) {
-            effectiveType = metroDelivery.compareTo(intraDelivery) >= 0
-                    ? DeliveryType.metro_metro
-                    : DeliveryType.intra_city;
-            deliveryCharge = highestDelivery;
-            customerPrice = displayPrice;
+            // Catalog / PDP / list: match admin "Total (Metro-Metro)".
+            effectiveType = DeliveryType.metro_metro;
+            deliveryCharge = metroDelivery;
+            customerPrice = totalMetro;
         } else {
             effectiveType = deliveryType;
             deliveryCharge = effectiveType == DeliveryType.intra_city ? intraDelivery : metroDelivery;
@@ -175,7 +173,8 @@ public class CustomerPriceResolver {
         BigDecimal intra = nonNegative(variant.getIntraCityDeliveryCharge());
         BigDecimal metro = nonNegative(variant.getMetroMetroDeliveryCharge());
         if (deliveryType == null) {
-            return intra.max(metro);
+            // Catalog default matches admin Total (Metro-Metro).
+            return metro;
         }
         return deliveryType == DeliveryType.intra_city ? intra : metro;
     }
