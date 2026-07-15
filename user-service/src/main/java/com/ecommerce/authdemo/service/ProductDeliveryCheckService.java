@@ -41,7 +41,7 @@ public class ProductDeliveryCheckService {
                 || Boolean.TRUE.equals(product.getDeliverAllLocations());
 
         if (deliverAll) {
-            boolean platformSupports = deliveryPincodeRepository.existsByPincodeAndStatus(pincode, 1);
+            boolean platformSupports = deliveryPincodeRepository.existsServiceablePincode(pincode);
             return ProductDeliveryCheckResponse.builder()
                     .productId(productId)
                     .pincode(pincode)
