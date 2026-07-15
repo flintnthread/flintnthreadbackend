@@ -320,6 +320,33 @@ public class OrderController {
         );
     }
 
+    @PatchMapping("/{orderId}/address")
+    public ResponseEntity<ApiResponse<OrderResponseDTO>> updateOrderAddress(
+            @PathVariable Long orderId,
+            @Valid @RequestBody UpdateOrderAddressRequestDTO dto
+    ) {
+        log.info("[ORDER:API] PATCH /api/orders/{}/address", orderId);
+        try {
+            OrderResponseDTO response = orderService.updateOrderAddress(orderId, dto);
+            return ResponseEntity.ok(
+                    new ApiResponse<>(true, "Order address updated successfully", response)
+            );
+        } catch (OrderException e) {
+            log.warn("[ORDER:API] address update rejected orderId={}: {}", orderId, e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(404)
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        } catch (Exception e) {
+            log.error("[ORDER:API] address update failed orderId={}", orderId, e);
+            return ResponseEntity.internalServerError()
+                    .body(new ApiResponse<>(false,
+                            e.getMessage() != null ? e.getMessage() : "Failed to update address",
+                            null));
+        }
+    }
+
     private static boolean parseRefundToWallet(Object raw) {
         if (raw == null) {
             return true;

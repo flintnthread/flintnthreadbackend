@@ -50,6 +50,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -65,6 +67,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
+    private static final ZoneId DISPLAY_ZONE = ZoneId.of("Asia/Kolkata");
     private static final DateTimeFormatter DISPLAY_DATE_TIME =
             DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH);
     private static final DateTimeFormatter STEP_DATE =
@@ -854,7 +857,7 @@ public class OrderServiceImpl implements OrderService {
             for (OrderStatusHistory entry : history) {
                 String stepKey = historyStatusToStepKey(entry.getStatus());
                 if (stepKey != null && entry.getCreatedAt() != null) {
-                    dates.put(stepKey, entry.getCreatedAt().format(STEP_DATE));
+                    dates.put(stepKey, formatStepDate(entry.getCreatedAt()));
                 }
             }
             if (!dates.isEmpty()) {
@@ -864,10 +867,10 @@ public class OrderServiceImpl implements OrderService {
 
         LocalDateTime created = order.getCreatedAt() != null ? order.getCreatedAt() : items.get(0).getCreatedAt();
         if (created != null) {
-            dates.put("pending", created.format(STEP_DATE));
+            dates.put("pending", formatStepDate(created));
         }
         if (order.getUpdatedAt() != null) {
-            String formatted = order.getUpdatedAt().format(STEP_DATE);
+            String formatted = formatStepDate(order.getUpdatedAt());
             switch (uiStatus) {
                 case "Processing" -> dates.put("processing", formatted);
                 case "Shipped" -> {
@@ -1320,11 +1323,28 @@ public class OrderServiceImpl implements OrderService {
                 .orElse(LocalDateTime.MIN);
     }
 
+    /**
+     * Orders are persisted as UTC wall-clock {@link LocalDateTime} (same as user-service).
+     * Display in Asia/Kolkata so seller timing matches the buyer / admin experience.
+     */
     private String formatDateTime(LocalDateTime value) {
         if (value == null) {
             return "";
         }
-        return value.format(DISPLAY_DATE_TIME);
+        return value
+                .atZone(ZoneOffset.UTC)
+                .withZoneSameInstant(DISPLAY_ZONE)
+                .format(DISPLAY_DATE_TIME);
+    }
+
+    private String formatStepDate(LocalDateTime value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .atZone(ZoneOffset.UTC)
+                .withZoneSameInstant(DISPLAY_ZONE)
+                .format(STEP_DATE);
     }
 
     private String formatInr(BigDecimal amount) {
