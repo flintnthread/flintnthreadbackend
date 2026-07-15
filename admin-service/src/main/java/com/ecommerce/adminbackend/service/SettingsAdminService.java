@@ -14,5 +14,8 @@ public interface SettingsAdminService {
             String sendgridApiKey,
             String twilioAccountSid,
             String twilioAuthToken,
-            String twilioPhoneNumber);
+            String twilioPhoneNumber,
+            String shiprocketEmail,
+            String shiprocketPassword,
+            String shiprocketPickupLocation);
 }

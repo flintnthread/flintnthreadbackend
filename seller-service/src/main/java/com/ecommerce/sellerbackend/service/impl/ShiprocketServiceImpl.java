@@ -4,6 +4,7 @@ import com.ecommerce.sellerbackend.dto.financial.ShiprocketSyncResponse;
 import com.ecommerce.sellerbackend.dto.financial.ShiprocketTrackingEventDto;
 import com.ecommerce.sellerbackend.entity.Order;
 import com.ecommerce.sellerbackend.repository.OrderRepository;
+import com.ecommerce.sellerbackend.service.PlatformIntegrationSettings;
 import com.ecommerce.sellerbackend.service.ShiprocketService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,18 +34,13 @@ public class ShiprocketServiceImpl implements ShiprocketService {
 
     private final OrderRepository orderRepository;
     private final ObjectMapper objectMapper;
+    private final PlatformIntegrationSettings integrationSettings;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
             .build();
 
     @Value("${shiprocket.api.base-url:https://apiv2.shiprocket.in/v1/external}")
     private String baseUrl;
-
-    @Value("${shiprocket.email:}")
-    private String email;
-
-    @Value("${shiprocket.password:}")
-    private String password;
 
     @Override
     @Transactional
@@ -211,8 +207,14 @@ public class ShiprocketServiceImpl implements ShiprocketService {
     }
 
     private String authenticate() throws Exception {
+        String email = integrationSettings.getShiprocketEmail();
+        String password = integrationSettings.getShiprocketPassword();
+        if (email == null || email.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalStateException(
+                    "Shiprocket credentials missing. Set them in Admin → Platform Settings.");
+        }
         String body = objectMapper.writeValueAsString(java.util.Map.of(
-                "email", email,
+                "email", email.trim(),
                 "password", password
         ));
         HttpRequest request = HttpRequest.newBuilder()
