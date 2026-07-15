@@ -21,10 +21,7 @@ public class FaqService {
 
     public List<FaqResponse> getAllFaqs(boolean sellerOnly) {
         Map<Integer, String> categoryNames = loadCategoryNames();
-        List<Faq> faqs = sellerOnly
-                ? faqRepository.findActiveSellerFaqs()
-                : faqRepository.findAllActiveFaqs();
-        return faqs.stream()
+        return resolveActiveFaqs(sellerOnly).stream()
                 .map(f -> toResponse(f, categoryNames.get(f.getCategoryId())))
                 .toList();
     }
@@ -34,10 +31,7 @@ public class FaqService {
             return getAllFaqs(sellerOnly);
         }
         Map<Integer, String> categoryNames = loadCategoryNames();
-        List<Faq> faqs = sellerOnly
-                ? faqRepository.searchActiveSellerFaqs(query.trim())
-                : faqRepository.searchAllActiveFaqs(query.trim());
-        return faqs.stream()
+        return resolveSearchFaqs(query.trim(), sellerOnly).stream()
                 .map(f -> toResponse(f, categoryNames.get(f.getCategoryId())))
                 .toList();
     }
@@ -49,9 +43,7 @@ public class FaqService {
 
     public List<FaqCategoryResponse> getGroupedFaqs(boolean sellerOnly) {
         List<FaqCategory> categories = faqCategoryRepository.findByStatusTrueOrderBySortOrderAscIdAsc();
-        List<Faq> faqs = sellerOnly
-                ? faqRepository.findActiveSellerFaqs()
-                : faqRepository.findAllActiveFaqs();
+        List<Faq> faqs = resolveActiveFaqs(sellerOnly);
 
         Map<Integer, String> categoryNames = categories.stream()
                 .collect(Collectors.toMap(FaqCategory::getId, FaqCategory::getCategoryName));
@@ -76,6 +68,29 @@ public class FaqService {
                 .toList();
     }
 
+    private List<Faq> resolveActiveFaqs(boolean sellerOnly) {
+        if (!sellerOnly) {
+            return faqRepository.findAllActiveFaqs();
+        }
+        List<Faq> sellerFaqs = faqRepository.findActiveSellerFaqs();
+        if (!sellerFaqs.isEmpty()) {
+            return sellerFaqs;
+        }
+        // Fallback when is_seller flags were not set in DB — show all active FAQs to sellers.
+        return faqRepository.findAllActiveFaqs();
+    }
+
+    private List<Faq> resolveSearchFaqs(String query, boolean sellerOnly) {
+        if (!sellerOnly) {
+            return faqRepository.searchAllActiveFaqs(query);
+        }
+        List<Faq> sellerFaqs = faqRepository.searchActiveSellerFaqs(query);
+        if (!sellerFaqs.isEmpty()) {
+            return sellerFaqs;
+        }
+        return faqRepository.searchAllActiveFaqs(query);
+    }
+
     private FaqResponse toResponse(Faq faq) {
         return toResponse(faq, null);
     }
@@ -88,7 +103,7 @@ public class FaqService {
                 .question(faq.getQuestion())
                 .answer(faq.getAnswer())
                 .sortOrder(faq.getSortOrder())
-                .isSeller(faq.getIsSeller())
+                .isSeller(Boolean.TRUE.equals(faq.getIsSeller()))
                 .build();
     }
 }

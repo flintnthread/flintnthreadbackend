@@ -14,6 +14,7 @@ import java.util.Optional;
 public class PlatformIntegrationSettings {
 
     public static final String KEY_COMMISSION_B2C = "commission_b2c";
+    public static final String KEY_COMMISSION_B2B = "commission_b2b";
 
     public static final String KEY_SENDGRID_API_KEY = "sendgrid_api_key";
     public static final String KEY_TWILIO_ACCOUNT_SID = "twilio_account_sid";

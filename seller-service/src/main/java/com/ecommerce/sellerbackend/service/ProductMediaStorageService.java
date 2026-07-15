@@ -60,6 +60,8 @@ public class ProductMediaStorageService {
 
     /**
      * Persists an image and returns a DB-safe relative path (e.g. uploads/products/abc.png).
+     * Absolute CDN URLs that already point at /uploads/... are stored as relative paths
+     * so admin / user / seller all resolve via the same public media base URL.
      */
     public String storeProductImage(String source) {
         if (source == null || source.isBlank()) {
@@ -69,16 +71,37 @@ public class ProductMediaStorageService {
         if (trimmed.startsWith("uploads/")) {
             return trimmed;
         }
+        if (trimmed.startsWith("/uploads/")) {
+            return trimmed.substring(1);
+        }
         if (trimmed.startsWith("data:")) {
             return saveBase64DataUrl(trimmed, "products", null);
         }
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            String relative = extractUploadsRelativePath(trimmed);
+            if (relative != null) {
+                return relative;
+            }
             if (trimmed.length() <= 255) {
+                // External short URL — keep as-is (already public)
                 return trimmed;
             }
             return downloadToUploads(trimmed, "products", null);
         }
         throw new IllegalArgumentException("Unsupported image source. Use a picked image or https URL.");
+    }
+
+    /** Prefer relative DB path: uploads/products/x.jpg from any host. */
+    private static String extractUploadsRelativePath(String url) {
+        int idx = url.indexOf("/uploads/");
+        if (idx < 0) {
+            return null;
+        }
+        String path = url.substring(idx + 1); // uploads/...
+        if (path.length() > 255) {
+            return null;
+        }
+        return path;
     }
 
     private String saveBase64DataUrl(String dataUrl, String folder, Long sellerId) {

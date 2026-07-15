@@ -442,7 +442,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
                 : null;
         BigDecimal commissionPercent = commissionSupport.resolveCommissionPercent(seller);
         for (ProductVariant variant : productVariantRepository.findByProductIdOrderByIdAsc(product.getId())) {
-            commissionSupport.applyCommission(variant, commissionPercent, product.getGstPercentage());
+            commissionSupport.applyCommission(variant, commissionPercent, product.getGstPercentage(), true);
             productVariantRepository.save(variant);
         }
     }
