@@ -1,5 +1,6 @@
 package com.ecommerce.adminbackend.service.impl;
 
+import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.repository.LocationRepository;
 import com.ecommerce.adminbackend.service.LocationAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
@@ -13,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
@@ -22,8 +24,11 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
 
     @Override
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> listCountries(String search) {
-        return mapRows(locationRepository.searchCountries(blankToNull(search)), row -> {
+    public PageResponse<Map<String, Object>> listCountries(String search, int page, int size) {
+        String q = blankToNull(search);
+        int safeSize = sanitizeSize(size);
+        int safePage = Math.max(page, 0);
+        List<Map<String, Object>> items = mapRows(locationRepository.searchCountries(q, safePage, safeSize), row -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", row[0]);
             item.put("name", row[1]);
@@ -31,12 +36,16 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("active", toActive(row[3]));
             return item;
         });
+        return toPage(items, locationRepository.countCountriesSearch(q), safePage, safeSize);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> listStates(Integer countryId, String search) {
-        return mapRows(locationRepository.searchStates(countryId, blankToNull(search)), row -> {
+    public PageResponse<Map<String, Object>> listStates(Integer countryId, String search, int page, int size) {
+        String q = blankToNull(search);
+        int safeSize = sanitizeSize(size);
+        int safePage = Math.max(page, 0);
+        List<Map<String, Object>> items = mapRows(locationRepository.searchStates(countryId, q, safePage, safeSize), row -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", row[0]);
             item.put("name", row[1]);
@@ -45,12 +54,16 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("active", toActive(row[4]));
             return item;
         });
+        return toPage(items, locationRepository.countStatesSearch(countryId, q), safePage, safeSize);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> listCities(Integer stateId, String search) {
-        return mapRows(locationRepository.searchCities(stateId, blankToNull(search)), row -> {
+    public PageResponse<Map<String, Object>> listCities(Integer stateId, String search, int page, int size) {
+        String q = blankToNull(search);
+        int safeSize = sanitizeSize(size);
+        int safePage = Math.max(page, 0);
+        List<Map<String, Object>> items = mapRows(locationRepository.searchCities(stateId, q, safePage, safeSize), row -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", row[0]);
             item.put("name", row[1]);
@@ -59,12 +72,16 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("active", toActive(row[4]));
             return item;
         });
+        return toPage(items, locationRepository.countCitiesSearch(stateId, q), safePage, safeSize);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> listAreas(Integer cityId, String search) {
-        return mapRows(locationRepository.searchAreas(cityId, blankToNull(search)), row -> {
+    public PageResponse<Map<String, Object>> listAreas(Integer cityId, String search, int page, int size) {
+        String q = blankToNull(search);
+        int safeSize = sanitizeSize(size);
+        int safePage = Math.max(page, 0);
+        List<Map<String, Object>> items = mapRows(locationRepository.searchAreas(cityId, q, safePage, safeSize), row -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", row[0]);
             item.put("name", row[1]);
@@ -73,22 +90,31 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("active", toActive(row[4]));
             return item;
         });
+        return toPage(items, locationRepository.countAreasSearch(cityId, q), safePage, safeSize);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> listPincodes(String search) {
-        return mapRows(locationRepository.searchPincodes(blankToNull(search)), row -> {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", row[0]);
-            item.put("pincode", row[1]);
-            item.put("area", row[2]);
-            item.put("city", row[3]);
-            item.put("state", row[4]);
-            item.put("country", row[5]);
-            item.put("name", row[1]);
-            return item;
-        });
+    public PageResponse<Map<String, Object>> listPincodes(Integer cityId, Integer areaId, String search, int page, int size) {
+        String q = blankToNull(search);
+        int safeSize = sanitizeSize(size);
+        int safePage = Math.max(page, 0);
+        List<Map<String, Object>> items = mapRows(
+                locationRepository.searchPincodes(cityId, areaId, q, safePage, safeSize),
+                row -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("id", row[0]);
+                    item.put("pincode", row[1]);
+                    item.put("area", row[2]);
+                    item.put("city", row[3]);
+                    item.put("state", row[4]);
+                    item.put("country", row[5]);
+                    item.put("cityId", row[6]);
+                    item.put("areaId", row[7]);
+                    item.put("name", row[1]);
+                    return item;
+                });
+        return toPage(items, locationRepository.countPincodesSearch(cityId, areaId, q), safePage, safeSize);
     }
 
     @Override
@@ -283,11 +309,24 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
 
     private List<Map<String, Object>> mapRows(
             List<Object[]> rows,
-            java.util.function.Function<Object[], Map<String, Object>> mapper) {
+            Function<Object[], Map<String, Object>> mapper) {
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             items.add(mapper.apply(row));
         }
         return items;
+    }
+
+    private PageResponse<Map<String, Object>> toPage(
+            List<Map<String, Object>> items,
+            long total,
+            int page,
+            int size) {
+        int totalPages = size <= 0 ? 0 : (int) Math.ceil((double) total / size);
+        return new PageResponse<>(items, total, totalPages, page, size);
+    }
+
+    private int sanitizeSize(int size) {
+        return Math.min(Math.max(size, 1), 5000);
     }
 }
