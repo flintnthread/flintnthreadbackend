@@ -10,7 +10,9 @@ import com.ecommerce.authdemo.exception.OrderException;
 import com.ecommerce.authdemo.repository.*;
 import com.ecommerce.authdemo.util.SecurityUtil;
 import com.ecommerce.authdemo.mail.OrderConfirmationEmailModel;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
@@ -26,7 +28,6 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
-import org.json.JSONObject;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -73,6 +74,9 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemCustomDetailService orderItemCustomDetailService;
     private final SellerRepository sellerRepository;
     private final AdminUserRepository adminUserRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Value("${app.public-web-base-url:https://flintnthread.in}")
     private String publicWebBaseUrl;
@@ -1193,6 +1197,19 @@ public class OrderServiceImpl implements OrderService {
                 .shippingPhone(address.getPhone())
                 .shippingEmail(address.getEmail())
                 .shippingAddress2(address.getAddressLine2())
+                .billingName(address.getName())
+                .billingPhone(address.getPhone())
+                .billingEmail(address.getEmail())
+                .billingAddress1(address.getAddressLine1())
+                .billingAddress2(address.getAddressLine2())
+                .billingCity(address.getCity())
+                .billingState(address.getState())
+                .billingCountry(
+                        address.getCountry() != null
+                                ? address.getCountry()
+                                : "India"
+                )
+                .billingPincode(address.getPincode())
                 .addressId(address.getId().longValue())
                 .referralInviterDiscountApplied(referralInviterDiscountApplied)
                 .build();
@@ -1755,7 +1772,69 @@ public class OrderServiceImpl implements OrderService {
                                 ? order.getShippingCountry()
                                 : "India"
                 )
-                .shippingAddress(formatShippingAddress(order));
+                .shippingAddress(formatShippingAddress(order))
+                .billingName(order.getBillingName())
+                .billingPhone(order.getBillingPhone())
+                .billingEmail(order.getBillingEmail())
+                .billingAddress1(order.getBillingAddress1())
+                .billingAddress2(order.getBillingAddress2())
+                .billingCity(order.getBillingCity())
+                .billingState(order.getBillingState())
+                .billingPincode(order.getBillingPincode())
+                .billingCountry(
+                        order.getBillingCountry() != null
+                                ? order.getBillingCountry()
+                                : "India"
+                )
+                .billingAddress(formatBillingAddress(order));
+    }
+
+    private String formatBillingAddress(Order order) {
+        if (order == null) {
+            return "";
+        }
+        if (isBlank(order.getBillingName())
+                && isBlank(order.getBillingAddress1())
+                && isBlank(order.getBillingCity())) {
+            return formatShippingAddress(order);
+        }
+        List<String> lines = new ArrayList<>();
+        if (!isBlank(order.getBillingName())) {
+            lines.add(order.getBillingName().trim());
+        }
+        if (!isBlank(order.getBillingAddress1())) {
+            lines.add(order.getBillingAddress1().trim());
+        }
+        if (!isBlank(order.getBillingAddress2())) {
+            lines.add(order.getBillingAddress2().trim());
+        }
+        StringBuilder cityLine = new StringBuilder();
+        if (!isBlank(order.getBillingCity())) {
+            cityLine.append(order.getBillingCity().trim());
+        }
+        if (!isBlank(order.getBillingState())) {
+            if (!cityLine.isEmpty()) {
+                cityLine.append(", ");
+            }
+            cityLine.append(order.getBillingState().trim());
+        }
+        if (!isBlank(order.getBillingPincode())) {
+            if (!cityLine.isEmpty()) {
+                cityLine.append(" - ");
+            }
+            cityLine.append(order.getBillingPincode().trim());
+        }
+        if (!cityLine.isEmpty()) {
+            lines.add(cityLine.toString());
+        }
+        if (!isBlank(order.getBillingCountry())) {
+            lines.add(order.getBillingCountry().trim());
+        }
+        return String.join("\n", lines);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private String formatShippingAddress(Order order) {
@@ -2442,5 +2521,184 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return true;
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO updateOrderAddress(Long orderId, UpdateOrderAddressRequestDTO dto) {
+        if (dto == null || dto.getShipping() == null) {
+            throw new OrderException("Shipping address is required");
+        }
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        Long currentUserId = securityUtil.getCurrentUserId();
+        if (!Objects.equals(order.getUserId(), currentUserId)) {
+            throw new OrderException("Access denied");
+        }
+
+        String status = order.getOrderStatus() != null
+                ? order.getOrderStatus().toLowerCase(Locale.ROOT).trim()
+                : "";
+
+        List<String> blockedStatuses = Arrays.asList(
+                "delivered",
+                "out_for_delivery",
+                "picked_up",
+                "in_transit",
+                "rto_delivered",
+                "cancelled",
+                "shipped"
+        );
+        if (blockedStatuses.contains(status)) {
+            throw new OrderException("Address cannot be changed for this order status");
+        }
+        if (order.getShiprocketAwbCode() != null && !order.getShiprocketAwbCode().isBlank()) {
+            throw new OrderException("Address cannot be changed after shipment has been created");
+        }
+
+        UpdateOrderAddressRequestDTO.OrderAddressSectionDTO shipping = dto.getShipping();
+        applyShippingSection(order, shipping);
+
+        boolean sameAsShipping = dto.getBilling() == null
+                || Boolean.TRUE.equals(dto.getBillingSameAsShipping());
+        UpdateOrderAddressRequestDTO.OrderAddressSectionDTO billing =
+                sameAsShipping ? shipping : dto.getBilling();
+        applyBillingSection(order, billing);
+
+        order = orderRepository.save(order);
+
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        notifySellersOfAddressUpdate(order, items);
+
+        List<OrderItemDTO> itemDTOList = items.stream().map(this::buildOrderItemDTO).toList();
+        return buildDetailedOrderResponse(order, itemDTOList);
+    }
+
+    private void applyShippingSection(
+            Order order,
+            UpdateOrderAddressRequestDTO.OrderAddressSectionDTO section
+    ) {
+        order.setShippingName(trimToNull(section.getName()));
+        order.setShippingPhone(trimToNull(section.getPhone()));
+        order.setShippingEmail(trimToNull(section.getEmail()));
+        order.setShippingAddress1(trimToNull(section.getAddressLine1()));
+        order.setShippingAddress2(trimToNull(section.getAddressLine2()));
+        order.setShippingCity(trimToNull(section.getCity()));
+        order.setShippingState(trimToNull(section.getState()));
+        order.setShippingPincode(trimToNull(section.getPincode()));
+        order.setShippingCountry(
+                section.getCountry() != null && !section.getCountry().isBlank()
+                        ? section.getCountry().trim()
+                        : "India"
+        );
+    }
+
+    private void applyBillingSection(
+            Order order,
+            UpdateOrderAddressRequestDTO.OrderAddressSectionDTO section
+    ) {
+        order.setBillingName(trimToNull(section.getName()));
+        order.setBillingPhone(trimToNull(section.getPhone()));
+        order.setBillingEmail(trimToNull(section.getEmail()));
+        order.setBillingAddress1(trimToNull(section.getAddressLine1()));
+        order.setBillingAddress2(trimToNull(section.getAddressLine2()));
+        order.setBillingCity(trimToNull(section.getCity()));
+        order.setBillingState(trimToNull(section.getState()));
+        order.setBillingPincode(trimToNull(section.getPincode()));
+        order.setBillingCountry(
+                section.getCountry() != null && !section.getCountry().isBlank()
+                        ? section.getCountry().trim()
+                        : "India"
+        );
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void notifySellersOfAddressUpdate(Order order, List<OrderItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<Long> sellerIds = new LinkedHashSet<>();
+        for (OrderItem item : items) {
+            if (item.getSellerId() != null && item.getSellerId() > 0) {
+                sellerIds.add(item.getSellerId());
+            }
+        }
+
+        String orderLabel = order.getOrderNumber() != null ? order.getOrderNumber() : String.valueOf(order.getId());
+        String shipSummary = formatShippingAddress(order).replace("\n", ", ");
+        String title = "Order address updated";
+        String message = "Customer updated the delivery/billing address for order #"
+                + orderLabel
+                + ". New shipping address: "
+                + (shipSummary.isBlank() ? "Updated" : shipSummary);
+
+        for (Long sellerId : sellerIds) {
+            try {
+                entityManager.createNativeQuery(
+                                "INSERT INTO seller_notifications (seller_id, title, message, is_read, created_at) "
+                                        + "VALUES (?1, ?2, ?3, false, CURRENT_TIMESTAMP)"
+                        )
+                        .setParameter(1, sellerId)
+                        .setParameter(2, title)
+                        .setParameter(3, message)
+                        .executeUpdate();
+            } catch (Exception e) {
+                log.warn(
+                        "[NOTIFY] Failed seller_notifications insert sellerId={} order={}: {}",
+                        sellerId,
+                        orderLabel,
+                        e.getMessage()
+                );
+            }
+
+            try {
+                Seller seller = sellerRepository.findById(sellerId).orElse(null);
+                String sellerEmail = seller != null ? firstNonBlank(seller.getEmail()) : null;
+                if (sellerEmail == null) {
+                    continue;
+                }
+                String html = "<p>Hello,</p>"
+                        + "<p>The customer updated the address for order <strong>#"
+                        + escapeHtml(orderLabel)
+                        + "</strong>.</p>"
+                        + "<p><strong>Shipping address</strong><br/>"
+                        + escapeHtml(shipSummary.isBlank() ? "Updated" : shipSummary)
+                        + "</p>"
+                        + "<p>Please use the latest address when packing and shipping this order.</p>"
+                        + "<p>— Flint &amp; Thread</p>";
+                emailService.sendNoticeEmail(
+                        sellerEmail,
+                        "Address updated — Order #" + orderLabel,
+                        html
+                );
+            } catch (Exception e) {
+                log.warn(
+                        "[EMAIL] Address-update notice failed sellerId={} order={}: {}",
+                        sellerId,
+                        orderLabel,
+                        e.getMessage()
+                );
+            }
+        }
+    }
+
+    private String escapeHtml(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return raw
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
 }

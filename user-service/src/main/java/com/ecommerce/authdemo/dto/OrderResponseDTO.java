@@ -43,6 +43,17 @@ public class OrderResponseDTO {
     private String shippingPincode;
     private String shippingCountry;
 
+    private String billingAddress;
+    private String billingName;
+    private String billingPhone;
+    private String billingEmail;
+    private String billingAddress1;
+    private String billingAddress2;
+    private String billingCity;
+    private String billingState;
+    private String billingPincode;
+    private String billingCountry;
+
     private Double taxAmount;
     private String razorpayPaymentId;
 
