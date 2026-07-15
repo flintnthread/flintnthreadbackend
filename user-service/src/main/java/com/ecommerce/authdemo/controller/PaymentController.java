@@ -1,10 +1,8 @@
 package com.ecommerce.authdemo.controller;
 
-import com.ecommerce.authdemo.dto.ShiprocketShipmentResult;
 import com.ecommerce.authdemo.entity.Order;
 import com.ecommerce.authdemo.service.OrderService;
 import com.ecommerce.authdemo.service.RazorpayService;
-import com.ecommerce.authdemo.service.ShiprocketService;
 import lombok.RequiredArgsConstructor;
 import org.json.JSONObject;
 import org.springframework.http.HttpStatus;
@@ -26,7 +24,6 @@ public class PaymentController {
 
     private final RazorpayService razorpayService;
     private final OrderService orderService;
-    private final ShiprocketService shiprocketService;
 
     private static Double resolveAmount(Double queryAmount, Map<String, Object> body) {
         if (queryAmount != null) {
@@ -137,37 +134,20 @@ public class PaymentController {
                     response.put("orderId", paidOrder.getId());
                     response.put("order_number", paidOrder.getOrderNumber());
 
-                    // createShipment is already attempted inside markOrderAsPaid (idempotent).
+                    // createShipment is scheduled async inside markOrderAsPaid (after commit).
                     boolean alreadyLinked = paidOrder.getShiprocketOrderId() != null
                             && !paidOrder.getShiprocketOrderId().isBlank();
+                    response.put("shipping_initiated", alreadyLinked);
                     if (alreadyLinked) {
-                        response.put("shipping_initiated", true);
                         response.put("shiprocket_order_id", paidOrder.getShiprocketOrderId());
                         response.put("shiprocket_shipment_id", paidOrder.getShiprocketShipmentId());
                     } else {
-                        try {
-                            logger.info("[PAYMENT] verify Shiprocket createShipment START orderNumber={}", paidOrder.getOrderNumber());
-                            ShiprocketShipmentResult sr = shiprocketService.createShipment(paidOrder);
-                            logger.info("[PAYMENT] verify Shiprocket createShipment DONE shipmentId={} awb={}",
-                                    sr.getShipmentId(), sr.getAwbCode());
-
-                            response.put("shipping_initiated", true);
-                            response.put("shiprocket", sr.toMap());
-                        } catch (Exception shippingError) {
-                            logger.error("[PAYMENT] verify Shiprocket FAILED (payment still ok) orderNumber={}",
-                                    paidOrder.getOrderNumber(), shippingError);
-                            try {
-                                orderService.markShiprocketCreateFailed(
-                                        paidOrder.getOrderNumber(),
-                                        shippingError.getMessage()
-                                );
-                            } catch (Exception ignore) {
-                                // ignore
-                            }
-                            response.put("shipping_initiated", false);
-                            response.put("shipping_error", "Shiprocket order could not be created. Order is paid; retry shipment from admin.");
-                            response.put("shipping_error_detail", shippingError.getMessage());
-                        }
+                        // Payment success must not wait on Shiprocket (client timeout was 15s).
+                        response.put("shipping_initiated", false);
+                        response.put(
+                                "shipping_note",
+                                "Shipment is being created in the background. Refresh order shortly if tracking is empty."
+                        );
                     }
                 } catch (Exception markPaidError) {
                     logger.error("[PAYMENT] verify markOrderAsPaid FAILED razorpayOrderId={}", orderId, markPaidError);
