@@ -51,7 +51,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         return categoryRepository.findByParentIdIsNull()
                 .stream()
-                .filter(c -> c.getStatus() != null && c.getStatus() == 1)
+                .filter(this::isActiveCategory)
                 .sorted(Comparator.comparing(Category::getCategoryName))
                 .collect(Collectors.toList());
     }
@@ -68,7 +68,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         return categoryRepository.findByParentId(parentId)
                 .stream()
-                .filter(c -> c.getStatus() != null && c.getStatus() == 1)
+                .filter(this::isActiveCategory)
                 .sorted(Comparator.comparing(Category::getCategoryName))
                 .collect(Collectors.toList());
     }
@@ -146,7 +146,7 @@ public class CategoryServiceImpl implements CategoryService {
         return categoryRepository
                 .findByCategoryNameContainingIgnoreCase(keyword.trim())
                 .stream()
-                .filter(c -> c.getStatus() != null && c.getStatus() == 1)
+                .filter(this::isActiveCategory)
                 .collect(Collectors.toList());
     }
 
@@ -164,6 +164,7 @@ public class CategoryServiceImpl implements CategoryService {
 
         List<SubCategoryResponseDTO> subCategoryList =
                 subCategories.stream()
+                        .filter(this::isActiveSubCategory)
                         .map(sc -> new SubCategoryResponseDTO(
                                 sc.getId(),
                                 sc.getSubcategoryName(),
@@ -180,6 +181,49 @@ public class CategoryServiceImpl implements CategoryService {
 
 
         return List.of(response);
+    }
+
+    @Override
+    public List<SubCategoryResponseDTO> getAllSubcategoriesUnderMain(Long mainCategoryId) {
+        if (mainCategoryId == null) {
+            throw new IllegalArgumentException("Main category ID cannot be null");
+        }
+
+        Category main = categoryRepository.findById(mainCategoryId)
+                .orElseThrow(() -> new RuntimeException("Category not found with id: " + mainCategoryId));
+
+        LinkedHashSet<Long> categoryIds = new LinkedHashSet<>();
+        // Include the main itself (admin sometimes attaches leaves directly).
+        categoryIds.add(main.getId());
+        categoryRepository.findByParentId(mainCategoryId).stream()
+                .filter(this::isActiveCategory)
+                .forEach(child -> categoryIds.add(child.getId()));
+
+        Map<Long, SubCategoryResponseDTO> byId = new LinkedHashMap<>();
+        for (Long categoryId : categoryIds) {
+            for (SubCategory sc : subCategoryRepository.findByCategoryId(categoryId)) {
+                if (!isActiveSubCategory(sc) || sc.getId() == null) continue;
+                byId.putIfAbsent(sc.getId(), new SubCategoryResponseDTO(
+                        sc.getId(),
+                        sc.getSubcategoryName(),
+                        sc.getSubcategoryImage(),
+                        sc.getMobileImage()
+                ));
+            }
+        }
+
+        return new ArrayList<>(byId.values());
+    }
+
+    /** Admin writes Boolean → MySQL TINYINT/BIT; treat any non-zero as active. */
+    private boolean isActiveCategory(Category category) {
+        Integer status = category.getStatus();
+        return status == null || status != 0;
+    }
+
+    private boolean isActiveSubCategory(SubCategory subCategory) {
+        Integer status = subCategory.getStatus();
+        return status == null || status != 0;
     }
 
     /**
