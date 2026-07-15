@@ -19,6 +19,8 @@ import java.util.List;
 
         boolean existsByUserIdAndDescription(Integer userId, String description);
 
+        boolean existsByUserIdAndDescriptionStartingWith(Integer userId, String descriptionPrefix);
+
         java.util.Optional<WalletTransaction> findFirstByUserIdAndDescription(
                 Integer userId,
                 String description

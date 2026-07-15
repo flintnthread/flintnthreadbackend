@@ -179,4 +179,40 @@ public class PaymentController {
             return ResponseEntity.internalServerError().body(response);
         }
     }
+
+    /**
+     * Confirm payment when UPI/QR succeeded on phone but browser never received Razorpay handler callback.
+     * Server checks Razorpay order status directly.
+     */
+    @PostMapping("/confirm-paid")
+    public ResponseEntity<?> confirmPaid(@RequestParam String orderId) {
+        logger.info("[PAYMENT] confirm-paid START razorpayOrderId={}", orderId);
+        Map<String, Object> response = new HashMap<>();
+        try {
+            String paymentId = razorpayService.findCapturedPaymentId(orderId);
+            if (paymentId == null || paymentId.isBlank()) {
+                response.put("success", false);
+                response.put("paid", false);
+                response.put("message", "Payment not completed yet. Finish UPI/QR payment, then try again.");
+                return ResponseEntity.ok(response);
+            }
+
+            Order paidOrder = orderService.markOrderAsPaid(orderId, paymentId);
+            response.put("success", true);
+            response.put("paid", true);
+            response.put("message", "Payment successful");
+            response.put("orderId", paidOrder.getId());
+            response.put("order_number", paidOrder.getOrderNumber());
+            boolean alreadyLinked = paidOrder.getShiprocketOrderId() != null
+                    && !paidOrder.getShiprocketOrderId().isBlank();
+            response.put("shipping_initiated", alreadyLinked);
+            logger.info("[PAYMENT] confirm-paid DONE orderNumber={}", paidOrder.getOrderNumber());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("[PAYMENT] confirm-paid FAILED razorpayOrderId={}", orderId, e);
+            response.put("success", false);
+            response.put("message", e.getMessage() != null ? e.getMessage() : "Could not confirm payment");
+            return ResponseEntity.ok(response);
+        }
+    }
 }
