@@ -30,7 +30,7 @@ public class ReferralServiceImpl implements ReferralService {
     private final ReferralDiscountRepository discountRepository;
     private final OrderRepository orderRepository;
 
-    private static final int TARGET_REFERRALS = 5;
+    private static final int TARGET_REFERRALS = 10;
     private static final BigDecimal DISCOUNT_PERCENT_POINTS = new BigDecimal("10");
     private static final SecureRandom REF_CODE_RANDOM = new SecureRandom();
 
@@ -337,7 +337,7 @@ public class ReferralServiceImpl implements ReferralService {
                 rewardUnlocked,
                 alreadyUsedReferral,
                 discountAvailable,
-                "10% discount on your first order after 5 successful referrals"
+                "10% discount on your first order after 10 successful referrals"
         );
     }
 
@@ -362,7 +362,7 @@ public class ReferralServiceImpl implements ReferralService {
         if (used || !discountAvailable) {
             message = "Referral reward already used on a previous order.";
         } else if (!rewardUnlocked) {
-            message = "Invite 5 friends who complete a purchase to unlock 10% off your next order.";
+            message = "Invite 10 friends who complete a purchase to unlock 10% off your next order.";
         } else if (anotherOrderHasReferralDiscount && paidOrders == 0) {
             message = "You already have an order with referral pricing. Complete or cancel it before placing another.";
         } else if (paidOrders > 0) {

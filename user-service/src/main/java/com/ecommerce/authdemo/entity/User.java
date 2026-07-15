@@ -85,7 +85,7 @@ public class User {
     @Column(name = "reward_unlocked")
     private Boolean rewardUnlocked = false;
 
-    /** True after 5 referrals until the inviter uses the 10% reward on a qualifying order. */
+    /** True after 10 referrals until the inviter uses the 10% reward on a qualifying order. */
     @Column(name = "discount_available")
     private Boolean discountAvailable = false;
 
