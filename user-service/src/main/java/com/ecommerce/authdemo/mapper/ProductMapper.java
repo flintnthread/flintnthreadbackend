@@ -35,7 +35,7 @@ public class ProductMapper {
             return null;
         }
         if (storedPath.startsWith("http://") || storedPath.startsWith("https://")) {
-            // Legacy rows / mis-saves that point at API host for /uploads — rewrite to CDN
+            // Prefer media base for /uploads/ paths (local-disk product images).
             int idx = storedPath.indexOf("/uploads/");
             if (idx >= 0 && !mediaPublicBaseUrl.isEmpty()) {
                 String base = mediaPublicBaseUrl.endsWith("/")
@@ -43,6 +43,7 @@ public class ProductMapper {
                         : mediaPublicBaseUrl;
                 return base + storedPath.substring(idx);
             }
+            // Legacy absolute URLs (e.g. old Cloudinary rows).
             return storedPath;
         }
         String path = storedPath.startsWith("/") ? storedPath : "/" + storedPath;

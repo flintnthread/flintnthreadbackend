@@ -82,7 +82,7 @@ public class AdminMediaController {
 
     @GetMapping("/uploads/products/{filename:.+}")
     public ResponseEntity<?> productMedia(@PathVariable String filename) {
-        return serveOrRedirect(productsUploadDirectory, "uploads/products/" + filename, filename);
+        return serveLocalFile(productsUploadDirectory, filename);
     }
 
     @GetMapping("/uploads/kyc_images/{*relativePath}")
@@ -94,16 +94,28 @@ public class AdminMediaController {
                 normalized.contains("/") ? normalized : normalized);
     }
 
-    private ResponseEntity<?> serveOrRedirect(String directory, String publicPath, String fileName) {
+    private ResponseEntity<?> serveLocalFile(String directory, String fileName) {
         Path file = Paths.get(directory).toAbsolutePath().normalize().resolve(fileName).normalize();
-        if (Files.isRegularFile(file)) {
-            Resource resource = new FileSystemResource(file);
-            return ResponseEntity.ok()
-                    .contentType(resolveMediaType(fileName))
-                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
-                    .body(resource);
+        Path root = Paths.get(directory).toAbsolutePath().normalize();
+        if (!file.startsWith(root) || !Files.isRegularFile(file)) {
+            return ResponseEntity.notFound().build();
         }
+        Resource resource = new FileSystemResource(file);
+        return ResponseEntity.ok()
+                .contentType(resolveMediaType(fileName))
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
+                .body(resource);
+    }
 
+    private ResponseEntity<?> serveOrRedirect(String directory, String publicPath, String fileName) {
+        ResponseEntity<?> local = serveLocalFile(directory, fileName);
+        if (local.getStatusCode().is2xxSuccessful()) {
+            return local;
+        }
+        // Product images: local disk only — no CDN redirect.
+        if (publicPath != null && publicPath.startsWith("uploads/products/")) {
+            return ResponseEntity.notFound().build();
+        }
         String cdnUrl = mediaUrlHelper.toPublicUrl(publicPath);
         if (cdnUrl == null || cdnUrl.isBlank()) {
             return ResponseEntity.notFound().build();

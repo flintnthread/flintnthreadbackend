@@ -37,7 +37,8 @@ public class MediaUrlHelper {
     }
 
     /**
-     * Build a public URL for any upload stored in the database with optional folder hint.
+     * Build a public URL. Absolute Cloudinary (or any https) URLs are returned unchanged —
+     * never rewrite them onto the CDN host.
      */
     public String toPublicUrl(String path, String folder) {
         if (path == null || path.isBlank()) {
@@ -49,6 +50,7 @@ public class MediaUrlHelper {
             if (idx >= 0 && !publicBaseUrl.isBlank()) {
                 return publicBaseUrl + trimmed.substring(idx);
             }
+            // Legacy absolute URLs (e.g. old Cloudinary rows) — keep as stored.
             return trimmed;
         }
         String normalized = normalizeMediaPath(trimmed, folder);

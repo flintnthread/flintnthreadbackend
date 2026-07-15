@@ -2,123 +2,172 @@ package com.ecommerce.adminbackend.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Admin product images are stored on local disk (same shared folder as seller-service).
+ * DB stores relative {@code uploads/products/...} paths only.
+ */
 @Service
 public class ProductMediaStorageService {
 
     private static final Pattern DATA_URL =
             Pattern.compile("^data:image/([a-zA-Z0-9+.-]+);base64,(.+)$", Pattern.DOTALL);
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
+    private static final long MAX_BYTES = 10L * 1024 * 1024;
 
-    private final Path productsDir;
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .build();
+    private final Path productsRoot;
+    private final String publicBaseUrl;
 
     public ProductMediaStorageService(
-            @Value("${app.upload.products-directory:uploads/products}") String productsDirectory) {
-        this.productsDir = Paths.get(productsDirectory).toAbsolutePath().normalize();
+            @Value("${app.upload.products-directory:../seller-service/uploads/products}") String productsDirectory,
+            @Value("${app.media.public-base-url:}") String publicBaseUrl
+    ) {
+        this.productsRoot = Paths.get(productsDirectory).toAbsolutePath().normalize();
+        this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/+$", "");
+        try {
+            Files.createDirectories(this.productsRoot);
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not create products upload directory: " + this.productsRoot, e);
+        }
     }
 
-    /**
-     * Persists an image and returns a DB-safe relative path (e.g. uploads/products/abc.png).
-     */
     public String storeProductImage(String source) {
         if (source == null || source.isBlank()) {
             throw new IllegalArgumentException("Image source is required.");
         }
         String trimmed = source.trim();
-        if (trimmed.startsWith("uploads/")) {
-            return trimmed;
-        }
-        if (trimmed.startsWith("data:")) {
-            return saveBase64DataUrl(trimmed);
+
+        if (trimmed.startsWith("uploads/") || trimmed.startsWith("/uploads/")) {
+            return normalizeUploadsRelative(trimmed);
         }
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            if (trimmed.length() <= 255 && trimmed.contains("/uploads/")) {
-                int idx = trimmed.indexOf("/uploads/");
-                return trimmed.substring(idx + 1);
+            String relative = extractUploadsRelativePath(trimmed);
+            if (relative != null) {
+                return relative;
             }
-            if (trimmed.length() <= 255) {
-                return trimmed;
-            }
-            return downloadToUploads(trimmed);
+            throw new IllegalArgumentException(
+                    "External image URLs are not supported. Upload the image file first.");
         }
-        throw new IllegalArgumentException("Unsupported image source. Use a picked image or https URL.");
+        if (trimmed.startsWith("data:")) {
+            return saveBytes(decodeDataUrl(trimmed), "jpg");
+        }
+        throw new IllegalArgumentException("Unsupported image source. Use a picked image.");
     }
 
-    private String saveBase64DataUrl(String dataUrl) {
+    public String uploadMultipart(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Image file is required.");
+        }
+        if (file.getSize() > MAX_BYTES) {
+            throw new IllegalArgumentException("Image size must not exceed 10 MB.");
+        }
+        try {
+            return saveBytes(file.getBytes(), resolveExtension(file));
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Failed to upload product image: " + ex.getMessage());
+        }
+    }
+
+    public String toPublicUrl(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return "";
+        }
+        String normalized = normalizeUploadsRelative(relativePath);
+        String path = "/" + normalized;
+        if (publicBaseUrl.isBlank()) {
+            return path;
+        }
+        return publicBaseUrl + path;
+    }
+
+    private String saveBytes(byte[] bytes, String extension) {
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException("Image bytes are empty.");
+        }
+        String ext = extension == null || extension.isBlank() ? "jpg" : extension.toLowerCase(Locale.ROOT);
+        if (!ALLOWED_EXTENSIONS.contains(ext)) {
+            throw new IllegalArgumentException("Only JPG, PNG or WEBP images are allowed.");
+        }
+        if ("jpeg".equals(ext)) {
+            ext = "jpg";
+        }
+        String fileName = UUID.randomUUID().toString().replace("-", "") + "." + ext;
+        Path target = productsRoot.resolve(fileName).normalize();
+        if (!target.startsWith(productsRoot)) {
+            throw new IllegalArgumentException("Invalid upload path.");
+        }
+        try {
+            Files.createDirectories(productsRoot);
+            Files.write(target, bytes);
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Failed to save image file: " + e.getMessage());
+        }
+        return "uploads/products/" + fileName;
+    }
+
+    private byte[] decodeDataUrl(String dataUrl) {
         Matcher matcher = DATA_URL.matcher(dataUrl);
         if (!matcher.matches()) {
             throw new IllegalArgumentException("Invalid image data URL.");
         }
-        String ext = extensionForMime(matcher.group(1));
-        byte[] bytes = Base64.getDecoder().decode(matcher.group(2));
-        return writeBytes(bytes, ext);
+        return Base64.getDecoder().decode(matcher.group(2));
     }
 
-    private String downloadToUploads(String url) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(30))
-                    .GET()
-                    .build();
-            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalArgumentException("Failed to download image (" + response.statusCode() + ").");
+    private String resolveExtension(MultipartFile file) {
+        String original = file.getOriginalFilename();
+        if (original != null && original.contains(".")) {
+            String ext = original.substring(original.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+            if (ALLOWED_EXTENSIONS.contains(ext)) {
+                return ext;
             }
-            return writeBytes(response.body(), guessExtensionFromUrl(url));
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalArgumentException("Image download interrupted.");
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("Failed to download image: " + ex.getMessage());
         }
-    }
-
-    private String writeBytes(byte[] bytes, String ext) {
-        try {
-            Files.createDirectories(productsDir);
-            String fileName = UUID.randomUUID().toString().replace("-", "") + ext;
-            Path target = productsDir.resolve(fileName).normalize();
-            if (!target.startsWith(productsDir)) {
-                throw new IllegalArgumentException("Invalid upload path.");
+        String contentType = file.getContentType();
+        if (contentType != null) {
+            if (contentType.contains("png")) {
+                return "png";
             }
-            Files.write(target, bytes);
-            return "uploads/products/" + fileName;
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("Failed to save image: " + ex.getMessage());
+            if (contentType.contains("webp")) {
+                return "webp";
+            }
         }
+        return "jpg";
     }
 
-    private static String extensionForMime(String mime) {
-        String m = mime.toLowerCase(Locale.ROOT);
-        if (m.contains("png")) return ".png";
-        if (m.contains("webp")) return ".webp";
-        if (m.contains("gif")) return ".gif";
-        return ".jpg";
+    private static String normalizeUploadsRelative(String path) {
+        String normalized = path.replace('\\', '/').trim();
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        normalized = normalized.replaceFirst("(?i)^(ads|pads)/products/", "uploads/products/");
+        if (!normalized.startsWith("uploads/")) {
+            if (!normalized.contains("/")) {
+                return "uploads/products/" + normalized;
+            }
+            return "uploads/" + normalized;
+        }
+        return normalized;
     }
 
-    private static String guessExtensionFromUrl(String url) {
-        String lower = url.toLowerCase(Locale.ROOT);
-        if (lower.contains(".png")) return ".png";
-        if (lower.contains(".webp")) return ".webp";
-        if (lower.contains(".gif")) return ".gif";
-        return ".jpg";
+    private static String extractUploadsRelativePath(String url) {
+        int idx = url.indexOf("/uploads/");
+        if (idx < 0) {
+            return null;
+        }
+        String path = url.substring(idx + 1);
+        return path.length() > 1024 ? null : path;
     }
 }

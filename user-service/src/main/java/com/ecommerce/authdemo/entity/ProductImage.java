@@ -20,7 +20,7 @@ import java.util.List;
         @Column(name="variant_id")
         private Long variantId;
 
-        @Column(name="image_path")
+        @Column(name="image_path", length = 1024)
         private String imagePath;
 
         @Column(name="is_primary")
