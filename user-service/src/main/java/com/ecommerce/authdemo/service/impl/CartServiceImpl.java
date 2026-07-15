@@ -282,7 +282,8 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
 
             LinePricing linePricing = resolveLinePricing(cart.getProductId(), cart.getVariantId(), address);
             BigDecimal unitCustomer = linePricing.customerUnitPrice();
-            BigDecimal unitMrp = customerPriceResolver.resolveCustomerStrikeMrp(variant, unitCustomer);
+            Product productForStrike = variant != null ? variant.getProduct() : null;
+            BigDecimal unitMrp = customerPriceResolver.resolveCustomerStrikeMrp(productForStrike, variant);
             if (unitMrp == null) {
                 unitMrp = unitCustomer;
             }
