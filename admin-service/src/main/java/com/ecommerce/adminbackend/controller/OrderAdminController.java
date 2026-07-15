@@ -35,9 +35,10 @@ public class OrderAdminController {
             @RequestParam(required = false) String paymentMethod,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String sort,
+            @RequestParam(required = false) Long sellerId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return orderAdminService.listOrders(status, paymentStatus, paymentMethod, search, sort, page, size);
+        return orderAdminService.listOrders(status, paymentStatus, paymentMethod, search, sort, sellerId, page, size);
     }
 
     @GetMapping("/stats")

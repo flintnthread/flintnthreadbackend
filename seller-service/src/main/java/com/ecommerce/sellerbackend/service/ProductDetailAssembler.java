@@ -86,8 +86,18 @@ public class ProductDetailAssembler {
         String displaySize = resolveSizeName(displayVariant != null ? displayVariant.getSize() : null, sizeById);
 
         List<String> imageUrls = images.stream()
-                .map(img -> resolveImageUrl(img.getImagePath()))
-                .filter(url -> !url.isBlank())
+                .map(ProductImage::getImagePath)
+                .filter(path -> path != null && !path.isBlank())
+                .map(this::resolveImageUrl)
+                .filter(url -> url != null && !url.isBlank())
+                .filter(url -> {
+                    String lower = url.trim().toLowerCase(Locale.ROOT);
+                    return !lower.equals("null")
+                            && !lower.equals("undefined")
+                            && !lower.equals("none")
+                            && !lower.endsWith("/null")
+                            && !lower.endsWith("/undefined");
+                })
                 .toList();
 
         String deliveryEstimate = firstNonBlank(

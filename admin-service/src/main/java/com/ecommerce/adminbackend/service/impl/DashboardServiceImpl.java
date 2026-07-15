@@ -42,6 +42,10 @@ import java.time.LocalDate;
 
 import java.time.LocalDateTime;
 
+import java.time.ZoneId;
+
+import java.time.ZoneOffset;
+
 import java.time.format.DateTimeFormatter;
 
 import java.time.temporal.TemporalAdjusters;
@@ -67,6 +71,8 @@ public class DashboardServiceImpl implements DashboardService {
     private static final Logger log = LogFactory.getLogger(DashboardServiceImpl.class);
 
     private static final DateTimeFormatter RELATIVE_TIME = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH);
+
+    private static final ZoneId DISPLAY_ZONE = ZoneId.of("Asia/Kolkata");
 
 
 
@@ -798,9 +804,9 @@ public class DashboardServiceImpl implements DashboardService {
 
         }
 
-        LocalDateTime now = LocalDateTime.now();
-
-        long minutes = java.time.Duration.between(dateTime, now).toMinutes();
+        // Orders store UTC wall-clock in LocalDateTime (same as user-service).
+        var instant = dateTime.toInstant(ZoneOffset.UTC);
+        long minutes = java.time.Duration.between(instant, java.time.Instant.now()).toMinutes();
 
         if (minutes < 1) {
 
@@ -822,7 +828,7 @@ public class DashboardServiceImpl implements DashboardService {
 
         }
 
-        return RELATIVE_TIME.format(dateTime);
+        return RELATIVE_TIME.format(instant.atZone(DISPLAY_ZONE));
 
     }
 

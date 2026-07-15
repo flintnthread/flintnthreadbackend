@@ -54,7 +54,7 @@ public class PlatformIntegrationSettings {
 
     public BigDecimal getCommissionB2cPercent() {
         return readSetting(KEY_COMMISSION_B2C)
-                .flatMap(PlatformIntegrationSettings::parsePositiveDecimal)
+                .flatMap(PlatformIntegrationSettings::parseNonNegativeDecimal)
                 .orElse(DEFAULT_COMMISSION_B2C);
     }
 
@@ -78,10 +78,11 @@ public class PlatformIntegrationSettings {
         return value == null ? "" : value.trim();
     }
 
-    private static Optional<BigDecimal> parsePositiveDecimal(String raw) {
+    /** Accepts 0% commission (admin setting) without falling back to the default 15%. */
+    private static Optional<BigDecimal> parseNonNegativeDecimal(String raw) {
         try {
             BigDecimal value = new BigDecimal(raw.trim());
-            if (value.compareTo(BigDecimal.ZERO) > 0) {
+            if (value.compareTo(BigDecimal.ZERO) >= 0) {
                 return Optional.of(value);
             }
         } catch (NumberFormatException ignored) {

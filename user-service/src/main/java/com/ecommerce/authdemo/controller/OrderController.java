@@ -267,6 +267,37 @@ public class OrderController {
 
 
 
+    @PostMapping("/{orderId}/push-shiprocket")
+    public ResponseEntity<?> pushShiprocket(@PathVariable Long orderId) {
+        log.info("[ORDER:API] POST /api/orders/{}/push-shiprocket", orderId);
+        try {
+            ShiprocketShipmentResult result = orderService.pushOrderToShiprocket(orderId);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Shiprocket order created",
+                    "shipping_initiated", true,
+                    "shiprocket", result.toMap()
+            ));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of(
+                    "success", false,
+                    "message", e.getMessage()
+            ));
+        } catch (OrderException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("[ORDER:API] push-shiprocket FAILED orderId={}", orderId, e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "Shiprocket push failed",
+                    "shipping_error_detail", e.getMessage() != null ? e.getMessage() : "unknown"
+            ));
+        }
+    }
+
     @PostMapping("/{orderId}/cancel")
     public ResponseEntity<?> cancelOrder(
             @PathVariable Long orderId,
@@ -287,6 +318,33 @@ public class OrderController {
                         "walletCreditAmount", result.getWalletCreditAmount()
                 )
         );
+    }
+
+    @PatchMapping("/{orderId}/address")
+    public ResponseEntity<ApiResponse<OrderResponseDTO>> updateOrderAddress(
+            @PathVariable Long orderId,
+            @Valid @RequestBody UpdateOrderAddressRequestDTO dto
+    ) {
+        log.info("[ORDER:API] PATCH /api/orders/{}/address", orderId);
+        try {
+            OrderResponseDTO response = orderService.updateOrderAddress(orderId, dto);
+            return ResponseEntity.ok(
+                    new ApiResponse<>(true, "Order address updated successfully", response)
+            );
+        } catch (OrderException e) {
+            log.warn("[ORDER:API] address update rejected orderId={}: {}", orderId, e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(404)
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        } catch (Exception e) {
+            log.error("[ORDER:API] address update failed orderId={}", orderId, e);
+            return ResponseEntity.internalServerError()
+                    .body(new ApiResponse<>(false,
+                            e.getMessage() != null ? e.getMessage() : "Failed to update address",
+                            null));
+        }
     }
 
     private static boolean parseRefundToWallet(Object raw) {

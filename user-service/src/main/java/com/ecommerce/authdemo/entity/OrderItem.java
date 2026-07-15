@@ -33,7 +33,8 @@ public class OrderItem {
     @Column(name = "price", nullable = false)
     private Double price;
 
-    @Column(name = "unit_price")
+    /** Not present on all MySQL schemas — kept in memory for DTOs/Shiprocket enrich. */
+    @Transient
     private Double mrpPrice;
 
     @Column(name = "total", nullable = false)
@@ -42,7 +43,6 @@ public class OrderItem {
     @Column(name = "status")
     private String status;
 
-    
     @Column(name = "product_image_path")
     private String productImagePath;
 
@@ -52,58 +52,50 @@ public class OrderItem {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-
-    @Column(name = "product_name")
+    @Transient
     private String productName;
 
-    @Column(name = "sku")
+    @Transient
     private String sku;
 
-    @Column(name = "hsn_code")
+    @Transient
     private String hsnCode;
 
-    @Column(name = "color")
+    @Transient
     private String color;
 
-    @Column(name = "size")
+    @Transient
     private String size;
 
-    @Column(name = "weight")
+    @Transient
     private Double weight;
 
-    @Column(name = "length_cm")
+    @Transient
     private Double lengthCm;
 
-    @Column(name = "width_cm")
+    @Transient
     private Double widthCm;
 
-    @Column(name = "height_cm")
+    @Transient
     private Double heightCm;
 
-    @Column(name = "seller_name")
+    @Transient
     private String sellerName;
 
-    @Column(name = "package_dead_weight")
+    @Transient
     private Double packageDeadWeight;
 
-    @Column(name = "volumetric_weight")
+    @Transient
     private Double volumetricWeight;
 
-    @Column(name = "chargeable_weight")
+    @Transient
     private Double chargeableWeight;
-
 
     @PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
-        
         if (this.status == null) {
             this.status = "processing";
         }
-    }
-
-    @PreUpdate
-    public void preUpdate() {
-        // Removed updatedAt reference
     }
 }

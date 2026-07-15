@@ -33,6 +33,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -47,6 +50,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdminService {
+
+    private static final ZoneId DISPLAY_ZONE = ZoneId.of("Asia/Kolkata");
+    /** Matches admin order cards: "15 Jul 2026 - 03:40 pm" */
+    private static final DateTimeFormatter DISPLAY_DATE_TIME =
+            DateTimeFormatter.ofPattern("dd MMM yyyy - hh:mm a", Locale.ENGLISH);
 
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -66,6 +74,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             String paymentMethod,
             String search,
             String sort,
+            Long sellerId,
             int page,
             int size) {
         var result = orderRepository.searchOrders(
@@ -73,6 +82,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                 blankToNull(paymentStatus),
                 blankToNull(paymentMethod),
                 blankToNull(search),
+                sellerId,
                 PageRequest.of(page, size, resolveOrderSort(sort)));
         List<Order> orders = result.getContent();
         if (orders.isEmpty()) {
@@ -127,6 +137,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                 blankToNull(paymentStatus),
                 blankToNull(paymentMethod),
                 blankToNull(search),
+                null,
                 PageRequest.of(0, 10_000, resolveOrderSort(sort)));
         List<Order> orders = result.getContent();
 
@@ -146,7 +157,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                     order.getShippingAddress2());
             csv.append(csvEscape(order.getId())).append(',');
             csv.append(csvEscape(order.getOrderNumber())).append(',');
-            csv.append(csvEscape(order.getCreatedAt())).append(',');
+            csv.append(csvEscape(formatOrderDateTimeIst(order.getCreatedAt()))).append(',');
             csv.append(csvEscape(order.getOrderStatus())).append(',');
             csv.append(csvEscape(order.getShippingName())).append(',');
             csv.append(csvEscape(order.getShippingEmail())).append(',');
@@ -271,8 +282,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         invoice.put("invoiceNumber", invoiceNumber);
         invoice.put("orderId", id);
         invoice.put("orderNumber", order.getOrderNumber());
-        invoice.put("invoiceDate", LocalDateTime.now());
-        invoice.put("orderDate", order.getCreatedAt());
+        invoice.put("invoiceDate", formatOrderDateTimeIst(LocalDateTime.now(ZoneOffset.UTC)));
+        invoice.put("orderDate", formatOrderDateTimeIst(order.getCreatedAt()));
         invoice.put("company", invoiceSettings.toCompanyMap());
         invoice.put("billing", buildCustomerAddress(
                 order.getBillingName(),
@@ -420,10 +431,11 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         detail.put("shiprocketCourierName", order.getShiprocketCourierName());
         detail.put("shiprocketStatus", order.getShiprocketStatus());
         detail.put("shiprocketTrackingUrl", order.getShiprocketTrackingUrl());
-        detail.put("shiprocketPushedAt", order.getShiprocketPushedAt());
-        detail.put("shiprocketSyncedAt", order.getShiprocketSyncedAt());
-        detail.put("createdAt", order.getCreatedAt());
-        detail.put("updatedAt", order.getUpdatedAt());
+        detail.put("shiprocketPushedAt", toUtcIso(order.getShiprocketPushedAt()));
+        detail.put("shiprocketSyncedAt", toUtcIso(order.getShiprocketSyncedAt()));
+        detail.put("createdAt", toUtcIso(order.getCreatedAt()));
+        detail.put("createdAtDisplay", formatOrderDateTimeIst(order.getCreatedAt()));
+        detail.put("updatedAt", toUtcIso(order.getUpdatedAt()));
         return detail;
     }
 
@@ -433,7 +445,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         row.put("status", entry.getStatus());
         row.put("comment", entry.getComment());
         row.put("createdBy", entry.getCreatedBy());
-        row.put("createdAt", entry.getCreatedAt());
+        row.put("createdAt", toUtcIso(entry.getCreatedAt()));
+        row.put("createdAtDisplay", formatOrderDateTimeIst(entry.getCreatedAt()));
         return row;
     }
 
@@ -461,7 +474,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         summary.put("shippingAddress2", order.getShippingAddress2());
         summary.put("shippingPincode", order.getShippingPincode());
         summary.put("gstStatus", resolveGstStatus(order));
-        summary.put("createdAt", order.getCreatedAt());
+        summary.put("createdAt", toUtcIso(order.getCreatedAt()));
+        summary.put("createdAtDisplay", formatOrderDateTimeIst(order.getCreatedAt()));
         summary.put("shiprocketAwbCode", order.getShiprocketAwbCode());
         summary.put("shiprocketCourierName", order.getShiprocketCourierName());
         summary.put("shiprocketTrackingUrl", order.getShiprocketTrackingUrl());
@@ -1000,5 +1014,29 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
     private String nullSafe(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    /**
+     * Orders store UTC wall-clock in LocalDateTime (same as user-service).
+     * Return ISO-8601 with {@code Z} so admin clients parse as UTC then show local/IST correctly.
+     */
+    private String toUtcIso(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        return value.atOffset(ZoneOffset.UTC).toString();
+    }
+
+    /** Pre-formatted India time for UIs that display the string directly. */
+    private String formatOrderDateTimeIst(LocalDateTime value) {
+        if (value == null) {
+            return null;
+        }
+        return value
+                .atZone(ZoneOffset.UTC)
+                .withZoneSameInstant(DISPLAY_ZONE)
+                .format(DISPLAY_DATE_TIME)
+                .replace("AM", "am")
+                .replace("PM", "pm");
     }
 }

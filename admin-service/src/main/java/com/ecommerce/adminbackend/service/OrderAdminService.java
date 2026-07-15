@@ -12,6 +12,7 @@ public interface OrderAdminService {
             String paymentMethod,
             String search,
             String sort,
+            Long sellerId,
             int page,
             int size);
 

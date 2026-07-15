@@ -88,35 +88,20 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Modifying
     @Transactional
     @Query("""
-
-UPDATE Order o
-
-SET
-o.shiprocketAwbCode = :awb,
-o.shiprocketCourierName = :courierName,
-o.shiprocketTrackingUrl = :trackingUrl,
-o.shiprocketStatus = :status,
-o.orderStatus = :status
-
-WHERE o.orderNumber = :orderNumber
-
-""")
+            UPDATE Order o
+            SET o.shiprocketAwbCode = COALESCE(:awb, o.shiprocketAwbCode),
+                o.shiprocketCourierName = COALESCE(:courierName, o.shiprocketCourierName),
+                o.shiprocketTrackingUrl = COALESCE(:trackingUrl, o.shiprocketTrackingUrl),
+                o.shiprocketStatus = :status,
+                o.shiprocketSyncedAt = CURRENT_TIMESTAMP
+            WHERE o.orderNumber = :orderNumber
+            """)
     void updateShipment(
-
-            @Param("orderNumber")
-            String orderNumber,
-
-            @Param("awb")
-            String awb,
-
-            @Param("courierName")
-            String courierName,
-
-            @Param("trackingUrl")
-            String trackingUrl,
-
-            @Param("status")
-            String status
+            @Param("orderNumber") String orderNumber,
+            @Param("awb") String awb,
+            @Param("courierName") String courierName,
+            @Param("trackingUrl") String trackingUrl,
+            @Param("status") String status
     );
 
     @Modifying

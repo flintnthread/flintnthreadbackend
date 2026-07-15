@@ -8,4 +8,6 @@ import java.util.List;
 public interface DeliveryChargeRepository extends JpaRepository<DeliveryCharge, Integer> {
 
     List<DeliveryCharge> findAllByOrderByWeightMinAscIdAsc();
+
+    List<DeliveryCharge> findByStatusTrueOrderByWeightMinAscIdAsc();
 }

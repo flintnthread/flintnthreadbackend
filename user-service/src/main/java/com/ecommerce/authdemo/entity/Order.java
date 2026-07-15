@@ -96,6 +96,33 @@ public class Order {
     @Column(name = "shipping_address2")
     private String shippingAddress2;
 
+    @Column(name = "billing_name")
+    private String billingName;
+
+    @Column(name = "billing_email")
+    private String billingEmail;
+
+    @Column(name = "billing_phone")
+    private String billingPhone;
+
+    @Column(name = "billing_address1")
+    private String billingAddress1;
+
+    @Column(name = "billing_address2")
+    private String billingAddress2;
+
+    @Column(name = "billing_city")
+    private String billingCity;
+
+    @Column(name = "billing_state")
+    private String billingState;
+
+    @Column(name = "billing_country")
+    private String billingCountry;
+
+    @Column(name = "billing_pincode")
+    private String billingPincode;
+
     
     
     @Column(name = "created_at", updatable = false)

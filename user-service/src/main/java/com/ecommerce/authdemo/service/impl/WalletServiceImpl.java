@@ -84,6 +84,49 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     @Transactional
+    public boolean creditWalletRecharge(
+            Integer userId,
+            BigDecimal amount,
+            String razorpayPaymentId,
+            String razorpayOrderId
+    ) {
+        BigDecimal value = normalizeAmount(amount);
+        if (value.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("Recharge amount must be greater than zero");
+        }
+        if (razorpayPaymentId == null || razorpayPaymentId.isBlank()) {
+            throw new RuntimeException("Razorpay payment id is required for wallet recharge");
+        }
+
+        String description = "FNT_WALLET_RECHARGE:" + razorpayPaymentId.trim();
+        if (walletTransactionRepo.existsByUserIdAndDescriptionStartingWith(userId, description)) {
+            return false;
+        }
+
+        createWallet(userId);
+        UserWallet wallet = requireWallet(userId);
+
+        wallet.setBalance(safe(wallet.getBalance()).add(value));
+        wallet.setTotalEarned(safe(wallet.getTotalEarned()).add(value));
+        walletRepo.save(wallet);
+
+        String label = razorpayOrderId != null && !razorpayOrderId.isBlank()
+                ? " (Razorpay " + razorpayOrderId.trim() + ")"
+                : "";
+        walletTransactionRepo.save(
+                WalletTransaction.builder()
+                        .userId(userId)
+                        .amount(value)
+                        .type(WalletTransaction.Type.credit)
+                        .description(description + " | Wallet Recharge via Razorpay" + label)
+                        .createdBy(userId)
+                        .build()
+        );
+        return true;
+    }
+
+    @Override
+    @Transactional
     public void deductMoney(Integer userId, Double amount) {
         BigDecimal value = normalizeAmount(amount);
         UserWallet wallet = requireWallet(userId);

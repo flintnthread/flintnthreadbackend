@@ -38,16 +38,46 @@ public class AdsAdminUserAdminServiceImpl extends BaseAdminService implements Ad
         return toMap(requireFound(repository.findById(id), "Ads admin user not found."));
     }
 
+    private String normalizeEmail(String email) {
+        String normalized = requireNonBlank(email, "email").trim().toLowerCase(Locale.ROOT);
+        if (!normalized.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new IllegalArgumentException("Please enter a valid email address.");
+        }
+        return normalized;
+    }
+
+    private String normalizePassword(String password, boolean required) {
+        if (password == null || password.isBlank()) {
+            if (required) {
+                throw new IllegalArgumentException("password is required.");
+            }
+            return null;
+        }
+        String trimmed = password.trim();
+        if (trimmed.length() < 6) {
+            throw new IllegalArgumentException("Password must be at least 6 characters.");
+        }
+        return trimmed;
+    }
+
     @Override
     @Transactional
     public Map<String, Object> create(Map<String, Object> body) {
         String username = requireNonBlank(stringAt(body, "username"), "username").trim();
-        String email = requireNonBlank(stringAt(body, "email"), "email").trim().toLowerCase(Locale.ROOT);
-        String password = requireNonBlank(stringAt(body, "password"), "password");
+        String email = normalizeEmail(stringAt(body, "email"));
+        String password = normalizePassword(stringAt(body, "password"), true);
         String fullName = body.containsKey("fullName")
                 ? requireNonBlank(stringAt(body, "fullName"), "fullName")
-                : requireNonBlank(stringAt(body, "full_name"), "fullName");
+                : body.containsKey("full_name")
+                ? requireNonBlank(stringAt(body, "full_name"), "fullName")
+                : requireNonBlank(stringAt(body, "name"), "fullName");
 
+        if (username.length() > 50) {
+            throw new IllegalArgumentException("Username must be 50 characters or fewer.");
+        }
+        if (fullName.trim().length() > 100) {
+            throw new IllegalArgumentException("Full name must be 100 characters or fewer.");
+        }
         if (repository.existsByUsernameIgnoreCase(username)) {
             throw new IllegalArgumentException("Username is already taken.");
         }
@@ -72,6 +102,9 @@ public class AdsAdminUserAdminServiceImpl extends BaseAdminService implements Ad
         AdsAdminUser user = requireFound(repository.findById(id), "Ads admin user not found.");
         if (body.containsKey("username")) {
             String username = requireNonBlank(stringAt(body, "username"), "username").trim();
+            if (username.length() > 50) {
+                throw new IllegalArgumentException("Username must be 50 characters or fewer.");
+            }
             repository.findByUsernameIgnoreCase(username).ifPresent(existing -> {
                 if (!existing.getId().equals(id)) {
                     throw new IllegalArgumentException("Username is already taken.");
@@ -80,18 +113,24 @@ public class AdsAdminUserAdminServiceImpl extends BaseAdminService implements Ad
             user.setUsername(username);
         }
         if (body.containsKey("email")) {
-            String email = requireNonBlank(stringAt(body, "email"), "email").trim().toLowerCase(Locale.ROOT);
+            String email = normalizeEmail(stringAt(body, "email"));
             if (repository.existsByEmailIgnoreCase(email)
                     && !email.equalsIgnoreCase(user.getEmail())) {
                 throw new IllegalArgumentException("Email is already registered.");
             }
             user.setEmail(email);
         }
-        if (body.containsKey("fullName") || body.containsKey("full_name")) {
+        if (body.containsKey("fullName") || body.containsKey("full_name") || body.containsKey("name")) {
             String fullName = body.containsKey("fullName")
                     ? stringAt(body, "fullName")
-                    : stringAt(body, "full_name");
-            user.setFullName(requireNonBlank(fullName, "fullName").trim());
+                    : body.containsKey("full_name")
+                    ? stringAt(body, "full_name")
+                    : stringAt(body, "name");
+            String trimmed = requireNonBlank(fullName, "fullName").trim();
+            if (trimmed.length() > 100) {
+                throw new IllegalArgumentException("Full name must be 100 characters or fewer.");
+            }
+            user.setFullName(trimmed);
         }
         if (body.containsKey("avatar")) {
             user.setAvatar(stringAt(body, "avatar"));
@@ -103,8 +142,8 @@ public class AdsAdminUserAdminServiceImpl extends BaseAdminService implements Ad
             user.setStatus(normalizeStatus(stringAt(body, "status")));
         }
         if (body.containsKey("password")) {
-            String password = stringAt(body, "password");
-            if (password != null && !password.isBlank()) {
+            String password = normalizePassword(stringAt(body, "password"), false);
+            if (password != null) {
                 user.setPassword(AdminPasswordSupport.encodeIfNeeded(passwordEncoder, password));
             }
         }

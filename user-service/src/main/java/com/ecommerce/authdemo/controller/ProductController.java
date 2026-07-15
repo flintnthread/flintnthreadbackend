@@ -4,9 +4,8 @@ package com.ecommerce.authdemo.controller;
 
 import com.ecommerce.authdemo.dto.*;
 
+import com.ecommerce.authdemo.service.ProductDeliveryCheckService;
 import com.ecommerce.authdemo.service.ProductService;
-
-
 
 import lombok.RequiredArgsConstructor;
 
@@ -16,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -37,6 +37,7 @@ public class ProductController {
 
 
     private final ProductService productService;
+    private final ProductDeliveryCheckService productDeliveryCheckService;
 
 
 
@@ -721,6 +722,20 @@ public class ProductController {
 
         return productService.getFilteredProducts(filterRequest);
 
+    }
+    /**
+     * Check whether this product can be delivered to a buyer pincode
+     * based on seller delivery settings (deliver_all_locations / product_pincodes).
+     */
+    @GetMapping("/{id}/delivery-check")
+    public ResponseEntity<ApiResponse<ProductDeliveryCheckResponse>> checkDelivery(
+            @PathVariable Long id,
+            @RequestParam String pincode
+    ) {
+        ProductDeliveryCheckResponse data = productDeliveryCheckService.check(id, pincode);
+        return ResponseEntity.ok(
+                new ApiResponse<>(true, data.getMessage(), data)
+        );
     }
 
 }

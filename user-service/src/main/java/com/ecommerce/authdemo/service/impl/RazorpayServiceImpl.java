@@ -26,16 +26,22 @@ public class RazorpayServiceImpl implements RazorpayService {
     private final PaymentTransactionRepository paymentTransactionRepo;
     private final String keyIdProp;
     private final String keySecretProp;
+    private final String currencyProp;
+    private final String companyNameProp;
 
     public RazorpayServiceImpl(
             RazorpayConfigRepository configRepo,
             PaymentTransactionRepository paymentTransactionRepo,
             @Value("${razorpay.key_id:}") String keyIdProp,
-            @Value("${razorpay.key_secret:}") String keySecretProp) {
+            @Value("${razorpay.key_secret:}") String keySecretProp,
+            @Value("${razorpay.currency:INR}") String currencyProp,
+            @Value("${razorpay.company-name:F&T}") String companyNameProp) {
         this.configRepo = configRepo;
         this.paymentTransactionRepo = paymentTransactionRepo;
         this.keyIdProp = keyIdProp;
         this.keySecretProp = keySecretProp;
+        this.currencyProp = currencyProp;
+        this.companyNameProp = companyNameProp;
     }
 
     private boolean isUsableKeyId(String key) {
@@ -60,18 +66,41 @@ public class RazorpayServiceImpl implements RazorpayService {
     }
 
     private String resolveKeySecret() {
-        if (StringUtils.hasText(keySecretProp) && !keySecretProp.trim().equalsIgnoreCase("YOUR_RAZORPAY_SECRET")) {
+        if (StringUtils.hasText(keySecretProp)
+                && !keySecretProp.trim().equalsIgnoreCase("YOUR_RAZORPAY_SECRET")
+                && !keySecretProp.trim().matches("\\*+")
+                && !keySecretProp.contains("<")
+                && keySecretProp.trim().length() >= 10) {
             return keySecretProp.trim();
         }
         return configRepo.findTopByOrderByIdDesc()
                 .map(RazorpayConfig::getKeySecret)
                 .filter(StringUtils::hasText)
-                .orElseThrow(() -> new RuntimeException("Set razorpay.key_secret in application.properties or add razorpay_config row"));
+                .filter(s -> !s.trim().matches("\\*+") && s.trim().length() >= 10)
+                .orElseThrow(() -> new RuntimeException(
+                        "Set a real razorpay.key_secret in application.properties (not *********)"
+                ));
     }
 
     @Override
     public String getPublicKeyId() {
         return resolveKeyId();
+    }
+
+    @Override
+    public String getCompanyName() {
+        if (StringUtils.hasText(companyNameProp)) {
+            return companyNameProp.trim();
+        }
+        return "F&T";
+    }
+
+    @Override
+    public String getCurrency() {
+        if (StringUtils.hasText(currencyProp)) {
+            return currencyProp.trim().toUpperCase();
+        }
+        return "INR";
     }
 
     // ✅ CREATE ORDER
@@ -86,7 +115,7 @@ public class RazorpayServiceImpl implements RazorpayService {
 
             JSONObject options = new JSONObject();
             options.put("amount", (int) Math.round(amount * 100.0));
-            options.put("currency", "INR");
+            options.put("currency", getCurrency());
             options.put("receipt", "txn_" + System.currentTimeMillis());
 
             Order order = client.orders.create(options);
@@ -141,6 +170,39 @@ public class RazorpayServiceImpl implements RazorpayService {
             r |= a.charAt(i) ^ b.charAt(i);
         }
         return r == 0;
+    }
+
+    @Override
+    public String findCapturedPaymentId(String razorpayOrderId) {
+        if (!StringUtils.hasText(razorpayOrderId)) {
+            return null;
+        }
+        try {
+            RazorpayClient client = new RazorpayClient(resolveKeyId(), resolveKeySecret());
+            // Prefer payments list first — faster than waiting for order.status="paid".
+            java.util.List<Payment> payments = client.orders.fetchPayments(razorpayOrderId.trim());
+            if (payments != null) {
+                for (Payment p : payments) {
+                    String pStatus = p.has("status") ? String.valueOf(p.get("status")) : "";
+                    if ("captured".equalsIgnoreCase(pStatus)
+                            || "authorized".equalsIgnoreCase(pStatus)
+                            || "paid".equalsIgnoreCase(pStatus)) {
+                        String id = p.has("id") ? String.valueOf(p.get("id")) : "";
+                        if (StringUtils.hasText(id)) {
+                            return id;
+                        }
+                    }
+                }
+            }
+            Order order = client.orders.fetch(razorpayOrderId.trim());
+            String status = order.has("status") ? String.valueOf(order.get("status")) : "";
+            if ("paid".equalsIgnoreCase(status) || "attempted".equalsIgnoreCase(status)) {
+                return "razorpay_paid_" + razorpayOrderId.trim();
+            }
+            return null;
+        } catch (Exception e) {
+            throw new RuntimeException("Could not fetch Razorpay order status: " + e.getMessage(), e);
+        }
     }
 
     @Override

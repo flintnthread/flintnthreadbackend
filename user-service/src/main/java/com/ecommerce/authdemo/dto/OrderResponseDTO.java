@@ -22,6 +22,8 @@ public class OrderResponseDTO {
     private Double walletAmountUsed;
     private Double shippingAmount;
     private Double discountAmount;
+    /** Grand order value = payable (totalAmount) + wallet used. Shown as Order total on shopper UI. */
+    private Double grandTotal;
 
   private Integer totalItems;
   /** Sum of line quantities (e.g. 2 units of one SKU = 2). */
@@ -40,6 +42,17 @@ public class OrderResponseDTO {
     private String shippingState;
     private String shippingPincode;
     private String shippingCountry;
+
+    private String billingAddress;
+    private String billingName;
+    private String billingPhone;
+    private String billingEmail;
+    private String billingAddress1;
+    private String billingAddress2;
+    private String billingCity;
+    private String billingState;
+    private String billingPincode;
+    private String billingCountry;
 
     private Double taxAmount;
     private String razorpayPaymentId;

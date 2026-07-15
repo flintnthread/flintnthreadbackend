@@ -1,0 +1,349 @@
+17:42:24.008 [main] INFO com.ecommerce.adminbackend.AdminBackendApplication -- Starting admin-backend...
+17:42:24.331 [restartedMain] INFO com.ecommerce.adminbackend.AdminBackendApplication -- Starting admin-backend...
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.5.14)
+
+2026-07-15 17:42:25.067 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - Starting AdminBackendApplication using Java 17.0.4.1 with PID 10212 (C:\completeproject\flintnthread-platform\admin-service\target\classes started by adari in C:\completeproject\flintnthread-platform\admin-service)
+2026-07-15 17:42:25.067 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - The following 1 profile is active: "local"
+2026-07-15 17:42:25.147 INFO  [restartedMain] o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-07-15 17:42:25.148 INFO  [restartedMain] o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-07-15 17:42:28.279 INFO  [restartedMain] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-07-15 17:42:29.294 INFO  [restartedMain] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 980 ms. Found 46 JPA repository interfaces.
+2026-07-15 17:42:31.945 INFO  [restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer - Tomcat initialized with port 8082 (http)
+2026-07-15 17:42:31.995 INFO  [restartedMain] o.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-07-15 17:42:31.995 INFO  [restartedMain] org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.54]
+2026-07-15 17:42:32.171 INFO  [restartedMain] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-07-15 17:42:32.173 INFO  [restartedMain] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 7024 ms
+2026-07-15 17:42:32.990 INFO  [restartedMain] o.hibernate.jpa.internal.util.LogHelper - HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-07-15 17:42:33.228 INFO  [restartedMain] org.hibernate.Version - HHH000412: Hibernate ORM core version 6.6.49.Final
+2026-07-15 17:42:33.355 INFO  [restartedMain] o.h.c.internal.RegionFactoryInitiator - HHH000026: Second-level cache disabled
+2026-07-15 17:42:34.390 INFO  [restartedMain] o.s.o.j.p.SpringPersistenceUnitInfo - No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-07-15 17:42:34.518 INFO  [restartedMain] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-07-15 17:42:34.893 INFO  [restartedMain] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@3b89b8ee
+2026-07-15 17:42:34.893 INFO  [restartedMain] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-07-15 17:42:35.048 WARN  [restartedMain] org.hibernate.orm.deprecation - HHH90000025: MySQLDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2026-07-15 17:42:35.087 INFO  [restartedMain] org.hibernate.orm.connections.pooling - HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 8.0.45
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-07-15 17:42:37.355 INFO  [restartedMain] o.h.e.t.j.p.i.JtaPlatformInitiator - HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-07-15 17:42:37.357 INFO  [restartedMain] o.s.o.j.LocalContainerEntityManagerFactoryBean - Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-07-15 17:42:37.862 INFO  [restartedMain] o.s.d.j.r.query.QueryEnhancerFactory - Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-07-15 17:42:40.342 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:40.342 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT setting_value FROM admin_settings WHERE setting_key = ? LIMIT 1]
+2026-07-15 17:42:40.349 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:40.470 WARN  [restartedMain] c.e.a.s.PlatformIntegrationSettings - Could not read admin setting sendgrid_api_key: PreparedStatementCallback; bad SQL grammar [SELECT setting_value FROM admin_settings WHERE setting_key = ? LIMIT 1]
+2026-07-15 17:42:42.911 WARN  [restartedMain] o.s.b.a.o.j.JpaBaseConfiguration$JpaWebConfiguration - spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2026-07-15 17:42:44.093 WARN  [restartedMain] o.s.b.a.s.s.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: e04f1066-3ca2-4c8a-89ad-3be8d8ca1067
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-07-15 17:42:44.112 INFO  [restartedMain] o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-07-15 17:42:45.796 INFO  [restartedMain] o.s.b.d.a.OptionalLiveReloadServer - LiveReload server is running on port 35729
+2026-07-15 17:42:46.084 INFO  [restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer - Tomcat started on port 8082 (http) with context path '/'
+2026-07-15 17:42:46.133 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - Started AdminBackendApplication in 21.796 seconds (process running for 22.471)
+2026-07-15 17:42:47.108 DEBUG [restartedMain] org.hibernate.SQL - 
+    select
+        au1_0.id 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        au1_0.id 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?) 
+    limit
+        ?
+2026-07-15 17:42:47.117 TRACE [restartedMain] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@flintnthread.in]
+2026-07-15 17:42:47.121 TRACE [restartedMain] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:42:47.215 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.216 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:42:47.217 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.250 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.252 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:42:47.254 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.260 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.261 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:42:47.262 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.266 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.267 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:42:47.268 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.271 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.272 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:42:47.273 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.284 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.286 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:42:47.287 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.291 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.292 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:42:47.292 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.296 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:42:47.297 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.301 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.301 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:42:47.302 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.304 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.305 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:42:47.306 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.308 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:42:47.308 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:42:47.309 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:42:47.314 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - admin-backend is ready and accepting requests on port 8082
+2026-07-15 17:42:48.139 INFO  [http-nio-0.0.0.0-8082-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-07-15 17:42:48.139 INFO  [http-nio-0.0.0.0-8082-exec-1] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-07-15 17:42:48.139 INFO  [http-nio-0.0.0.0-8082-exec-1] o.s.web.servlet.DispatcherServlet - Completed initialization in 0 ms
+2026-07-15 17:42:48.628 DEBUG [http-nio-0.0.0.0-8082-exec-1] org.hibernate.SQL - 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+Hibernate: 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+2026-07-15 17:42:48.631 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:42:48.933 INFO  [http-nio-0.0.0.0-8082-exec-1] c.e.a.service.impl.AdminAuthServiceImpl - Admin login successful: adminId=4, email=admin@gmail.com
+2026-07-15 17:42:49.289 DEBUG [http-nio-0.0.0.0-8082-exec-1] org.hibernate.SQL - 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+Hibernate: 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+2026-07-15 17:42:49.301 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:42:49.305 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:42:48.900791900]
+2026-07-15 17:42:49.305 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [Super Admin]
+2026-07-15 17:42:49.309 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [$2a$10$roE16DRSlPDlA.lHxLOmJeLXJIK/vWbSwYqO4.nKxX1PSSC/VebN2]
+2026-07-15 17:42:49.311 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (5:ENUM) <- [super_admin]
+2026-07-15 17:42:49.312 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (6:ENUM) <- [active]
+2026-07-15 17:42:49.314 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [superadmin]
+2026-07-15 17:42:49.316 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (8:BIGINT) <- [4]
+2026-07-15 17:42:49.399 INFO  [http-nio-0.0.0.0-8082-exec-1] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/auth/login -> 200 (1249 ms)
+2026-07-15 17:42:49.983 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+2026-07-15 17:42:49.983 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [addu2244]
+2026-07-15 17:42:49.983 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:42:49.999 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+2026-07-15 17:42:49.999 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [addu2244@flintnthread.test]
+2026-07-15 17:42:49.999 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:42:50.232 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+Hibernate: 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+2026-07-15 17:42:50.232 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [null]
+2026-07-15 17:42:50.239 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:42:50.219420900]
+2026-07-15 17:42:50.239 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [addu2244@flintnthread.test]
+2026-07-15 17:42:50.239 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [Add User QA]
+2026-07-15 17:42:50.239 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (5:TIMESTAMP) <- [null]
+2026-07-15 17:42:50.243 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (6:VARCHAR) <- [$2a$10$qQri691HJ6oPTpswBQG03O4aaMYu/tCWS1CJbkJ5lf3ckoFs7G3tW]
+2026-07-15 17:42:50.244 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [manager]
+2026-07-15 17:42:50.246 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (8:VARCHAR) <- [active]
+2026-07-15 17:42:50.249 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (9:TIMESTAMP) <- [2026-07-15T17:42:50.219420900]
+2026-07-15 17:42:50.250 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (10:VARCHAR) <- [addu2244]
+2026-07-15 17:42:50.298 INFO  [http-nio-0.0.0.0-8082-exec-2] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/ads/admin-users -> 200 (468 ms) adminId=4
+2026-07-15 17:42:50.345 WARN  [http-nio-0.0.0.0-8082-exec-3] c.e.a.exception.GlobalExceptionHandler - Bad request: Please enter a valid email address.
+2026-07-15 17:42:50.353 WARN  [http-nio-0.0.0.0-8082-exec-3] o.s.w.s.m.m.a.ExceptionHandlerExceptionResolver - Resolved [java.lang.IllegalArgumentException: Please enter a valid email address.]
+2026-07-15 17:42:50.361 WARN  [http-nio-0.0.0.0-8082-exec-3] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/ads/admin-users -> 400 (32 ms) adminId=4
+2026-07-15 17:42:50.453 DEBUG [http-nio-0.0.0.0-8082-exec-4] org.hibernate.SQL - 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        aau1_0.id=?
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        aau1_0.id=?
+2026-07-15 17:42:50.453 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (1:INTEGER) <- [15]
+2026-07-15 17:42:50.479 DEBUG [http-nio-0.0.0.0-8082-exec-4] org.hibernate.SQL - 
+    delete 
+    from
+        ads_admin_users 
+    where
+        id=?
+Hibernate: 
+    delete 
+    from
+        ads_admin_users 
+    where
+        id=?
+2026-07-15 17:42:50.479 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (1:INTEGER) <- [15]
+2026-07-15 17:42:50.497 INFO  [http-nio-0.0.0.0-8082-exec-4] c.e.a.logging.AdminRequestLoggingFilter - API DELETE /api/admin/ads/admin-users/15 -> 200 (88 ms) adminId=4
+2026-07-15 20:01:00.962 WARN  [HikariPool-1:housekeeper] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=3m50s297ms46µs800ns).

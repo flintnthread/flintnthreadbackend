@@ -61,9 +61,11 @@ public class Category {
     @Column(name = "seo_manual_override")
     private Boolean seoManualOverride = false;
 
-    @Column(name = "mobile_image")
+    /** Not present on all DB deployments; keep out of generated SQL. */
+    @jakarta.persistence.Transient
     private String mobileImage;
 
-    @Column(name = "banner_image")
+    /** Not present on all DB deployments; keep out of generated SQL. */
+    @jakarta.persistence.Transient
     private String bannerImage;
 }

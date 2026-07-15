@@ -10,7 +10,9 @@ import com.ecommerce.authdemo.exception.OrderException;
 import com.ecommerce.authdemo.repository.*;
 import com.ecommerce.authdemo.util.SecurityUtil;
 import com.ecommerce.authdemo.mail.OrderConfirmationEmailModel;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
@@ -18,13 +20,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
-import org.json.JSONObject;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -71,6 +74,9 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemCustomDetailService orderItemCustomDetailService;
     private final SellerRepository sellerRepository;
     private final AdminUserRepository adminUserRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Value("${app.public-web-base-url:https://flintnthread.in}")
     private String publicWebBaseUrl;
@@ -248,17 +254,28 @@ public class OrderServiceImpl implements OrderService {
                 processReferralAfterOrderPaid(order);
             }
 
-            pushNotificationService.notifyUser(
-                    userId,
-                    "Order #" + order.getOrderNumber() + " placed",
-                    "Your order has been placed successfully.",
-                    "order",
-                    "/orders?orderId=" + order.getId()
-            );
+            boolean pendingOnline = isPendingOnlinePayment(order);
+            if (!pendingOnline) {
+                pushNotificationService.notifyUser(
+                        userId,
+                        "Order #" + order.getOrderNumber() + " placed",
+                        "Your order has been placed successfully.",
+                        "order",
+                        "/orders?orderId=" + order.getId()
+                );
+            } else {
+                pushNotificationService.notifyUser(
+                        userId,
+                        "Complete payment for #" + order.getOrderNumber(),
+                        "Your order is waiting for payment. Complete Razorpay to confirm.",
+                        "order",
+                        "/orders?orderId=" + order.getId()
+                );
+            }
 
             List<OrderItemDTO> itemDTOList = createOrderItems(order, checkoutItems);
 
-            if (!isPendingOnlinePayment(order)) {
+            if (!pendingOnline) {
                 sendOrderConfirmationEmailSafely(
                         user,
                         order,
@@ -274,46 +291,13 @@ public class OrderServiceImpl implements OrderService {
                     new OrderPlacedEvent(Math.toIntExact(order.getId()))
             );
 
-            clearCartSafely(userId);
-
-            try {
-
-                boolean isCod = isCodPaymentMethod(dto.getPaymentMethod());
-
-                boolean shouldCreateShipment =
-
-                        isCod
-
-                                ||
-
-                                (
-                                        order.getPaymentStatus() != null
-
-                                                &&
-
-                                                order.getPaymentStatus()
-                                                        .equalsIgnoreCase("paid")
-                                );
-
-                if (shouldCreateShipment) {
-
-                    shiprocketService.createShipment(order);
-
-                    log.info(
-                            "Shiprocket shipment created for order {}",
-                            order.getOrderNumber()
-                    );
-                }
-
-            } catch (Exception e) {
-
-                log.error(
-                        "Shiprocket shipment creation failed for order {} reason {}",
-                        order.getOrderNumber(),
-                        e.getMessage(),
-                        e
-                );
+            // For unpaid online checkout, keep cart until Razorpay verify succeeds.
+            if (!pendingOnline) {
+                clearCartSafely(userId);
             }
+
+            // Shiprocket after commit so COD/place API returns immediately (no 15s client timeout).
+            scheduleShiprocketAfterCommit(order);
 
             return buildOrderResponse(order, itemDTOList);
 
@@ -802,7 +786,12 @@ public class OrderServiceImpl implements OrderService {
         builder
                 .totalAmount(payable > 0 ? payable : null)
                 .finalAmount(payable > 0 ? payable : null)
-                .walletAmountUsed(walletUsed > 0 ? walletUsed : null);
+                .walletAmountUsed(walletUsed > 0 ? walletUsed : null)
+                .grandTotal(
+                        (payable + walletUsed) > 0.009d
+                                ? Math.round((payable + walletUsed) * 100.0d) / 100.0d
+                                : null
+                );
     }
 
 
@@ -827,33 +816,135 @@ public class OrderServiceImpl implements OrderService {
 
         order.setRazorpayPaymentId(paymentId);
 
+        if ("awaiting_payment".equalsIgnoreCase(
+                order.getOrderStatus() != null ? order.getOrderStatus().trim() : "")) {
+            order.setOrderStatus("processing");
+        }
+
         try {
             processReferralAfterOrderPaid(order);
         } catch (Exception e) {
             log.error("Error processing referral on order payment: {}", e.getMessage(), e);
         }
 
-        if (order.getShiprocketAwbCode() == null
-                || order.getShiprocketAwbCode().isBlank()) {
+        // Do not block payment verify on Shiprocket (avoids 15s client timeouts).
+        scheduleShiprocketAfterCommit(order);
 
+        order = orderRepository.save(order);
+        try {
+            clearCartSafely(order.getUserId());
+        } catch (Exception e) {
+            log.warn("Cart clear after payment failed for order {}: {}", order.getOrderNumber(), e.getMessage());
+        }
+        sendOrderConfirmationEmailForOrder(order);
+        return order;
+    }
+
+    /**
+     * Push to Shiprocket only after DB commit, off the request thread.
+     * Online unpaid orders are skipped until markOrderAsPaid.
+     */
+    private void scheduleShiprocketAfterCommit(Order order) {
+        if (order == null || order.getId() == null) {
+            return;
+        }
+        final Long orderId = order.getId();
+        final String orderNumber = order.getOrderNumber();
+
+        Runnable push = () -> {
             try {
-
-                shiprocketService.createShipment(order);
-
+                Order fresh = orderRepository.findById(orderId).orElse(null);
+                if (fresh == null) {
+                    return;
+                }
+                if (fresh.getShiprocketOrderId() != null && !fresh.getShiprocketOrderId().isBlank()) {
+                    return;
+                }
+                boolean isCod = isCodPaymentMethod(fresh.getPaymentMethod());
+                String paymentStatus = fresh.getPaymentStatus() != null
+                        ? fresh.getPaymentStatus().trim().toLowerCase()
+                        : "";
+                boolean paymentConfirmed = paymentStatus.equals("paid")
+                        || paymentStatus.equals("completed")
+                        || paymentStatus.equals("success")
+                        || paymentStatus.equals("captured");
+                if (!isCod && !paymentConfirmed) {
+                    log.info("Skipping Shiprocket for unpaid online order {}", orderNumber);
+                    return;
+                }
+                shiprocketService.createShipment(fresh);
+                log.info("Shiprocket shipment created for order {}", orderNumber);
             } catch (Exception e) {
-
                 log.error(
-                        "Shiprocket creation failed after payment for order {} reason {}",
-                        order.getOrderNumber(),
+                        "Shiprocket shipment creation failed for order {} reason {}",
+                        orderNumber,
                         e.getMessage(),
                         e
                 );
+                try {
+                    markShiprocketCreateFailed(orderNumber, e.getMessage());
+                } catch (Exception ignore) {
+                    // ignore
+                }
             }
+        };
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            Thread t = new Thread(push, "shiprocket-push-" + orderId);
+            t.setDaemon(true);
+            t.start();
+            return;
         }
 
-        order = orderRepository.save(order);
-        sendOrderConfirmationEmailForOrder(order);
-        return order;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                Thread t = new Thread(push, "shiprocket-push-" + orderId);
+                t.setDaemon(true);
+                t.start();
+            }
+        });
+    }
+
+    @Override
+    @Transactional
+    public ShiprocketShipmentResult pushOrderToShiprocket(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
+            return ShiprocketShipmentResult.builder()
+                    .shipmentId(order.getShiprocketShipmentId())
+                    .awbCode(order.getShiprocketAwbCode())
+                    .trackingUrl(order.getShiprocketTrackingUrl())
+                    .courierName(order.getShiprocketCourierName() != null
+                            ? order.getShiprocketCourierName()
+                            : "Shiprocket")
+                    .build();
+        }
+
+        String paymentStatus = order.getPaymentStatus() != null
+                ? order.getPaymentStatus().trim().toLowerCase()
+                : "";
+        boolean paymentConfirmed = paymentStatus.equals("paid")
+                || paymentStatus.equals("completed")
+                || paymentStatus.equals("success")
+                || paymentStatus.equals("captured");
+        boolean isCod = isCodPaymentMethod(order.getPaymentMethod());
+
+        if (!isCod && !paymentConfirmed) {
+            throw new OrderException(
+                    "Order is not paid yet; Shiprocket push is only for paid or COD orders."
+            );
+        }
+
+        ShiprocketShipmentResult result = shiprocketService.createShipment(order);
+        log.info(
+                "Shiprocket push retry OK orderNumber={} shipmentId={}",
+                order.getOrderNumber(),
+                result.getShipmentId()
+        );
+        return result;
     }
 
     private boolean isPendingOnlinePayment(Order order) {
@@ -974,7 +1065,9 @@ public class OrderServiceImpl implements OrderService {
                                     ));
 
             order.setShiprocketStatus(
-                    "shipment_creation_failed"
+                    reason == null || reason.isBlank()
+                            ? "shipment_creation_failed"
+                            : ("failed: " + reason).substring(0, Math.min(50, ("failed: " + reason).length()))
             );
 
             orderRepository.save(order);
@@ -1085,7 +1178,12 @@ public class OrderServiceImpl implements OrderService {
                                         ? "paid"
                                         : "pending"
                 )
-                .orderStatus("processing")
+                .orderStatus(
+                        finalAmount.compareTo(BigDecimal.ZERO) <= 0
+                                || isCodPaymentMethod(dto.getPaymentMethod())
+                                ? "processing"
+                                : "awaiting_payment"
+                )
                 .shippingAddress1(address.getAddressLine1())
                 .shippingCity(address.getCity())
                 .shippingState(address.getState())
@@ -1099,6 +1197,19 @@ public class OrderServiceImpl implements OrderService {
                 .shippingPhone(address.getPhone())
                 .shippingEmail(address.getEmail())
                 .shippingAddress2(address.getAddressLine2())
+                .billingName(address.getName())
+                .billingPhone(address.getPhone())
+                .billingEmail(address.getEmail())
+                .billingAddress1(address.getAddressLine1())
+                .billingAddress2(address.getAddressLine2())
+                .billingCity(address.getCity())
+                .billingState(address.getState())
+                .billingCountry(
+                        address.getCountry() != null
+                                ? address.getCountry()
+                                : "India"
+                )
+                .billingPincode(address.getPincode())
                 .addressId(address.getId().longValue())
                 .referralInviterDiscountApplied(referralInviterDiscountApplied)
                 .build();
@@ -1661,7 +1772,69 @@ public class OrderServiceImpl implements OrderService {
                                 ? order.getShippingCountry()
                                 : "India"
                 )
-                .shippingAddress(formatShippingAddress(order));
+                .shippingAddress(formatShippingAddress(order))
+                .billingName(order.getBillingName())
+                .billingPhone(order.getBillingPhone())
+                .billingEmail(order.getBillingEmail())
+                .billingAddress1(order.getBillingAddress1())
+                .billingAddress2(order.getBillingAddress2())
+                .billingCity(order.getBillingCity())
+                .billingState(order.getBillingState())
+                .billingPincode(order.getBillingPincode())
+                .billingCountry(
+                        order.getBillingCountry() != null
+                                ? order.getBillingCountry()
+                                : "India"
+                )
+                .billingAddress(formatBillingAddress(order));
+    }
+
+    private String formatBillingAddress(Order order) {
+        if (order == null) {
+            return "";
+        }
+        if (isBlank(order.getBillingName())
+                && isBlank(order.getBillingAddress1())
+                && isBlank(order.getBillingCity())) {
+            return formatShippingAddress(order);
+        }
+        List<String> lines = new ArrayList<>();
+        if (!isBlank(order.getBillingName())) {
+            lines.add(order.getBillingName().trim());
+        }
+        if (!isBlank(order.getBillingAddress1())) {
+            lines.add(order.getBillingAddress1().trim());
+        }
+        if (!isBlank(order.getBillingAddress2())) {
+            lines.add(order.getBillingAddress2().trim());
+        }
+        StringBuilder cityLine = new StringBuilder();
+        if (!isBlank(order.getBillingCity())) {
+            cityLine.append(order.getBillingCity().trim());
+        }
+        if (!isBlank(order.getBillingState())) {
+            if (!cityLine.isEmpty()) {
+                cityLine.append(", ");
+            }
+            cityLine.append(order.getBillingState().trim());
+        }
+        if (!isBlank(order.getBillingPincode())) {
+            if (!cityLine.isEmpty()) {
+                cityLine.append(" - ");
+            }
+            cityLine.append(order.getBillingPincode().trim());
+        }
+        if (!cityLine.isEmpty()) {
+            lines.add(cityLine.toString());
+        }
+        if (!isBlank(order.getBillingCountry())) {
+            lines.add(order.getBillingCountry().trim());
+        }
+        return String.join("\n", lines);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private String formatShippingAddress(Order order) {
@@ -2348,5 +2521,184 @@ public class OrderServiceImpl implements OrderService {
         }
 
         return true;
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO updateOrderAddress(Long orderId, UpdateOrderAddressRequestDTO dto) {
+        if (dto == null || dto.getShipping() == null) {
+            throw new OrderException("Shipping address is required");
+        }
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        Long currentUserId = securityUtil.getCurrentUserId();
+        if (!Objects.equals(order.getUserId(), currentUserId)) {
+            throw new OrderException("Access denied");
+        }
+
+        String status = order.getOrderStatus() != null
+                ? order.getOrderStatus().toLowerCase(Locale.ROOT).trim()
+                : "";
+
+        List<String> blockedStatuses = Arrays.asList(
+                "delivered",
+                "out_for_delivery",
+                "picked_up",
+                "in_transit",
+                "rto_delivered",
+                "cancelled",
+                "shipped"
+        );
+        if (blockedStatuses.contains(status)) {
+            throw new OrderException("Address cannot be changed for this order status");
+        }
+        if (order.getShiprocketAwbCode() != null && !order.getShiprocketAwbCode().isBlank()) {
+            throw new OrderException("Address cannot be changed after shipment has been created");
+        }
+
+        UpdateOrderAddressRequestDTO.OrderAddressSectionDTO shipping = dto.getShipping();
+        applyShippingSection(order, shipping);
+
+        boolean sameAsShipping = dto.getBilling() == null
+                || Boolean.TRUE.equals(dto.getBillingSameAsShipping());
+        UpdateOrderAddressRequestDTO.OrderAddressSectionDTO billing =
+                sameAsShipping ? shipping : dto.getBilling();
+        applyBillingSection(order, billing);
+
+        order = orderRepository.save(order);
+
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        notifySellersOfAddressUpdate(order, items);
+
+        List<OrderItemDTO> itemDTOList = items.stream().map(this::buildOrderItemDTO).toList();
+        return buildDetailedOrderResponse(order, itemDTOList);
+    }
+
+    private void applyShippingSection(
+            Order order,
+            UpdateOrderAddressRequestDTO.OrderAddressSectionDTO section
+    ) {
+        order.setShippingName(trimToNull(section.getName()));
+        order.setShippingPhone(trimToNull(section.getPhone()));
+        order.setShippingEmail(trimToNull(section.getEmail()));
+        order.setShippingAddress1(trimToNull(section.getAddressLine1()));
+        order.setShippingAddress2(trimToNull(section.getAddressLine2()));
+        order.setShippingCity(trimToNull(section.getCity()));
+        order.setShippingState(trimToNull(section.getState()));
+        order.setShippingPincode(trimToNull(section.getPincode()));
+        order.setShippingCountry(
+                section.getCountry() != null && !section.getCountry().isBlank()
+                        ? section.getCountry().trim()
+                        : "India"
+        );
+    }
+
+    private void applyBillingSection(
+            Order order,
+            UpdateOrderAddressRequestDTO.OrderAddressSectionDTO section
+    ) {
+        order.setBillingName(trimToNull(section.getName()));
+        order.setBillingPhone(trimToNull(section.getPhone()));
+        order.setBillingEmail(trimToNull(section.getEmail()));
+        order.setBillingAddress1(trimToNull(section.getAddressLine1()));
+        order.setBillingAddress2(trimToNull(section.getAddressLine2()));
+        order.setBillingCity(trimToNull(section.getCity()));
+        order.setBillingState(trimToNull(section.getState()));
+        order.setBillingPincode(trimToNull(section.getPincode()));
+        order.setBillingCountry(
+                section.getCountry() != null && !section.getCountry().isBlank()
+                        ? section.getCountry().trim()
+                        : "India"
+        );
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void notifySellersOfAddressUpdate(Order order, List<OrderItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        LinkedHashSet<Long> sellerIds = new LinkedHashSet<>();
+        for (OrderItem item : items) {
+            if (item.getSellerId() != null && item.getSellerId() > 0) {
+                sellerIds.add(item.getSellerId());
+            }
+        }
+
+        String orderLabel = order.getOrderNumber() != null ? order.getOrderNumber() : String.valueOf(order.getId());
+        String shipSummary = formatShippingAddress(order).replace("\n", ", ");
+        String title = "Order address updated";
+        String message = "Customer updated the delivery/billing address for order #"
+                + orderLabel
+                + ". New shipping address: "
+                + (shipSummary.isBlank() ? "Updated" : shipSummary);
+
+        for (Long sellerId : sellerIds) {
+            try {
+                entityManager.createNativeQuery(
+                                "INSERT INTO seller_notifications (seller_id, title, message, is_read, created_at) "
+                                        + "VALUES (?1, ?2, ?3, false, CURRENT_TIMESTAMP)"
+                        )
+                        .setParameter(1, sellerId)
+                        .setParameter(2, title)
+                        .setParameter(3, message)
+                        .executeUpdate();
+            } catch (Exception e) {
+                log.warn(
+                        "[NOTIFY] Failed seller_notifications insert sellerId={} order={}: {}",
+                        sellerId,
+                        orderLabel,
+                        e.getMessage()
+                );
+            }
+
+            try {
+                Seller seller = sellerRepository.findById(sellerId).orElse(null);
+                String sellerEmail = seller != null ? firstNonBlank(seller.getEmail()) : null;
+                if (sellerEmail == null) {
+                    continue;
+                }
+                String html = "<p>Hello,</p>"
+                        + "<p>The customer updated the address for order <strong>#"
+                        + escapeHtml(orderLabel)
+                        + "</strong>.</p>"
+                        + "<p><strong>Shipping address</strong><br/>"
+                        + escapeHtml(shipSummary.isBlank() ? "Updated" : shipSummary)
+                        + "</p>"
+                        + "<p>Please use the latest address when packing and shipping this order.</p>"
+                        + "<p>— Flint &amp; Thread</p>";
+                emailService.sendNoticeEmail(
+                        sellerEmail,
+                        "Address updated — Order #" + orderLabel,
+                        html
+                );
+            } catch (Exception e) {
+                log.warn(
+                        "[EMAIL] Address-update notice failed sellerId={} order={}: {}",
+                        sellerId,
+                        orderLabel,
+                        e.getMessage()
+                );
+            }
+        }
+    }
+
+    private String escapeHtml(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return raw
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
 }

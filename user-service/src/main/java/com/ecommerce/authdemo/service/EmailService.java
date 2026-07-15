@@ -164,6 +164,31 @@ public class EmailService {
         }
     }
 
+    /**
+     * Best-effort branded notice (seller address-change, etc). Does not throw.
+     */
+    public void sendNoticeEmail(String toEmail, String subject, String htmlBody) {
+        if (toEmail == null || toEmail.isBlank() || htmlBody == null || htmlBody.isBlank()) {
+            return;
+        }
+        String recipient = toEmail.trim();
+        String safeSubject = subject != null && !subject.isBlank() ? subject.trim() : "Flint & Thread notice";
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(recipient);
+            helper.setSubject(safeSubject);
+            helper.setText(htmlBody, true);
+            mailSender.send(mimeMessage);
+            emailLogService.createLog(null, "seller_notice", recipient, safeSubject, EmailLogStatus.sent, null);
+            log.info("[EMAIL] notice sent to {}", recipient);
+        } catch (Exception e) {
+            emailLogService.createLog(null, "seller_notice", recipient, safeSubject, EmailLogStatus.failed, e.getMessage());
+            log.warn("[EMAIL] notice failed to {}: {}", recipient, e.getMessage());
+        }
+    }
+
     private String resolveOrderEmailType(String recipientType) {
         if (OrderConfirmationEmailModel.RECIPIENT_SELLER.equals(recipientType)) {
             return "order_notification_seller";

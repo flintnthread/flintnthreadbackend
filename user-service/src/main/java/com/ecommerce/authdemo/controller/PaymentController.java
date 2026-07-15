@@ -1,10 +1,8 @@
 package com.ecommerce.authdemo.controller;
 
-import com.ecommerce.authdemo.dto.ShiprocketShipmentResult;
 import com.ecommerce.authdemo.entity.Order;
 import com.ecommerce.authdemo.service.OrderService;
 import com.ecommerce.authdemo.service.RazorpayService;
-import com.ecommerce.authdemo.service.ShiprocketService;
 import lombok.RequiredArgsConstructor;
 import org.json.JSONObject;
 import org.springframework.http.HttpStatus;
@@ -26,7 +24,6 @@ public class PaymentController {
 
     private final RazorpayService razorpayService;
     private final OrderService orderService;
-    private final ShiprocketService shiprocketService;
 
     private static Double resolveAmount(Double queryAmount, Map<String, Object> body) {
         if (queryAmount != null) {
@@ -99,6 +96,8 @@ public class PaymentController {
             response.put("data", order.toMap());
             response.put("razorpayKeyId", razorpayService.getPublicKeyId());
             response.put("key", razorpayService.getPublicKeyId());
+            response.put("currency", razorpayService.getCurrency());
+            response.put("companyName", razorpayService.getCompanyName());
 
             logger.info("[PAYMENT] create-order DONE razorpayOrderId={}", razorpayOrderId);
             return ResponseEntity.ok(response);
@@ -107,8 +106,18 @@ public class PaymentController {
             logger.error("[PAYMENT] create-order FAILED: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "Failed to create order");
-            return ResponseEntity.internalServerError().body(response);
+            String detail = e.getMessage() != null ? e.getMessage() : "Unknown error";
+            // Surface auth misconfig clearly (wrong key/secret causes opaque 500 on checkout).
+            if (detail.toLowerCase().contains("auth")
+                    || detail.toLowerCase().contains("authentication")
+                    || detail.toLowerCase().contains("credentials")) {
+                response.put("message", "Razorpay authentication failed. Check razorpay.key_id / razorpay.key_secret.");
+            } else {
+                response.put("message", "Failed to create payment order: " + detail);
+            }
+            response.put("error", detail);
+            // HTTP 200 with success=false so checkout can show the message (not Axios 502).
+            return ResponseEntity.ok(response);
         }
     }
 
@@ -137,20 +146,20 @@ public class PaymentController {
                     response.put("orderId", paidOrder.getId());
                     response.put("order_number", paidOrder.getOrderNumber());
 
-                    try {
-                        logger.info("[PAYMENT] verify Shiprocket createShipment START orderNumber={}", paidOrder.getOrderNumber());
-                        ShiprocketShipmentResult sr = shiprocketService.createShipment(paidOrder);
-                        logger.info("[PAYMENT] verify Shiprocket createShipment DONE shipmentId={} awb={}",
-                                sr.getShipmentId(), sr.getAwbCode());
-
-                        response.put("shipping_initiated", true);
-                        response.put("shiprocket", sr.toMap());
-                    } catch (Exception shippingError) {
-                        logger.error("[PAYMENT] verify Shiprocket FAILED (payment still ok) orderNumber={}",
-                                paidOrder.getOrderNumber(), shippingError);
+                    // createShipment is scheduled async inside markOrderAsPaid (after commit).
+                    boolean alreadyLinked = paidOrder.getShiprocketOrderId() != null
+                            && !paidOrder.getShiprocketOrderId().isBlank();
+                    response.put("shipping_initiated", alreadyLinked);
+                    if (alreadyLinked) {
+                        response.put("shiprocket_order_id", paidOrder.getShiprocketOrderId());
+                        response.put("shiprocket_shipment_id", paidOrder.getShiprocketShipmentId());
+                    } else {
+                        // Payment success must not wait on Shiprocket (client timeout was 15s).
                         response.put("shipping_initiated", false);
-                        response.put("shipping_error", "Shiprocket order could not be created. Order is paid; retry shipment from admin.");
-                        response.put("shipping_error_detail", shippingError.getMessage());
+                        response.put(
+                                "shipping_note",
+                                "Shipment is being created in the background. Refresh order shortly if tracking is empty."
+                        );
                     }
                 } catch (Exception markPaidError) {
                     logger.error("[PAYMENT] verify markOrderAsPaid FAILED razorpayOrderId={}", orderId, markPaidError);
@@ -168,6 +177,42 @@ public class PaymentController {
             response.put("success", false);
             response.put("message", "Error verifying payment");
             return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
+    /**
+     * Confirm payment when UPI/QR succeeded on phone but browser never received Razorpay handler callback.
+     * Server checks Razorpay order status directly.
+     */
+    @PostMapping("/confirm-paid")
+    public ResponseEntity<?> confirmPaid(@RequestParam String orderId) {
+        logger.info("[PAYMENT] confirm-paid START razorpayOrderId={}", orderId);
+        Map<String, Object> response = new HashMap<>();
+        try {
+            String paymentId = razorpayService.findCapturedPaymentId(orderId);
+            if (paymentId == null || paymentId.isBlank()) {
+                response.put("success", false);
+                response.put("paid", false);
+                response.put("message", "Payment not completed yet. Finish UPI/QR payment, then try again.");
+                return ResponseEntity.ok(response);
+            }
+
+            Order paidOrder = orderService.markOrderAsPaid(orderId, paymentId);
+            response.put("success", true);
+            response.put("paid", true);
+            response.put("message", "Payment successful");
+            response.put("orderId", paidOrder.getId());
+            response.put("order_number", paidOrder.getOrderNumber());
+            boolean alreadyLinked = paidOrder.getShiprocketOrderId() != null
+                    && !paidOrder.getShiprocketOrderId().isBlank();
+            response.put("shipping_initiated", alreadyLinked);
+            logger.info("[PAYMENT] confirm-paid DONE orderNumber={}", paidOrder.getOrderNumber());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("[PAYMENT] confirm-paid FAILED razorpayOrderId={}", orderId, e);
+            response.put("success", false);
+            response.put("message", e.getMessage() != null ? e.getMessage() : "Could not confirm payment");
+            return ResponseEntity.ok(response);
         }
     }
 }

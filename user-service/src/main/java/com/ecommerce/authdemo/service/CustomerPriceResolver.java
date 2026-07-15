@@ -16,10 +16,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * Customer-facing price — same stack as admin panel:
- * sellingPrice (ex-GST) + GST + commission + Metro-Metro delivery
- * (= admin "Total (Metro-Metro)").
- * Cart may pass a concrete {@link DeliveryType} to use that zone's delivery.
+ * Customer-facing price — computed for the user app only (admin panel unchanged):
+ * <ul>
+ *   <li>Selling / payable = Total (Metro-Metro): sell excl GST + GST + commission + metro delivery</li>
+ *   <li>Strike MRP = MRP excl GST + GST + commission + metro delivery (same fee stack)</li>
+ * </ul>
+ * Commission % from variant or live {@code commission_b2c} setting (0% is honored).
+ * Cart may pass a concrete {@link DeliveryType} for zone delivery.
  */
 @Service
 @RequiredArgsConstructor
@@ -88,25 +91,16 @@ public class CustomerPriceResolver {
         }
 
         BigDecimal commissionPercent = resolveCommissionPercent(variant);
-        BigDecimal commissionAmount;
-        if (variant.getCommissionAmount() != null
-                && variant.getCommissionAmount().compareTo(BigDecimal.ZERO) > 0
-                && variant.getCommissionPercentage() != null
-                && variant.getCommissionPercentage().compareTo(BigDecimal.ZERO) > 0) {
-            commissionAmount = variant.getCommissionAmount().setScale(2, RoundingMode.HALF_UP);
-            commissionPercent = variant.getCommissionPercentage();
-        } else {
-            commissionAmount = priceAfterGst
-                    .multiply(commissionPercent)
-                    .divide(HUNDRED, 2, RoundingMode.HALF_UP);
-        }
+        // Always recompute from live % so 15→0 (or any change) applies without stale DB amounts.
+        BigDecimal commissionAmount = priceAfterGst
+                .multiply(commissionPercent)
+                .divide(HUNDRED, 2, RoundingMode.HALF_UP);
 
         BigDecimal priceBeforeDelivery = priceAfterGst.add(commissionAmount).setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal intraDelivery = nonNegative(variant.getIntraCityDeliveryCharge());
         BigDecimal metroDelivery = nonNegative(variant.getMetroMetroDeliveryCharge());
 
-        // Always recompute like admin enrich() — do not trust stale DB totals (often missing commission).
         BigDecimal totalIntra = priceBeforeDelivery.add(intraDelivery).setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalMetro = priceBeforeDelivery.add(metroDelivery).setScale(2, RoundingMode.HALF_UP);
 
@@ -114,7 +108,6 @@ public class CustomerPriceResolver {
         BigDecimal deliveryCharge;
         BigDecimal customerPrice;
         if (deliveryType == null) {
-            // Catalog / PDP / list: match admin "Total (Metro-Metro)".
             effectiveType = DeliveryType.metro_metro;
             deliveryCharge = metroDelivery;
             customerPrice = totalMetro;
@@ -151,19 +144,49 @@ public class CustomerPriceResolver {
     }
 
     /**
-     * Admin panel strike MRP for the user app: {@code mrp_excl_gst} only.
-     * Does not add GST, commission, or delivery — selling/customer price stays unchanged.
+     * User-app strike price: MRP (excl GST) + GST + commission + Metro-Metro delivery.
+     * Does not change admin panel storage or admin UI.
      */
     public BigDecimal resolveCustomerStrikeMrp(ProductVariant variant, BigDecimal customerUnitPrice) {
         if (variant == null) {
             return null;
         }
-        BigDecimal mrpExcl = firstPositive(variant.getMrpExclGst());
-        if (mrpExcl != null) {
-            return mrpExcl.setScale(2, RoundingMode.HALF_UP);
+        return resolveCustomerStrikeMrp(variant.getProduct(), variant);
+    }
+
+    public BigDecimal resolveCustomerStrikeMrp(Product product, ProductVariant variant) {
+        if (variant == null) {
+            return null;
         }
-        // Legacy / incomplete rows: never invent fees on top of MRP.
-        return variant.resolveMrpUnitPrice();
+
+        BigDecimal mrpExcl = firstPositive(variant.getMrpExclGst());
+        if (mrpExcl == null) {
+            mrpExcl = firstPositive(variant.resolveMrpUnitPrice());
+        }
+        if (mrpExcl == null) {
+            return null;
+        }
+
+        BigDecimal gstPercent = resolveGstPercent(product, variant);
+        BigDecimal mrpAfterGst;
+        if (variant.getMrpInclGst() != null
+                && variant.getMrpInclGst().compareTo(BigDecimal.ZERO) > 0) {
+            mrpAfterGst = variant.getMrpInclGst().setScale(2, RoundingMode.HALF_UP);
+        } else {
+            BigDecimal mrpTax = mrpExcl.multiply(gstPercent).divide(HUNDRED, 2, RoundingMode.HALF_UP);
+            mrpAfterGst = mrpExcl.add(mrpTax).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal commissionPercent = resolveCommissionPercent(variant);
+        BigDecimal commissionAmount = mrpAfterGst
+                .multiply(commissionPercent)
+                .divide(HUNDRED, 2, RoundingMode.HALF_UP);
+        BigDecimal metroDelivery = nonNegative(variant.getMetroMetroDeliveryCharge());
+
+        return mrpAfterGst
+                .add(commissionAmount)
+                .add(metroDelivery)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     public BigDecimal resolveDeliveryCharge(ProductVariant variant, DeliveryType deliveryType) {
@@ -173,7 +196,6 @@ public class CustomerPriceResolver {
         BigDecimal intra = nonNegative(variant.getIntraCityDeliveryCharge());
         BigDecimal metro = nonNegative(variant.getMetroMetroDeliveryCharge());
         if (deliveryType == null) {
-            // Catalog default matches admin Total (Metro-Metro).
             return metro;
         }
         return deliveryType == DeliveryType.intra_city ? intra : metro;
@@ -259,12 +281,14 @@ public class CustomerPriceResolver {
         return null;
     }
 
+    /**
+     * Live platform commission ({@code commission_b2c}), including 0%.
+     * User app does not use stale per-variant commission amounts so a setting
+     * change (e.g. 15→0) applies immediately without changing admin product rows.
+     */
     private BigDecimal resolveCommissionPercent(ProductVariant variant) {
-        if (variant.getCommissionPercentage() != null
-                && variant.getCommissionPercentage().compareTo(BigDecimal.ZERO) > 0) {
-            return variant.getCommissionPercentage();
-        }
-        return integrationSettings.getCommissionB2cPercent();
+        BigDecimal fromSettings = integrationSettings.getCommissionB2cPercent();
+        return fromSettings != null ? fromSettings : PlatformIntegrationSettings.DEFAULT_COMMISSION_B2C;
     }
 
     private static String normalize(String value) {
