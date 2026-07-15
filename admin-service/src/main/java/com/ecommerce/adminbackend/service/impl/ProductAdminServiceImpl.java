@@ -70,6 +70,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
     private final ObjectMapper objectMapper;
     private final ProductVariantCommissionSupport commissionSupport;
     private final ProductAdminMutationService productAdminMutationService;
+    private final ProductApprovalNotifyService productApprovalNotifyService;
 
     @Override
     @Transactional(readOnly = true)
@@ -396,6 +397,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         }
         applyCommissionToVariants(product);
         productRepository.save(product);
+        productApprovalNotifyService.afterProductGoLive(product, true);
         log.info("Product approved: id={}", id);
         return Map.of("productId", id, "status", "approved", "message", "Product approved.");
     }
@@ -455,6 +457,10 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         }
         applyCommissionToVariants(product);
         productRepository.save(product);
+        // Pending/rejected → live: notify seller + announce to customers.
+        // Inactive → live: notify seller only (not a brand-new arrival).
+        boolean announceToCustomers = "pending".equals(current) || "rejected".equals(current);
+        productApprovalNotifyService.afterProductGoLive(product, announceToCustomers);
         log.info("Product activated: id={} previousStatus={}", id, current);
         return Map.of(
                 "productId", id,

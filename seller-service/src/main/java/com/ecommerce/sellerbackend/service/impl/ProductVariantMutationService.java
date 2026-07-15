@@ -14,6 +14,7 @@ import com.ecommerce.sellerbackend.repository.ProductVariantRepository;
 import com.ecommerce.sellerbackend.service.AdminSettingsLookupService;
 import com.ecommerce.sellerbackend.service.ProductMediaStorageService;
 import com.ecommerce.sellerbackend.service.support.ProductCatalogResolver;
+import com.ecommerce.sellerbackend.service.support.ProductReapprovalSupport;
 import com.ecommerce.sellerbackend.service.support.ProductVariantPricingCalculator;
 import com.ecommerce.sellerbackend.service.support.ProductVariantPricingCalculator.VariantPricing;
 import lombok.RequiredArgsConstructor;
@@ -147,6 +148,7 @@ public class ProductVariantMutationService {
         }
 
         product.setUpdatedAt(now);
+        ProductReapprovalSupport.markPendingIfNeedsReapproval(product);
         productRepository.save(product);
 
         return CreateProductResponse.CreatedVariantRef.builder()

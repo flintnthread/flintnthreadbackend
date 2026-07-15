@@ -18,6 +18,7 @@ import com.ecommerce.sellerbackend.service.AdminSettingsLookupService;
 import com.ecommerce.sellerbackend.service.DeliverySlabLookupService;
 import com.ecommerce.sellerbackend.service.ProductMediaStorageService;
 import com.ecommerce.sellerbackend.service.support.ProductCatalogResolver;
+import com.ecommerce.sellerbackend.service.support.ProductReapprovalSupport;
 import com.ecommerce.sellerbackend.service.support.ProductSkuGenerator;
 import com.ecommerce.sellerbackend.service.support.ProductSpecificationsCodec;
 import com.ecommerce.sellerbackend.service.support.ProductVariantPricingCalculator;
@@ -100,6 +101,7 @@ public class ProductUpdateService {
         if (request.getAcceptCod() != null) {
             product.setAcceptCod(request.getAcceptCod());
         }
+        ProductReapprovalSupport.markPendingIfNeedsReapproval(product);
         product.setUpdatedAt(now);
         productRepository.save(product);
 

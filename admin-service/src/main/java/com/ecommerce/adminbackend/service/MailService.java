@@ -15,6 +15,13 @@ public interface MailService {
             String statusLabel,
             String reason);
 
+    void sendProductApprovedEmail(
+            String toEmail,
+            String sellerName,
+            String productName,
+            String productSku,
+            Long productId);
+
     void sendEmailVerificationLinkEmail(String toEmail, String recipientName, String verifyLink);
 
     /**

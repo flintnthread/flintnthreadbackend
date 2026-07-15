@@ -2,6 +2,7 @@ package com.ecommerce.adminbackend.service.impl;
 
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.util.OrderStatusUpdateEmailBuilder;
+import com.ecommerce.adminbackend.util.ProductApprovedEmailBuilder;
 import com.ecommerce.adminbackend.util.SellerAccountStatusEmailBuilder;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -201,6 +202,51 @@ public class MailServiceImpl implements MailService {
         } catch (Exception ex) {
             log.error("Failed to send seller account status email for {}", maskEmail(toEmail), ex);
             throw new IllegalStateException("Unable to send seller notification email.");
+        }
+    }
+
+    @Override
+    public void sendProductApprovedEmail(
+            String toEmail,
+            String sellerName,
+            String productName,
+            String productSku,
+            Long productId) {
+        if (toEmail == null || toEmail.isBlank()) {
+            log.warn("[MAIL] Skipping product approved email — recipient missing for productId={}", productId);
+            return;
+        }
+
+        String subject = ProductApprovedEmailBuilder.buildSubject(productName);
+        String html = ProductApprovedEmailBuilder.buildHtml(
+                sellerName,
+                productName,
+                productSku,
+                productId,
+                supportEmail,
+                supportPhone);
+
+        if (mailDevMode) {
+            log.warn("[MAIL DEV] Product approved for {} -> productId={} ({})",
+                    maskEmail(toEmail), productId, productName);
+            return;
+        }
+
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromEmail, fromName);
+            helper.setTo(toEmail.trim());
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            mailSender.send(message);
+            log.info("Product approved email sent to {} for productId={}", maskEmail(toEmail), productId);
+        } catch (MessagingException ex) {
+            log.error("Failed to compose product approved email for {} productId={}", maskEmail(toEmail), productId, ex);
+            throw new IllegalStateException("Unable to send product approval email.");
+        } catch (Exception ex) {
+            log.error("Failed to send product approved email for {} productId={}", maskEmail(toEmail), productId, ex);
+            throw new IllegalStateException("Unable to send product approval email.");
         }
     }
 

@@ -73,6 +73,9 @@ public class SellerNotificationServiceImpl implements SellerNotificationService 
         if (lower.contains("ticket") || lower.contains("support")) {
             return "tickets";
         }
+        if (lower.contains("product") || lower.contains("approved") || lower.contains("listing")) {
+            return "tickets";
+        }
         return "payment";
     }
 }
