@@ -48,4 +48,6 @@ public interface SellerAdminService {
     PageResponse<Map<String, Object>> listBankVerifications(String status, int page, int size);
 
     Map<String, Object> resendEmailVerification(Long id);
+
+    Map<String, Object> createSeller(Map<String, Object> body);
 }

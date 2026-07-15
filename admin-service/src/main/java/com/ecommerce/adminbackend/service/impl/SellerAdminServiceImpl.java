@@ -10,6 +10,7 @@ import com.ecommerce.adminbackend.repository.SellerKycImageRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.SellerAdminService;
+import com.ecommerce.adminbackend.service.support.AdminPasswordSupport;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
 import com.ecommerce.adminbackend.util.SellerEmailVerificationUrlHelper;
@@ -20,9 +21,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -30,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -47,6 +52,8 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
     private final MediaUrlHelper mediaUrlHelper;
     private final MailService mailService;
     private final SellerEmailVerificationUrlHelper sellerEmailVerificationUrlHelper;
+    private final PasswordEncoder passwordEncoder;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     @Override
     @Transactional(readOnly = true)
@@ -373,6 +380,114 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         response.put("email", seller.getEmail());
         response.put("message", "Verification email sent successfully.");
         return response;
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> createSeller(Map<String, Object> body) {
+        String firstName = requireNonBlank(stringAt(body, "firstName"), "firstName");
+        String lastName = stringAt(body, "lastName");
+        if (lastName == null) {
+            lastName = stringAt(body, "last_name");
+        }
+        String email = requireNonBlank(stringAt(body, "email"), "email").trim().toLowerCase(Locale.ROOT);
+        String mobile = stringAt(body, "mobile");
+        if (mobile == null || mobile.isBlank()) {
+            mobile = stringAt(body, "phone");
+        }
+        if (mobile == null || mobile.isBlank()) {
+            throw new IllegalArgumentException("mobile is required.");
+        }
+        String mobileDigits = mobile.replaceAll("\\D", "");
+        if (mobileDigits.length() < 10) {
+            throw new IllegalArgumentException("mobile must contain at least 10 digits.");
+        }
+
+        if (sellerRepository.existsByEmailIgnoreCase(email)) {
+            throw new IllegalArgumentException("An account with this email already exists.");
+        }
+
+        String tempPassword = stringAt(body, "password");
+        if (tempPassword == null || tempPassword.isBlank()) {
+            tempPassword = generateTempPassword();
+        }
+
+        String statusRaw = stringAt(body, "status");
+        SellerAccountStatus status = SellerAccountStatus.email_pending;
+        if (statusRaw != null && !statusRaw.isBlank()) {
+            try {
+                status = SellerAccountStatus.valueOf(statusRaw.trim().toLowerCase(Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException(
+                        "status must be one of: pending, email_pending, active, inactive, suspended, rejected.");
+            }
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        String token = UUID.randomUUID().toString().replace("-", "");
+
+        Seller seller = new Seller();
+        seller.setFirstName(firstName.trim());
+        seller.setLastName(lastName != null ? lastName.trim() : "");
+        seller.setEmail(email);
+        seller.setMobile(mobileDigits);
+        seller.setPassword(AdminPasswordSupport.encodeIfNeeded(passwordEncoder, tempPassword));
+        seller.setEmailVerified(false);
+        seller.setEmailVerificationToken(token);
+        seller.setMobileVerified(false);
+        seller.setStatus(status);
+        seller.setProfileCompleted(false);
+        seller.setKycCompleted(false);
+        seller.setKycVerified(false);
+        seller.setWalletBalance(BigDecimal.ZERO);
+        seller.setCreatedAt(now);
+        seller.setUpdatedAt(now);
+        seller.setSellerUniqueId(null);
+
+        seller = sellerRepository.save(seller);
+        if (seller.getSellerUniqueId() == null || seller.getSellerUniqueId().isBlank()) {
+            seller.setSellerUniqueId(formatSellerUniqueId(seller.getId()));
+            seller = sellerRepository.save(seller);
+        }
+
+        boolean sendEmail = body.get("sendEmail") == null || Boolean.TRUE.equals(asBool(body.get("sendEmail")));
+        if (sendEmail) {
+            String verifyLink = sellerEmailVerificationUrlHelper.buildEmailLinkClickUrl(token);
+            mailService.sendEmailVerificationLinkEmail(seller.getEmail(), seller.getFullName(), verifyLink);
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", seller.getId());
+        response.put("sellerUniqueId", resolveSellerUniqueId(seller));
+        response.put("firstName", seller.getFirstName());
+        response.put("lastName", seller.getLastName());
+        response.put("email", seller.getEmail());
+        response.put("mobile", seller.getMobile());
+        response.put("status", seller.getStatus() != null ? seller.getStatus().name() : null);
+        response.put("temporaryPassword", tempPassword);
+        response.put("emailVerificationSent", sendEmail);
+        response.put("message", "Seller created successfully.");
+        return response;
+    }
+
+    private String generateTempPassword() {
+        final String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$";
+        StringBuilder sb = new StringBuilder("Ft!");
+        for (int i = 0; i < 9; i++) {
+            sb.append(alphabet.charAt(secureRandom.nextInt(alphabet.length())));
+        }
+        return sb.toString();
+    }
+
+    private boolean asBool(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        if (value == null) {
+            return false;
+        }
+        String text = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
+        return "true".equals(text) || "1".equals(text) || "yes".equals(text);
     }
 
     @Override

@@ -23,7 +23,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("SELECT COUNT(p) FROM Product p WHERE LOWER(p.status) = 'rejected'")
     long countRejected();
 
-    @Query("SELECT COUNT(p) FROM Product p WHERE LOWER(p.status) IN ('inactive', 'rejected')")
+    @Query("SELECT COUNT(p) FROM Product p WHERE LOWER(p.status) = 'inactive'")
     long countInactiveProducts();
 
     @Query("""

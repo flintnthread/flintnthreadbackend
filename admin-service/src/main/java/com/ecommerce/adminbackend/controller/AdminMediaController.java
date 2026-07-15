@@ -45,6 +45,9 @@ public class AdminMediaController {
     @Value("${app.upload.subcategories-directory:uploads/subcategories}")
     private String subcategoriesUploadDirectory;
 
+    @Value("${app.upload.cms-directory:uploads/cms}")
+    private String cmsUploadDirectory;
+
     @GetMapping("/uploads/categories/{filename:.+}")
     public ResponseEntity<?> categoryMedia(@PathVariable String filename) {
         return serveOrRedirect(
@@ -59,6 +62,15 @@ public class AdminMediaController {
                 subcategoriesUploadDirectory,
                 "uploads/subcategories/" + filename,
                 filename);
+    }
+
+    @GetMapping("/uploads/cms/{*relativePath}")
+    public ResponseEntity<?> cmsMedia(@PathVariable String relativePath) {
+        String normalized = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
+        return serveOrRedirect(
+                cmsUploadDirectory,
+                "uploads/cms/" + normalized,
+                normalized);
     }
 
     @GetMapping("/uploads/sellers/{filename:.+}")

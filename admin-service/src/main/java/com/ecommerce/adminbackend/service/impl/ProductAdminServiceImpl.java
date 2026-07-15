@@ -293,6 +293,56 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         return Map.of("productId", id, "status", "rejected", "message", "Product rejected.");
     }
 
+    @Override
+    @Transactional
+    public Map<String, Object> deactivate(Long id, String note) {
+        Product product = requireProduct(id);
+        String current = product.getStatus() != null ? product.getStatus().trim().toLowerCase() : "";
+        if (!"active".equals(current) && !"approved".equals(current)) {
+            throw new IllegalArgumentException(
+                    "Only approved/active products can be deactivated. Current status: " + product.getStatus());
+        }
+        product.setStatus("inactive");
+        product.setReviewedAt(LocalDateTime.now());
+        if (note != null && !note.isBlank()) {
+            product.setAdminNotes(note.trim());
+        } else {
+            product.setAdminNotes("Product deactivated by admin.");
+        }
+        productRepository.save(product);
+        log.info("Product deactivated: id={}", id);
+        return Map.of(
+                "productId", id,
+                "status", "inactive",
+                "message", "Product deactivated. It will not appear in the customer store.");
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> activate(Long id, String note) {
+        Product product = requireProduct(id);
+        String current = product.getStatus() != null ? product.getStatus().trim().toLowerCase() : "";
+        // pending → approve, inactive → reactivate, rejected → allow re-approve via activate
+        if ("active".equals(current) || "approved".equals(current)) {
+            return Map.of(
+                    "productId", id,
+                    "status", "active",
+                    "message", "Product is already active.");
+        }
+        product.setStatus("active");
+        product.setReviewedAt(LocalDateTime.now());
+        if (note != null && !note.isBlank()) {
+            product.setAdminNotes(note.trim());
+        }
+        applyCommissionToVariants(product);
+        productRepository.save(product);
+        log.info("Product activated: id={} previousStatus={}", id, current);
+        return Map.of(
+                "productId", id,
+                "status", "active",
+                "message", "Product activated. It is now visible in the customer store.");
+    }
+
     private Product requireProduct(Long id) {
         return requireFound(productRepository.findById(id), "Product not found.");
     }
@@ -368,8 +418,11 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         if ("active".equals(normalized) || "approved".equals(normalized)) {
             return "Active";
         }
-        if ("rejected".equals(normalized) || "inactive".equals(normalized)) {
-            return "Inactive";
+        if ("inactive".equals(normalized) || "disabled".equals(normalized)) {
+            return "Deactivated";
+        }
+        if ("rejected".equals(normalized)) {
+            return "Rejected";
         }
         return "Inactive";
     }
