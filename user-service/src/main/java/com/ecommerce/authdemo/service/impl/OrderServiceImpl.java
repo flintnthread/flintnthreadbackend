@@ -20,6 +20,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -252,17 +254,28 @@ public class OrderServiceImpl implements OrderService {
                 processReferralAfterOrderPaid(order);
             }
 
-            pushNotificationService.notifyUser(
-                    userId,
-                    "Order #" + order.getOrderNumber() + " placed",
-                    "Your order has been placed successfully.",
-                    "order",
-                    "/orders?orderId=" + order.getId()
-            );
+            boolean pendingOnline = isPendingOnlinePayment(order);
+            if (!pendingOnline) {
+                pushNotificationService.notifyUser(
+                        userId,
+                        "Order #" + order.getOrderNumber() + " placed",
+                        "Your order has been placed successfully.",
+                        "order",
+                        "/orders?orderId=" + order.getId()
+                );
+            } else {
+                pushNotificationService.notifyUser(
+                        userId,
+                        "Complete payment for #" + order.getOrderNumber(),
+                        "Your order is waiting for payment. Complete Razorpay to confirm.",
+                        "order",
+                        "/orders?orderId=" + order.getId()
+                );
+            }
 
             List<OrderItemDTO> itemDTOList = createOrderItems(order, checkoutItems);
 
-            if (!isPendingOnlinePayment(order)) {
+            if (!pendingOnline) {
                 sendOrderConfirmationEmailSafely(
                         user,
                         order,
@@ -278,51 +291,13 @@ public class OrderServiceImpl implements OrderService {
                     new OrderPlacedEvent(Math.toIntExact(order.getId()))
             );
 
-            clearCartSafely(userId);
-
-            try {
-
-                boolean isCod = isCodPaymentMethod(dto.getPaymentMethod());
-
-                String paymentStatus = order.getPaymentStatus() != null
-                        ? order.getPaymentStatus().trim().toLowerCase()
-                        : "";
-                boolean paymentConfirmed = paymentStatus.equals("paid")
-                        || paymentStatus.equals("completed")
-                        || paymentStatus.equals("success")
-                        || paymentStatus.equals("captured");
-
-                boolean shouldCreateShipment = isCod || paymentConfirmed;
-
-                if (shouldCreateShipment) {
-
-                    shiprocketService.createShipment(order);
-
-                    log.info(
-                            "Shiprocket shipment created for order {}",
-                            order.getOrderNumber()
-                    );
-                } else {
-                    log.info(
-                            "Skipping Shiprocket create for unpaid online order {}",
-                            order.getOrderNumber()
-                    );
-                }
-
-            } catch (Exception e) {
-
-                log.error(
-                        "Shiprocket shipment creation failed for order {} reason {}",
-                        order.getOrderNumber(),
-                        e.getMessage(),
-                        e
-                );
-                try {
-                    markShiprocketCreateFailed(order.getOrderNumber(), e.getMessage());
-                } catch (Exception ignore) {
-                    // keep place-order path resilient
-                }
+            // For unpaid online checkout, keep cart until Razorpay verify succeeds.
+            if (!pendingOnline) {
+                clearCartSafely(userId);
             }
+
+            // Shiprocket after commit so COD/place API returns immediately (no 15s client timeout).
+            scheduleShiprocketAfterCommit(order);
 
             return buildOrderResponse(order, itemDTOList);
 
@@ -841,38 +816,94 @@ public class OrderServiceImpl implements OrderService {
 
         order.setRazorpayPaymentId(paymentId);
 
+        if ("awaiting_payment".equalsIgnoreCase(
+                order.getOrderStatus() != null ? order.getOrderStatus().trim() : "")) {
+            order.setOrderStatus("processing");
+        }
+
         try {
             processReferralAfterOrderPaid(order);
         } catch (Exception e) {
             log.error("Error processing referral on order payment: {}", e.getMessage(), e);
         }
 
-        if (order.getShiprocketOrderId() == null
-                || order.getShiprocketOrderId().isBlank()) {
+        // Do not block payment verify on Shiprocket (avoids 15s client timeouts).
+        scheduleShiprocketAfterCommit(order);
 
+        order = orderRepository.save(order);
+        try {
+            clearCartSafely(order.getUserId());
+        } catch (Exception e) {
+            log.warn("Cart clear after payment failed for order {}: {}", order.getOrderNumber(), e.getMessage());
+        }
+        sendOrderConfirmationEmailForOrder(order);
+        return order;
+    }
+
+    /**
+     * Push to Shiprocket only after DB commit, off the request thread.
+     * Online unpaid orders are skipped until markOrderAsPaid.
+     */
+    private void scheduleShiprocketAfterCommit(Order order) {
+        if (order == null || order.getId() == null) {
+            return;
+        }
+        final Long orderId = order.getId();
+        final String orderNumber = order.getOrderNumber();
+
+        Runnable push = () -> {
             try {
-
-                shiprocketService.createShipment(order);
-
+                Order fresh = orderRepository.findById(orderId).orElse(null);
+                if (fresh == null) {
+                    return;
+                }
+                if (fresh.getShiprocketOrderId() != null && !fresh.getShiprocketOrderId().isBlank()) {
+                    return;
+                }
+                boolean isCod = isCodPaymentMethod(fresh.getPaymentMethod());
+                String paymentStatus = fresh.getPaymentStatus() != null
+                        ? fresh.getPaymentStatus().trim().toLowerCase()
+                        : "";
+                boolean paymentConfirmed = paymentStatus.equals("paid")
+                        || paymentStatus.equals("completed")
+                        || paymentStatus.equals("success")
+                        || paymentStatus.equals("captured");
+                if (!isCod && !paymentConfirmed) {
+                    log.info("Skipping Shiprocket for unpaid online order {}", orderNumber);
+                    return;
+                }
+                shiprocketService.createShipment(fresh);
+                log.info("Shiprocket shipment created for order {}", orderNumber);
             } catch (Exception e) {
-
                 log.error(
-                        "Shiprocket creation failed after payment for order {} reason {}",
-                        order.getOrderNumber(),
+                        "Shiprocket shipment creation failed for order {} reason {}",
+                        orderNumber,
                         e.getMessage(),
                         e
                 );
                 try {
-                    markShiprocketCreateFailed(order.getOrderNumber(), e.getMessage());
+                    markShiprocketCreateFailed(orderNumber, e.getMessage());
                 } catch (Exception ignore) {
-                    // keep payment path resilient
+                    // ignore
                 }
             }
+        };
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            Thread t = new Thread(push, "shiprocket-push-" + orderId);
+            t.setDaemon(true);
+            t.start();
+            return;
         }
 
-        order = orderRepository.save(order);
-        sendOrderConfirmationEmailForOrder(order);
-        return order;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                Thread t = new Thread(push, "shiprocket-push-" + orderId);
+                t.setDaemon(true);
+                t.start();
+            }
+        });
     }
 
     @Override
@@ -1147,7 +1178,12 @@ public class OrderServiceImpl implements OrderService {
                                         ? "paid"
                                         : "pending"
                 )
-                .orderStatus("processing")
+                .orderStatus(
+                        finalAmount.compareTo(BigDecimal.ZERO) <= 0
+                                || isCodPaymentMethod(dto.getPaymentMethod())
+                                ? "processing"
+                                : "awaiting_payment"
+                )
                 .shippingAddress1(address.getAddressLine1())
                 .shippingCity(address.getCity())
                 .shippingState(address.getState())
