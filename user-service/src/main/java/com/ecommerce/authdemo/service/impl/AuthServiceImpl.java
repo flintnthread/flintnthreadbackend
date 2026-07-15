@@ -265,7 +265,7 @@ public class AuthServiceImpl implements AuthService {
                     String refInput = dto.getReferralCode().trim().toUpperCase();
                     log.info("NEW USER REFERRAL: Looking up referral code: {}", refInput);
                     
-                    Optional<User> referrerOpt = userRepository.findByReferralCode(refInput);
+                    Optional<User> referrerOpt = referralService.findReferrerByReferralCode(refInput);
                     log.info("NEW USER REFERRAL: findByReferralCode result present: {}", referrerOpt.isPresent());
                     
                     if (referrerOpt.isPresent()) {
@@ -415,7 +415,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String refInput = referralCode.trim().toUpperCase();
-        Optional<User> referrerOpt = userRepository.findByReferralCode(refInput);
+        Optional<User> referrerOpt = referralService.findReferrerByReferralCode(refInput);
         if (referrerOpt.isEmpty()) {
             log.warn("EXISTING USER REFERRAL: No user found with referral code: {}", refInput);
             return;

@@ -119,10 +119,9 @@ public class ProductMapper {
                         Integer stock = v.getStock();
                         boolean inStock = stock != null && stock > 0;
 
-                        // When out of stock, return null price fields so UI can show "Out of stock"
-                        // instead of displaying a price.
-                        if (inStock) {
-                            CustomerPriceResolver.ResolvedPrice pricing =
+                        // Always expose prices for UI (home/web cards). Out-of-stock
+                        // is signaled via inStock/stock — do not null price fields.
+                        CustomerPriceResolver.ResolvedPrice pricing =
                                     customerPriceResolver.resolve(p, v);
                             vd.setMrpExclGst(v.getMrpExclGst());
                             vd.setMrpInclGst(v.getMrpInclGst());
@@ -147,26 +146,15 @@ public class ProductMapper {
                                 vd.setSellingPrice(v.getSellingPrice());
                                 vd.setSellingPriceExclGst(v.getSellingPrice());
                                 vd.setFinalPrice(v.getFinalPrice());
+                                vd.setCustomerPrice(
+                                        v.getFinalPrice() != null ? v.getFinalPrice() : v.getSellingPrice());
                                 vd.setMrpPrice(v.resolveMrpUnitPrice());
                                 vd.setTaxPercentage(v.getTaxPercentage());
                                 vd.setTaxAmount(v.getTaxAmount());
                             }
-                        } else {
-                            vd.setMrpPrice(null);
-                            vd.setMrpExclGst(null);
-                            vd.setMrpInclGst(null);
-                            vd.setSellingPrice(null);
-                            vd.setSellingPriceExclGst(null);
-                            vd.setFinalPrice(null);
-                            vd.setCustomerPrice(null);
-                            vd.setTaxPercentage(null);
-                            vd.setTaxAmount(null);
-                            vd.setCommissionPercentage(null);
-                            vd.setCommissionAmount(null);
-                        }
 
-                        vd.setDiscountPercentage(inStock ? v.getDiscountPercentage() : null);
-                        vd.setDiscountAmount(inStock ? v.getDiscountAmount() : null);
+                        vd.setDiscountPercentage(v.getDiscountPercentage());
+                        vd.setDiscountAmount(v.getDiscountAmount());
 
                         vd.setStock(stock);
                         vd.setInStock(inStock);
