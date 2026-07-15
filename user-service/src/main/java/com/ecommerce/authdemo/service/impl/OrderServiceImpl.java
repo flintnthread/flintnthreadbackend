@@ -40,6 +40,9 @@ import java.util.*;
 @Slf4j
 public class OrderServiceImpl implements OrderService {
 
+    /** Flat platform fee (INR) added to every placed order total. */
+    private static final BigDecimal PLATFORM_FEE = BigDecimal.valueOf(9);
+
     private static final ZoneId ORDER_DISPLAY_ZONE = ZoneId.of("Asia/Kolkata");
     private static final DateTimeFormatter ORDER_CREATED_DISPLAY_FORMAT =
             DateTimeFormatter.ofPattern("dd-MMM-yyyy, h:mm a", Locale.ENGLISH);
@@ -183,6 +186,9 @@ public class OrderServiceImpl implements OrderService {
                 discount = discount.add(extraDiscount);
                 finalAmount = subtotal.subtract(discount).max(BigDecimal.ZERO);
             }
+
+            // Platform fee is always added to the payable order amount at checkout.
+            finalAmount = finalAmount.add(PLATFORM_FEE).max(BigDecimal.ZERO);
 
             BigDecimal walletApplied = BigDecimal.ZERO;
             if (Boolean.TRUE.equals(dto.getUseWallet())
@@ -638,6 +644,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         boolean shiprocketCancelled = false;
+        boolean shiprocketCancelAttempted = false;
 
         try {
             String shiprocketOrderId = order.getShiprocketOrderId();
@@ -649,6 +656,7 @@ public class OrderServiceImpl implements OrderService {
             );
 
             if (shiprocketOrderId != null && !shiprocketOrderId.isBlank()) {
+                shiprocketCancelAttempted = true;
                 shiprocketCancelled =
                         shiprocketService.cancelShipment(shiprocketOrderId);
 
@@ -658,8 +666,10 @@ public class OrderServiceImpl implements OrderService {
                         shiprocketCancelled
                 );
             } else {
-                log.error(
-                        "Shiprocket order ID missing for order={}",
+                // No remote Shiprocket order to cancel — local cancel is enough.
+                shiprocketCancelled = true;
+                log.warn(
+                        "Shiprocket order ID missing for order={}, cancelling locally",
                         order.getOrderNumber()
                 );
             }
@@ -672,22 +682,23 @@ public class OrderServiceImpl implements OrderService {
             );
         }
 
-        if (shiprocketCancelled
-                || order.getShiprocketShipmentId() == null
-                || order.getShiprocketShipmentId().isBlank()) {
-
-            order.setOrderStatus("cancelled");
+        // Always cancel locally once past blocked statuses. Shiprocket cancel is
+        // best-effort so a courier API failure does not block the shopper.
+        order.setOrderStatus("cancelled");
+        if (shiprocketCancelled || !shiprocketCancelAttempted) {
             order.setShiprocketStatus("cancelled");
-
             log.info(
                     "Order fully cancelled orderNumber={} shiprocketOrderId={}",
                     order.getOrderNumber(),
                     order.getShiprocketOrderId()
             );
-
         } else {
             order.setShiprocketStatus("cancel_failed");
-            throw new OrderException("Shiprocket cancellation failed");
+            log.warn(
+                    "Order cancelled locally but Shiprocket cancel failed orderNumber={} shiprocketOrderId={}",
+                    order.getOrderNumber(),
+                    order.getShiprocketOrderId()
+            );
         }
 
         order.setCancelReason(cancelReason);
