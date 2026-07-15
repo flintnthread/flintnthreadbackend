@@ -13,6 +13,7 @@ import com.ecommerce.authdemo.exception.InvalidIdentifierException;
 import com.ecommerce.authdemo.exception.InvalidMobileException;
 import com.ecommerce.authdemo.exception.OtpExpiredException;
 import com.ecommerce.authdemo.exception.OtpNotFoundException;
+import com.ecommerce.authdemo.exception.SmsSendException;
 import com.ecommerce.authdemo.exception.TooManyAttemptsException;
 import com.ecommerce.authdemo.exception.TooManyRequestsException;
 import com.ecommerce.authdemo.repository.AdminUserRepository;
@@ -123,13 +124,18 @@ public class AuthServiceImpl implements AuthService {
             }
 
         } else {
-
-            smsService.sendSms(
-                    "+91" + identifier,
-                     "Dear Flint & Thread customer, " + otp +
-    " is your OTP, valid for the next 1 minutes to verify your mobile number for Flint & Thread customer login and account security. Please DO NOT disclose it to anyone. Flint & Thread (India) Private Limited will never ask for this OTP on WhatsApp, phone call, or email."
-                    
-            );
+            try {
+                smsService.sendSms(
+                        "+91" + identifier,
+                        "Dear Flint & Thread customer, " + otp
+                                + " is your OTP, valid for the next 1 minutes to verify your mobile number for Flint & Thread customer login and account security. Please DO NOT disclose it to anyone. Flint & Thread (India) Private Limited will never ask for this OTP on WhatsApp, phone call, or email."
+                );
+            } catch (SmsSendException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new SmsSendException(
+                        "Unable to send OTP SMS. Check Twilio in Admin → Platform Settings.");
+            }
         }
 
         return identifier.contains("@") ? "EMAIL" : "SMS";
