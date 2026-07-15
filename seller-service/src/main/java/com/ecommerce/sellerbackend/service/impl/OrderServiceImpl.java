@@ -404,7 +404,7 @@ public class OrderServiceImpl implements OrderService {
                 .billing(buildBilling(order))
                 .items(lineDtos)
                 .pricing(buildPricing(order, items))
-                .payment(buildPayment(order, createdAt))
+                .payment(buildPayment(order, createdAt, uiStatus))
                 .steps(buildSteps(uiStatus, stepDates, statusHistory))
                 .statusHistory(historyDtos)
                 .emailLogs(emailLogs)
@@ -698,12 +698,24 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-    private SellerPaymentDto buildPayment(Order order, LocalDateTime createdAt) {
+    private SellerPaymentDto buildPayment(Order order, LocalDateTime createdAt, String uiStatus) {
         String method = formatPaymentMethod(order.getPaymentMethod());
-        String status = formatPaymentStatus(order.getPaymentStatus());
-        if (isPaymentCompleted(order)) {
-            status = "Paid";
+        boolean cod = isCodPaymentMethod(order.getPaymentMethod());
+        boolean collected = !cod || "Delivered".equals(uiStatus) || "Returned".equals(uiStatus);
+
+        String status;
+        boolean paymentCompleted;
+        if (cod) {
+            status = collected ? "Paid" : "Pending";
+            paymentCompleted = collected;
+        } else {
+            status = formatPaymentStatus(order.getPaymentStatus());
+            if (isPaymentCompleted(order)) {
+                status = "Paid";
+            }
+            paymentCompleted = isPaymentCompleted(order);
         }
+
         String txnId = order.getRazorpayPaymentId() != null
                 ? order.getRazorpayPaymentId()
                 : order.getRazorpayOrderId() != null ? order.getRazorpayOrderId() : "";
@@ -712,13 +724,21 @@ public class OrderServiceImpl implements OrderService {
                 .method(method)
                 .status(status)
                 .sellerPaymentStatus(formatSellerPaymentStatus(order.getSellerPaymentStatus()))
-                .paymentCompleted(isPaymentCompleted(order))
+                .paymentCompleted(paymentCompleted)
                 .transactionId(txnId)
-                .paidOn(formatDateTime(createdAt))
+                .paidOn(collected ? formatDateTime(createdAt) : "")
                 .bankOrUpiId(method)
                 .refNo(txnId)
                 .razorpayOrderId(order.getRazorpayOrderId())
                 .build();
+    }
+
+    private boolean isCodPaymentMethod(String paymentMethod) {
+        if (paymentMethod == null || paymentMethod.isBlank()) {
+            return false;
+        }
+        String pm = paymentMethod.trim().toLowerCase(Locale.ROOT);
+        return pm.contains("cod") || pm.contains("cash") || "cash_on_delivery".equals(pm);
     }
 
     private String formatSellerPaymentStatus(String status) {

@@ -35,6 +35,14 @@ public class ProductMapper {
             return null;
         }
         if (storedPath.startsWith("http://") || storedPath.startsWith("https://")) {
+            // Legacy rows / mis-saves that point at API host for /uploads — rewrite to CDN
+            int idx = storedPath.indexOf("/uploads/");
+            if (idx >= 0 && !mediaPublicBaseUrl.isEmpty()) {
+                String base = mediaPublicBaseUrl.endsWith("/")
+                        ? mediaPublicBaseUrl.substring(0, mediaPublicBaseUrl.length() - 1)
+                        : mediaPublicBaseUrl;
+                return base + storedPath.substring(idx);
+            }
             return storedPath;
         }
         String path = storedPath.startsWith("/") ? storedPath : "/" + storedPath;
@@ -168,10 +176,22 @@ public class ProductMapper {
         if (p.getImages() != null && !p.getImages().isEmpty()) {
             List<ProductImageDTO> imageDTOs = p.getImages()
                     .stream()
+                    .sorted((a, b) -> {
+                        int ap = Boolean.TRUE.equals(a.getIsPrimary()) ? 0 : 1;
+                        int bp = Boolean.TRUE.equals(b.getIsPrimary()) ? 0 : 1;
+                        if (ap != bp) return ap - bp;
+                        int ao = a.getSortOrder() == null ? Integer.MAX_VALUE : a.getSortOrder();
+                        int bo = b.getSortOrder() == null ? Integer.MAX_VALUE : b.getSortOrder();
+                        return Integer.compare(ao, bo);
+                    })
                     .map(this::toImageDTO)
                     .collect(Collectors.toList());
 
             dto.setImages(imageDTOs);
+            // List/card convenience field used by home / admin / recent rows
+            if (!imageDTOs.isEmpty() && imageDTOs.get(0).getImageUrl() != null) {
+                dto.setImageUrl(imageDTOs.get(0).getImageUrl());
+            }
         } else {
             dto.setImages(Collections.emptyList());
         }

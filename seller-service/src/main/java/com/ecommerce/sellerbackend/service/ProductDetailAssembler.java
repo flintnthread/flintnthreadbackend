@@ -37,11 +37,17 @@ public class ProductDetailAssembler {
 
     private static final DateTimeFormatter DISPLAY_DATE =
             DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.ENGLISH);
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final AdminSettingsLookupService adminSettingsLookupService;
 
     @Value("${app.media.public-base-url:}")
     private String mediaBaseUrl;
+
+    public ProductDetailAssembler(AdminSettingsLookupService adminSettingsLookupService) {
+        this.adminSettingsLookupService = adminSettingsLookupService;
+    }
 
     public ProductDetailResponse assemble(
             Product product,
@@ -54,8 +60,11 @@ public class ProductDetailAssembler {
             Map<Long, Size> sizeById,
             SizeChart sizeChart) {
 
+        BigDecimal platformCommissionPercent =
+                adminSettingsLookupService.getSellerCommissionPercent(product.getSellerId());
+
         List<ProductVariantDetailResponse> variantDetails = variants.stream()
-                .map(v -> toVariantDetail(v, images, colorById, sizeById))
+                .map(v -> toVariantDetail(v, images, colorById, sizeById, platformCommissionPercent))
                 .toList();
 
         ProductVariant displayVariant = pickMinimumPriceVariant(variants);
@@ -171,7 +180,8 @@ public class ProductDetailAssembler {
             ProductVariant variant,
             List<ProductImage> images,
             Map<Long, Color> colorById,
-            Map<Long, Size> sizeById) {
+            Map<Long, Size> sizeById,
+            BigDecimal platformCommissionPercent) {
 
         String colorName = resolveColorName(variant.getColor(), colorById);
         String colorHex = resolveColorHex(variant.getColor(), colorById);
@@ -188,10 +198,16 @@ public class ProductDetailAssembler {
         BigDecimal taxAmt = variant.getTaxAmount() != null ? variant.getTaxAmount() : BigDecimal.ZERO;
         BigDecimal intraCity = variant.getIntraCityDeliveryCharge() != null ? variant.getIntraCityDeliveryCharge() : BigDecimal.ZERO;
         BigDecimal metroMetro = variant.getMetroMetroDeliveryCharge() != null ? variant.getMetroMetroDeliveryCharge() : BigDecimal.ZERO;
-        BigDecimal commissionPct = BigDecimal.ZERO;
-        BigDecimal commissionAmt = BigDecimal.ZERO;
-        BigDecimal totalIntra = priceWithGst.add(intraCity).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal totalMetro = priceWithGst.add(metroMetro).setScale(2, RoundingMode.HALF_UP);
+
+        // Prefer live admin_settings rate so seller UI matches Platform commission rates.
+        BigDecimal commissionPct = platformCommissionPercent != null
+                ? platformCommissionPercent
+                : (variant.getCommissionPercentage() != null ? variant.getCommissionPercentage() : BigDecimal.ZERO);
+        BigDecimal commissionAmt = priceWithGst
+                .multiply(commissionPct)
+                .divide(HUNDRED, 2, RoundingMode.HALF_UP);
+        BigDecimal totalIntra = priceWithGst.add(intraCity).add(commissionAmt).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalMetro = priceWithGst.add(metroMetro).add(commissionAmt).setScale(2, RoundingMode.HALF_UP);
 
         int discount = variant.getDiscountPercentage() != null
                 ? variant.getDiscountPercentage().setScale(0, RoundingMode.HALF_UP).intValue()

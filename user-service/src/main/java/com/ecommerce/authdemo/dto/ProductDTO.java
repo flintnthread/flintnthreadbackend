@@ -57,6 +57,11 @@ public class ProductDTO {
     private String status;
     private LocalDateTime createdAt;
 
+    /**
+     * Convenience primary image URL for list cards (also present in {@code images[].imageUrl}).
+     */
+    private String imageUrl;
+
     // 🔥 RELATIONS
     private List<ProductImageDTO> images;
     private List<ProductVariantDTO> variants;

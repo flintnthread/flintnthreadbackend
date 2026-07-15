@@ -47,7 +47,7 @@ public class CatalogController {
             @RequestHeader(SELLER_ID_HEADER) Long sellerId,
             @RequestBody VariantPricingPreviewRequest request) {
         requireSellerId(sellerId);
-        return variantPricingPreviewService.preview(request);
+        return variantPricingPreviewService.preview(sellerId, request);
     }
 
     private Long requireSellerId(Long sellerId) {

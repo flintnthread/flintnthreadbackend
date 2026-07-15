@@ -45,7 +45,8 @@ SELLER_JWT_SECRET=your-seller-jwt-secret-min-32-chars
 ADMIN_JWT_SECRET=your-admin-jwt-secret-min-32-chars
 
 # --- Other ---
-GST_LOOKUP_API_KEY=
+# AppyFlow key_secret — get from https://appyflow.in/verify-gst/
+GST_LOOKUP_API_KEY=IPgE6ihOQuaMYxsmVgst1xGGA4K2
 MEDIA_PUBLIC_BASE_URL=https://flintnthread.in
 APP_BACKEND_PUBLIC_URL=https://flintnthread.online
 # Seller web app is served under /Seller on production (see deploy-frontends-vps.sh)

@@ -42,13 +42,26 @@ public class ProductVariantCommissionSupport {
     }
 
     public EnrichedPricing enrich(ProductVariant variant, BigDecimal commissionPercent, BigDecimal defaultGst) {
+        return enrich(variant, commissionPercent, defaultGst, false);
+    }
+
+    /**
+     * @param forcePlatformRate when true, always use {@code commissionPercent} (admin rate save / approval).
+     *                          when false, keep existing variant commission if already stored.
+     */
+    public EnrichedPricing enrich(
+            ProductVariant variant,
+            BigDecimal commissionPercent,
+            BigDecimal defaultGst,
+            boolean forcePlatformRate) {
         BigDecimal sellingWithGst = resolveSellingPriceWithGst(variant, defaultGst);
         BigDecimal intra = nonNegative(variant.getIntraCityDeliveryCharge());
         BigDecimal metro = nonNegative(variant.getMetroMetroDeliveryCharge());
 
-        BigDecimal commissionPct = commissionPercent;
+        BigDecimal commissionPct;
         BigDecimal commissionAmt;
-        if (variant.getCommissionPercentage() != null
+        if (!forcePlatformRate
+                && variant.getCommissionPercentage() != null
                 && variant.getCommissionPercentage().compareTo(BigDecimal.ZERO) > 0
                 && variant.getCommissionAmount() != null
                 && variant.getCommissionAmount().compareTo(BigDecimal.ZERO) > 0) {
@@ -79,7 +92,15 @@ public class ProductVariantCommissionSupport {
     }
 
     public void applyCommission(ProductVariant variant, BigDecimal commissionPercent, BigDecimal defaultGst) {
-        EnrichedPricing pricing = enrich(variant, commissionPercent, defaultGst);
+        applyCommission(variant, commissionPercent, defaultGst, false);
+    }
+
+    public void applyCommission(
+            ProductVariant variant,
+            BigDecimal commissionPercent,
+            BigDecimal defaultGst,
+            boolean forcePlatformRate) {
+        EnrichedPricing pricing = enrich(variant, commissionPercent, defaultGst, forcePlatformRate);
         variant.setCommissionPercentage(pricing.commissionPercentage());
         variant.setCommissionAmount(pricing.commissionAmount());
         variant.setTotalPriceIntraCity(pricing.totalPriceIntraCity());

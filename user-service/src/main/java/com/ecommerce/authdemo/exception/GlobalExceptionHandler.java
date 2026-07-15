@@ -90,6 +90,13 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(SmsSendException.class)
+    public ResponseEntity<ApiResponse<Object>> handleSmsSend(SmsSendException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(
+                new ApiResponse<>(false, ex.getMessage(), null)
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Object>> handleAll(Exception ex) {
 

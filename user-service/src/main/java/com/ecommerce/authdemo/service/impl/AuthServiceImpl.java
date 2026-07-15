@@ -13,6 +13,7 @@ import com.ecommerce.authdemo.exception.InvalidIdentifierException;
 import com.ecommerce.authdemo.exception.InvalidMobileException;
 import com.ecommerce.authdemo.exception.OtpExpiredException;
 import com.ecommerce.authdemo.exception.OtpNotFoundException;
+import com.ecommerce.authdemo.exception.SmsSendException;
 import com.ecommerce.authdemo.exception.TooManyAttemptsException;
 import com.ecommerce.authdemo.exception.TooManyRequestsException;
 import com.ecommerce.authdemo.repository.AdminUserRepository;
@@ -123,13 +124,18 @@ public class AuthServiceImpl implements AuthService {
             }
 
         } else {
-
-            smsService.sendSms(
-                    "+91" + identifier,
-                     "Dear Flint & Thread customer, " + otp +
-    " is your OTP, valid for the next 1 minutes to verify your mobile number for Flint & Thread customer login and account security. Please DO NOT disclose it to anyone. Flint & Thread (India) Private Limited will never ask for this OTP on WhatsApp, phone call, or email."
-                    
-            );
+            try {
+                smsService.sendSms(
+                        "+91" + identifier,
+                        "Dear Flint & Thread customer, " + otp
+                                + " is your OTP, valid for the next 1 minutes to verify your mobile number for Flint & Thread customer login and account security. Please DO NOT disclose it to anyone. Flint & Thread (India) Private Limited will never ask for this OTP on WhatsApp, phone call, or email."
+                );
+            } catch (SmsSendException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new SmsSendException(
+                        "Unable to send OTP SMS. Check Twilio in Admin → Platform Settings.");
+            }
         }
 
         return identifier.contains("@") ? "EMAIL" : "SMS";
@@ -259,7 +265,7 @@ public class AuthServiceImpl implements AuthService {
                     String refInput = dto.getReferralCode().trim().toUpperCase();
                     log.info("NEW USER REFERRAL: Looking up referral code: {}", refInput);
                     
-                    Optional<User> referrerOpt = userRepository.findByReferralCode(refInput);
+                    Optional<User> referrerOpt = referralService.findReferrerByReferralCode(refInput);
                     log.info("NEW USER REFERRAL: findByReferralCode result present: {}", referrerOpt.isPresent());
                     
                     if (referrerOpt.isPresent()) {
@@ -409,7 +415,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String refInput = referralCode.trim().toUpperCase();
-        Optional<User> referrerOpt = userRepository.findByReferralCode(refInput);
+        Optional<User> referrerOpt = referralService.findReferrerByReferralCode(refInput);
         if (referrerOpt.isEmpty()) {
             log.warn("EXISTING USER REFERRAL: No user found with referral code: {}", refInput);
             return;

@@ -31,8 +31,10 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     Page<Product> findBySellerIdAndStatus(Long sellerId, String status, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"images", "variants"})
     List<Product> findTop10ByStatusOrderByCreatedAtDesc(String status);
 
+    @EntityGraph(attributePaths = {"images", "variants"})
     List<Product> findTop10ByStatusOrderByIdDesc(String status);
 
     List<Product> findTop5ByNameContainingIgnoreCaseAndStatus(String name, String status);

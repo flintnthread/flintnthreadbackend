@@ -17,6 +17,7 @@ import com.ecommerce.sellerbackend.repository.ProductRepository;
 import com.ecommerce.sellerbackend.repository.ProductVariantRepository;
 import com.ecommerce.sellerbackend.repository.SizeRepository;
 import com.ecommerce.sellerbackend.repository.SubcategoryRepository;
+import com.ecommerce.sellerbackend.service.AdminSettingsLookupService;
 import com.ecommerce.sellerbackend.service.DeliverySlabLookupService;
 import com.ecommerce.sellerbackend.service.ProductMediaStorageService;
 import com.ecommerce.sellerbackend.service.support.ProductCatalogResolver;
@@ -39,7 +40,6 @@ import java.util.Map;
 public class ProductCreateService {
 
     private static final BigDecimal DEFAULT_GST = new BigDecimal("5.00");
-    private static final BigDecimal COMMISSION_PERCENT = BigDecimal.ZERO;
     private static final BigDecimal DEFAULT_INTRA_CITY = new BigDecimal("175.00");
     private static final BigDecimal DEFAULT_METRO_METRO = new BigDecimal("205.00");
 
@@ -52,6 +52,7 @@ public class ProductCreateService {
     private final SizeRepository sizeRepository;
     private final ProductMediaStorageService productMediaStorageService;
     private final DeliverySlabLookupService deliverySlabLookupService;
+    private final AdminSettingsLookupService adminSettingsLookupService;
 
     @Transactional
     public CreateProductResponse create(Long sellerId, CreateProductRequest request) {
@@ -69,6 +70,7 @@ public class ProductCreateService {
         DeliveryWeightSlabResponse slab = deliverySlabLookupService.resolveForWeight(request.getProductWeight());
         BigDecimal intraCity = slab.getIntraCityCharge();
         BigDecimal metroMetro = slab.getMetroMetroCharge();
+        BigDecimal commissionPercent = adminSettingsLookupService.getSellerCommissionPercent(sellerId);
 
         Product product = new Product();
         product.setSellerId(sellerId);
@@ -127,7 +129,8 @@ public class ProductCreateService {
                     variantReq.getDiscount(),
                     gstPercent,
                     intraCity,
-                    metroMetro);
+                    metroMetro,
+                    commissionPercent);
 
             String colorName = variantReq.getColor() != null ? variantReq.getColor().trim() : "";
             String sizeName = variantReq.getSize() != null ? variantReq.getSize().trim() : "";
@@ -152,7 +155,7 @@ public class ProductCreateService {
             variant.setMrpInclGst(pricing.mrpInclGst());
             variant.setIntraCityDeliveryCharge(intraCity);
             variant.setMetroMetroDeliveryCharge(metroMetro);
-            variant.setCommissionPercentage(COMMISSION_PERCENT);
+            variant.setCommissionPercentage(commissionPercent);
             variant.setCommissionAmount(pricing.commissionAmount());
             variant.setTotalPriceIntraCity(pricing.totalIntraCity());
             variant.setTotalPriceMetroMetro(pricing.totalMetroMetro());
@@ -180,6 +183,17 @@ public class ProductCreateService {
         }
 
         saveProductLevelImages(product.getId(), request.getImages(), variantIdsByClientKey);
+
+        List<ProductImage> savedImages = productImageRepository.findByProductId(product.getId());
+        boolean requestHadImageSources = (request.getImages() != null && request.getImages().stream()
+                .anyMatch(img -> img.getSource() != null && !img.getSource().isBlank()))
+                || (request.getVariants() != null && request.getVariants().stream()
+                .anyMatch(v -> v.getImages() != null && v.getImages().stream()
+                        .anyMatch(img -> img.getSource() != null && !img.getSource().isBlank())));
+        if (requestHadImageSources && savedImages.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Product images could not be saved. Please re-select images and try again.");
+        }
 
         return CreateProductResponse.builder()
                 .productId(product.getId())
@@ -223,6 +237,9 @@ public class ProductCreateService {
             return;
         }
         String path = productMediaStorageService.storeProductImage(source);
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("Failed to store product image.");
+        }
         ProductImage image = new ProductImage();
         image.setProductId(productId);
         image.setVariantId(variantId);
@@ -273,9 +290,10 @@ public class ProductCreateService {
             BigDecimal discountOverride,
             BigDecimal gstPercent,
             BigDecimal intraCity,
-            BigDecimal metroMetro) {
+            BigDecimal metroMetro,
+            BigDecimal commissionPercent) {
         return VariantPricing.from(ProductVariantPricingCalculator.calculate(
-                mrpExcl, sellingExcl, discountOverride, gstPercent, intraCity, metroMetro));
+                mrpExcl, sellingExcl, discountOverride, gstPercent, intraCity, metroMetro, commissionPercent));
     }
 
     private VariantPricing calculateVariantPricing(
@@ -284,7 +302,8 @@ public class ProductCreateService {
             BigDecimal discountOverride,
             BigDecimal gstPercent) {
         return calculateVariantPricing(
-                mrpExcl, sellingExcl, discountOverride, gstPercent, DEFAULT_INTRA_CITY, DEFAULT_METRO_METRO);
+                mrpExcl, sellingExcl, discountOverride, gstPercent,
+                DEFAULT_INTRA_CITY, DEFAULT_METRO_METRO, BigDecimal.ZERO);
     }
 
     private String generateSku(CreateProductRequest request) {

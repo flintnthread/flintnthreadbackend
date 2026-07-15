@@ -45,6 +45,10 @@ public class MediaUrlHelper {
         }
         String trimmed = path.trim();
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            int idx = trimmed.indexOf("/uploads/");
+            if (idx >= 0 && !publicBaseUrl.isBlank()) {
+                return publicBaseUrl + trimmed.substring(idx);
+            }
             return trimmed;
         }
         String normalized = normalizeMediaPath(trimmed, folder);
