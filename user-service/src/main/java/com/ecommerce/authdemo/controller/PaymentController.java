@@ -96,6 +96,8 @@ public class PaymentController {
             response.put("data", order.toMap());
             response.put("razorpayKeyId", razorpayService.getPublicKeyId());
             response.put("key", razorpayService.getPublicKeyId());
+            response.put("currency", razorpayService.getCurrency());
+            response.put("companyName", razorpayService.getCompanyName());
 
             logger.info("[PAYMENT] create-order DONE razorpayOrderId={}", razorpayOrderId);
             return ResponseEntity.ok(response);
@@ -114,7 +116,8 @@ public class PaymentController {
                 response.put("message", "Failed to create payment order: " + detail);
             }
             response.put("error", detail);
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
+            // HTTP 200 with success=false so checkout can show the message (not Axios 502).
+            return ResponseEntity.ok(response);
         }
     }
 

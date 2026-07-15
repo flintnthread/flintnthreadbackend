@@ -11,6 +11,12 @@ public interface RazorpayService {
     /** Public key id for Razorpay Checkout (same source as createOrder). */
     String getPublicKeyId();
 
+    /** Display name on Razorpay Checkout (e.g. F&T). */
+    String getCompanyName();
+
+    /** Currency code (default INR). */
+    String getCurrency();
+
     JSONObject createRefund(
             String paymentId,
             Double amount,
