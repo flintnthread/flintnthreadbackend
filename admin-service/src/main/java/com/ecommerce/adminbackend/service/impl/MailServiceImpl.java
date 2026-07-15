@@ -89,6 +89,8 @@ public class MailServiceImpl implements MailService {
                       <p style="color:#111827;font-size:20px;font-weight:bold;line-height:1.4;margin:0 0 16px;">Hello %s,</p>
                       <p style="color:#374151;line-height:1.7;margin:0 0 20px;font-size:15px;">
                         Please verify your email address to complete your seller registration.
+                        After you click the button below, we will send a <strong>6-digit OTP</strong> to this same email.
+                        Enter that OTP on the verification page to activate your account.
                       </p>
                       <p style="text-align:center;margin:28px 0;">
                         <a href="%s" style="background:linear-gradient(135deg,#1E3A6E 0%%,#2563EB 100%%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:bold;display:inline-block;font-size:16px;">

@@ -5,7 +5,7 @@ import com.ecommerce.adminbackend.dto.product.CreateProductRequest;
 import com.ecommerce.adminbackend.dto.product.CreateProductVariantRequest;
 import com.ecommerce.adminbackend.dto.product.UpdateProductRequest;
 import com.ecommerce.adminbackend.dto.product.UpdateProductVariantRequest;
-import com.ecommerce.adminbackend.entity.DeliveryWeightSlab;
+import com.ecommerce.adminbackend.entity.DeliveryCharge;
 import com.ecommerce.adminbackend.entity.Product;
 import com.ecommerce.adminbackend.entity.ProductImage;
 import com.ecommerce.adminbackend.entity.ProductVariant;
@@ -14,7 +14,7 @@ import com.ecommerce.adminbackend.entity.Subcategory;
 import com.ecommerce.adminbackend.exception.ResourceNotFoundException;
 import com.ecommerce.adminbackend.repository.CategoryRepository;
 import com.ecommerce.adminbackend.repository.ColorRepository;
-import com.ecommerce.adminbackend.repository.DeliveryWeightSlabRepository;
+import com.ecommerce.adminbackend.repository.DeliveryChargeRepository;
 import com.ecommerce.adminbackend.repository.ProductImageRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.ProductVariantRepository;
@@ -50,7 +50,7 @@ public class ProductAdminMutationService {
     private final SubcategoryRepository subcategoryRepository;
     private final ColorRepository colorRepository;
     private final SizeRepository sizeRepository;
-    private final DeliveryWeightSlabRepository deliveryWeightSlabRepository;
+    private final DeliveryChargeRepository deliveryChargeRepository;
     private final ProductMediaStorageService productMediaStorageService;
 
     @Transactional
@@ -439,13 +439,13 @@ public class ProductAdminMutationService {
 
     private DeliveryCharges resolveDeliveryCharges(BigDecimal weightKg) {
         BigDecimal weight = weightKg != null ? weightKg : BigDecimal.ZERO;
-        List<DeliveryWeightSlab> slabs = deliveryWeightSlabRepository.findAllByOrderBySortOrderAscIdAsc();
-        for (DeliveryWeightSlab slab : slabs) {
-            if (!Boolean.TRUE.equals(slab.getActive())) {
+        List<DeliveryCharge> slabs = deliveryChargeRepository.findByStatusTrueOrderByWeightMinAscIdAsc();
+        for (DeliveryCharge slab : slabs) {
+            if (slab.getWeightMin() == null || slab.getWeightMax() == null) {
                 continue;
             }
-            if (weight.compareTo(slab.getMinWeightKg()) >= 0
-                    && weight.compareTo(slab.getMaxWeightKg()) <= 0) {
+            if (weight.compareTo(slab.getWeightMin()) >= 0
+                    && weight.compareTo(slab.getWeightMax()) <= 0) {
                 return new DeliveryCharges(slab.getIntraCityCharge(), slab.getMetroMetroCharge());
             }
         }

@@ -66,6 +66,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             String paymentMethod,
             String search,
             String sort,
+            Long sellerId,
             int page,
             int size) {
         var result = orderRepository.searchOrders(
@@ -73,6 +74,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                 blankToNull(paymentStatus),
                 blankToNull(paymentMethod),
                 blankToNull(search),
+                sellerId,
                 PageRequest.of(page, size, resolveOrderSort(sort)));
         List<Order> orders = result.getContent();
         if (orders.isEmpty()) {
@@ -127,6 +129,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                 blankToNull(paymentStatus),
                 blankToNull(paymentMethod),
                 blankToNull(search),
+                null,
                 PageRequest.of(0, 10_000, resolveOrderSort(sort)));
         List<Order> orders = result.getContent();
 

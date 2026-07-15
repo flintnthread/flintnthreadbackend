@@ -4,6 +4,7 @@ import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.dto.product.CreateProductRequest;
 import com.ecommerce.adminbackend.dto.product.UpdateProductRequest;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 public interface ProductAdminService {
@@ -24,6 +25,9 @@ public interface ProductAdminService {
     Map<String, Object> stats();
 
     Map<String, Object> catalog();
+
+    /** Resolve active delivery slab for a product weight (kg), matching seller catalog behaviour. */
+    Map<String, Object> resolveDeliveryCharge(BigDecimal weightKg);
 
     Map<String, Object> getProduct(Long id);
 
