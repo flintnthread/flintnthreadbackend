@@ -19,11 +19,13 @@ public class EmailVerificationUrlHelper {
     private String emailVerifyRedirectUrl;
 
     /**
-     * Link placed in the signup verification email. Opens the seller app, which confirms the
-     * token via the API and shows the OTP entry page.
+     * Link in the signup email. Hits seller-service directly so verification works
+     * even when the Expo web app (localhost:8081) is not running.
      */
     public String buildEmailLinkClickUrl(String emailVerificationToken) {
-        return buildFrontendTokenUrl(emailVerificationToken);
+        return trimTrailingSlash(backendPublicUrl)
+                + "/api/auth/verify-email?token="
+                + URLEncoder.encode(emailVerificationToken, StandardCharsets.UTF_8);
     }
 
     /**
@@ -32,6 +34,14 @@ public class EmailVerificationUrlHelper {
     public String buildFrontendTokenUrl(String emailVerificationToken) {
         String base = trimTrailingSlash(resolveOtpPageBaseUrl());
         return base + "?token=" + URLEncoder.encode(emailVerificationToken, StandardCharsets.UTF_8);
+    }
+
+    public String buildLoginPageUrl(String email) {
+        String base = trimTrailingSlash(frontendBaseUrl) + "/login";
+        if (email == null || email.isBlank()) {
+            return base + "?verified=1";
+        }
+        return base + "?verified=1&email=" + URLEncoder.encode(email, StandardCharsets.UTF_8);
     }
 
     public String buildOtpPageRedirect(String email, boolean otpSent, boolean alreadyVerified) {

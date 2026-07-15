@@ -3,7 +3,6 @@ package com.ecommerce.sellerbackend;
 import com.ecommerce.sellerbackend.dto.RegisterSellerRequest;
 import com.ecommerce.sellerbackend.dto.RegisterSellerResponse;
 import com.ecommerce.sellerbackend.dto.StartEmailVerificationRequest;
-import com.ecommerce.sellerbackend.dto.VerifyEmailOtpRequest;
 import com.ecommerce.sellerbackend.entity.SellerAccountStatus;
 import com.ecommerce.sellerbackend.repository.SellerRepository;
 import com.ecommerce.sellerbackend.service.EmailVerificationService;
@@ -20,6 +19,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
@@ -39,7 +39,7 @@ class EmailVerificationIntegrationTest {
 
     @Test
     @Transactional
-    void emailVerification_linkClickThenOtpVerify() {
+    void emailVerification_linkClickVerifiesImmediately() {
         String mobile = "80000" + String.format("%05d", System.currentTimeMillis() % 100000);
         String email = "emailverify" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
 
@@ -66,21 +66,13 @@ class EmailVerificationIntegrationTest {
         StartEmailVerificationRequest linkRequest = new StartEmailVerificationRequest();
         linkRequest.setToken(seller.getEmailVerificationToken());
         var startResponse = emailVerificationService.confirmEmailLink(linkRequest);
-        assertTrue(startResponse.isOtpSent());
+        assertTrue(startResponse.isAlreadyVerified());
+        assertFalse(startResponse.isOtpSent());
         assertEquals(email, startResponse.getEmail());
 
         seller = sellerRepository.findByEmailIgnoreCase(email).orElseThrow();
-        assertNotNull(seller.getOtp());
-        assertNotNull(seller.getOtpExpiresAt());
-
-        VerifyEmailOtpRequest otpRequest = new VerifyEmailOtpRequest();
-        otpRequest.setEmail(email);
-        otpRequest.setOtp(seller.getOtp());
-        var verifyResponse = emailVerificationService.verifyEmailOtp(otpRequest);
-        assertTrue(verifyResponse.isVerified());
-
-        seller = sellerRepository.findByEmailIgnoreCase(email).orElseThrow();
         assertTrue(Boolean.TRUE.equals(seller.getEmailVerified()));
+        assertNull(seller.getEmailVerificationToken());
         assertEquals(SellerAccountStatus.active, seller.getStatus());
     }
 }
