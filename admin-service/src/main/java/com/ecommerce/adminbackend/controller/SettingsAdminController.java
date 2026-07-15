@@ -46,6 +46,9 @@ public class SettingsAdminController {
                 request != null ? request.getSendgridApiKey() : null,
                 request != null ? request.getTwilioAccountSid() : null,
                 request != null ? request.getTwilioAuthToken() : null,
-                request != null ? request.getTwilioPhoneNumber() : null);
+                request != null ? request.getTwilioPhoneNumber() : null,
+                request != null ? request.getShiprocketEmail() : null,
+                request != null ? request.getShiprocketPassword() : null,
+                request != null ? request.getShiprocketPickupLocation() : null);
     }
 }

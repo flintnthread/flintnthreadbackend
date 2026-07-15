@@ -10,4 +10,7 @@ public class IntegrationSettingsRequest {
     private String twilioAccountSid;
     private String twilioAuthToken;
     private String twilioPhoneNumber;
+    private String shiprocketEmail;
+    private String shiprocketPassword;
+    private String shiprocketPickupLocation;
 }

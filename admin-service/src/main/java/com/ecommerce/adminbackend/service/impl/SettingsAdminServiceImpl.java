@@ -111,6 +111,9 @@ public class SettingsAdminServiceImpl extends BaseAdminService implements Settin
         String twilioSid = integrationSettings.getTwilioAccountSid();
         String twilioToken = integrationSettings.getTwilioAuthToken();
         String twilioPhone = integrationSettings.getTwilioPhoneNumber();
+        String shiprocketEmail = integrationSettings.getShiprocketEmail();
+        String shiprocketPassword = integrationSettings.getShiprocketPassword();
+        String shiprocketPickup = integrationSettings.getShiprocketPickupLocation();
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("sendgridApiKeyConfigured", isConfigured(sendGridKey));
@@ -119,6 +122,10 @@ public class SettingsAdminServiceImpl extends BaseAdminService implements Settin
         response.put("twilioAuthTokenConfigured", isConfigured(twilioToken));
         response.put("twilioAuthTokenMasked", maskSecret(twilioToken));
         response.put("twilioPhoneNumber", twilioPhone);
+        response.put("shiprocketEmail", shiprocketEmail);
+        response.put("shiprocketPasswordConfigured", isConfigured(shiprocketPassword));
+        response.put("shiprocketPasswordMasked", maskSecret(shiprocketPassword));
+        response.put("shiprocketPickupLocation", shiprocketPickup);
         return response;
     }
 
@@ -128,7 +135,10 @@ public class SettingsAdminServiceImpl extends BaseAdminService implements Settin
             String sendgridApiKey,
             String twilioAccountSid,
             String twilioAuthToken,
-            String twilioPhoneNumber) {
+            String twilioPhoneNumber,
+            String shiprocketEmail,
+            String shiprocketPassword,
+            String shiprocketPickupLocation) {
         if (sendgridApiKey != null && !sendgridApiKey.isBlank()) {
             upsert(PlatformIntegrationSettings.KEY_SENDGRID_API_KEY, sendgridApiKey.trim());
         }
@@ -140,6 +150,15 @@ public class SettingsAdminServiceImpl extends BaseAdminService implements Settin
         }
         if (twilioPhoneNumber != null && !twilioPhoneNumber.isBlank()) {
             upsert(PlatformIntegrationSettings.KEY_TWILIO_PHONE_NUMBER, twilioPhoneNumber.trim());
+        }
+        if (shiprocketEmail != null && !shiprocketEmail.isBlank()) {
+            upsert(PlatformIntegrationSettings.KEY_SHIPROCKET_EMAIL, shiprocketEmail.trim());
+        }
+        if (shiprocketPassword != null && !shiprocketPassword.isBlank()) {
+            upsert(PlatformIntegrationSettings.KEY_SHIPROCKET_PASSWORD, shiprocketPassword.trim());
+        }
+        if (shiprocketPickupLocation != null && !shiprocketPickupLocation.isBlank()) {
+            upsert(PlatformIntegrationSettings.KEY_SHIPROCKET_PICKUP_LOCATION, shiprocketPickupLocation.trim());
         }
         log.info("Integration settings updated from admin panel");
         return getIntegrations();
