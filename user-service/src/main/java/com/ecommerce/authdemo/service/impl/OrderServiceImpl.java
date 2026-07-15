@@ -280,20 +280,15 @@ public class OrderServiceImpl implements OrderService {
 
                 boolean isCod = isCodPaymentMethod(dto.getPaymentMethod());
 
-                boolean shouldCreateShipment =
+                String paymentStatus = order.getPaymentStatus() != null
+                        ? order.getPaymentStatus().trim().toLowerCase()
+                        : "";
+                boolean paymentConfirmed = paymentStatus.equals("paid")
+                        || paymentStatus.equals("completed")
+                        || paymentStatus.equals("success")
+                        || paymentStatus.equals("captured");
 
-                        isCod
-
-                                ||
-
-                                (
-                                        order.getPaymentStatus() != null
-
-                                                &&
-
-                                                order.getPaymentStatus()
-                                                        .equalsIgnoreCase("paid")
-                                );
+                boolean shouldCreateShipment = isCod || paymentConfirmed;
 
                 if (shouldCreateShipment) {
 
@@ -301,6 +296,11 @@ public class OrderServiceImpl implements OrderService {
 
                     log.info(
                             "Shiprocket shipment created for order {}",
+                            order.getOrderNumber()
+                    );
+                } else {
+                    log.info(
+                            "Skipping Shiprocket create for unpaid online order {}",
                             order.getOrderNumber()
                     );
                 }
@@ -833,8 +833,8 @@ public class OrderServiceImpl implements OrderService {
             log.error("Error processing referral on order payment: {}", e.getMessage(), e);
         }
 
-        if (order.getShiprocketAwbCode() == null
-                || order.getShiprocketAwbCode().isBlank()) {
+        if (order.getShiprocketOrderId() == null
+                || order.getShiprocketOrderId().isBlank()) {
 
             try {
 

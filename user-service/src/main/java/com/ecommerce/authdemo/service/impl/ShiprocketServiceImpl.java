@@ -6,6 +6,8 @@ import com.ecommerce.authdemo.dto.ShiprocketShipmentResult;
 import com.ecommerce.authdemo.entity.*;
 import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
+import com.ecommerce.authdemo.repository.ProductRepository;
+import com.ecommerce.authdemo.repository.ProductVariantRepository;
 import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.service.OrderService;
 import com.ecommerce.authdemo.service.ShiprocketService;
@@ -45,6 +47,10 @@ import java.util.*;
 
         private final OrderRepository orderRepository;
 
+        private final ProductRepository productRepository;
+
+        private final ProductVariantRepository productVariantRepository;
+
         @Value("${shiprocket.email}")
         private String email;
 
@@ -54,8 +60,12 @@ import java.util.*;
         @Value("${shiprocket.api.base-url}")
         private String apiBaseUrl;
 
-        @Value("${shiprocket.pickup-location}")
+        @Value("${shiprocket.pickup-location:work}")
         private String pickupLocation;
+
+        /** Optional map: sellerId:PickupNickname,sellerId:AnotherNickname */
+        @Value("${shiprocket.pickup-location-by-seller:}")
+        private String pickupLocationBySeller;
 
         @Override
         public String getToken() {
@@ -106,6 +116,27 @@ import java.util.*;
                 Order order
         ) {
 
+            if (order == null || order.getId() == null) {
+                throw new IllegalArgumentException("Order is required for Shiprocket shipment.");
+            }
+
+            // Idempotent: never create a duplicate Shiprocket order for the same FNT order.
+            if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
+                log.info(
+                        "Shiprocket already linked for orderNumber={} shiprocketOrderId={} — skipping create",
+                        order.getOrderNumber(),
+                        order.getShiprocketOrderId()
+                );
+                return ShiprocketShipmentResult.builder()
+                        .shipmentId(order.getShiprocketShipmentId())
+                        .awbCode(order.getShiprocketAwbCode())
+                        .trackingUrl(order.getShiprocketTrackingUrl())
+                        .courierName(order.getShiprocketCourierName() != null
+                                ? order.getShiprocketCourierName()
+                                : "Shiprocket")
+                        .build();
+            }
+
             try {
 
                 String token = getToken();
@@ -133,8 +164,10 @@ import java.util.*;
                                 headers
                         );
                 log.info(
-                        "Shiprocket Payload: {}",
-                        payload
+                        "Shiprocket Payload orderNumber={} pickup={} items={}",
+                        order.getOrderNumber(),
+                        payload.get("pickup_location"),
+                        payload.get("order_items") instanceof List<?> list ? list.size() : 0
                 );
 
                 ResponseEntity<Map> response =
@@ -154,16 +187,31 @@ import java.util.*;
                     );
                 }
                 log.info(
-                        "Shiprocket Response: {}",
+                        "Shiprocket Response for {}: {}",
+                        order.getOrderNumber(),
                         body
                 );
+
+                // status_code 1 = success on Shiprocket create/adhoc
+                Object statusCode = body.get("status_code");
+                if (statusCode != null) {
+                    int code;
+                    try {
+                        code = Integer.parseInt(String.valueOf(statusCode));
+                    } catch (NumberFormatException ex) {
+                        code = -1;
+                    }
+                    if (code != 1 && code != 200) {
+                        String message = body.get("message") != null
+                                ? String.valueOf(body.get("message"))
+                                : body.toString();
+                        throw new RuntimeException("Shiprocket rejected order: " + message);
+                    }
+                }
+
                 String shipmentId = null;
 
                 String shiprocketOrderId = null;
-
-// =====================================
-// SHIPROCKET ORDER ID PARSING
-// =====================================
 
                 if (body.containsKey("order_id")) {
 
@@ -173,10 +221,6 @@ import java.util.*;
                     shiprocketOrderId =
                             String.valueOf(orderObj);
                 }
-
-// =====================================
-// SHIPMENT ID PARSING
-// =====================================
 
                 if (body.containsKey("shipment_id")) {
 
@@ -203,10 +247,6 @@ import java.util.*;
                     }
                 }
 
-// =====================================
-// FALLBACK SHIPMENT IDS
-// =====================================
-
                 if ((shipmentId == null || shipmentId.isBlank())
                         && body.containsKey("shipment_ids")) {
 
@@ -226,9 +266,12 @@ import java.util.*;
                     }
                 }
 
-// =====================================
-// SAVE SHIPROCKET IDS
-// =====================================
+                if (shiprocketOrderId == null || shiprocketOrderId.isBlank()
+                        || "null".equalsIgnoreCase(shiprocketOrderId)) {
+                    throw new RuntimeException(
+                            "Shiprocket did not return order_id. Response: " + body
+                    );
+                }
 
                 order.setShiprocketOrderId(
                         shiprocketOrderId
@@ -255,8 +298,9 @@ import java.util.*;
 
                 String awb =
                         body.get("awb_code") != null
-                                ? body.get("awb_code")
-                                .toString()
+                                && !"null".equalsIgnoreCase(String.valueOf(body.get("awb_code")))
+                                && !String.valueOf(body.get("awb_code")).isBlank()
+                                ? String.valueOf(body.get("awb_code"))
                                 : null;
 
                 String trackingUrl =
@@ -265,12 +309,14 @@ import java.util.*;
                                 + awb
                                 : null;
 
+                String shiprocketStatus = awb != null ? "awb_assigned" : "new";
+
                 orderRepository.updateShipment(
                         order.getOrderNumber(),
                         awb,
                         "Shiprocket",
                         trackingUrl,
-                        "awb_assigned"
+                        shiprocketStatus
                 );
 
                 order.setShiprocketAwbCode(awb);
@@ -284,7 +330,7 @@ import java.util.*;
                 );
 
                 order.setShiprocketStatus(
-                        "awb_assigned"
+                        shiprocketStatus
                 );
 
                 orderRepository.save(order);
@@ -301,16 +347,22 @@ import java.util.*;
                     HttpClientErrorException
                     | HttpServerErrorException e
             ) {
-
+                String apiBody = e.getResponseBodyAsString();
+                log.error(
+                        "Shiprocket API error orderNumber={} body={}",
+                        order.getOrderNumber(),
+                        apiBody,
+                        e
+                );
                 throw new RuntimeException(
-                        "Shiprocket API error",
+                        "Shiprocket API error: " + (apiBody != null && !apiBody.isBlank() ? apiBody : e.getMessage()),
                         e
                 );
 
             } catch (Exception e) {
 
                 throw new RuntimeException(
-                        "Shipment creation failed",
+                        "Shipment creation failed: " + e.getMessage(),
                         e
                 );
             }
@@ -327,6 +379,12 @@ import java.util.*;
                             order.getId()
                     );
 
+            if (items == null || items.isEmpty()) {
+                throw new RuntimeException(
+                        "No order items found for Shiprocket order " + order.getOrderNumber()
+                );
+            }
+
             List<Map<String, Object>>
                     orderItems =
                     new ArrayList<>();
@@ -336,77 +394,64 @@ import java.util.*;
             double maxLength = 1;
             double maxWidth = 1;
             double maxHeight = 1;
+            Long primarySellerId = null;
 
             for (OrderItem item : items) {
+                enrichOrderItemFromCatalog(item);
+
+                if (primarySellerId == null && item.getSellerId() != null) {
+                    primarySellerId = item.getSellerId();
+                }
 
                 Map<String, Object> line =
                         new HashMap<>();
 
                 line.put(
                         "name",
-                        item.getProductName() != null
+                        item.getProductName() != null && !item.getProductName().isBlank()
                                 ? item.getProductName()
                                 : "Product"
                 );
 
                 line.put(
                         "sku",
-                        item.getSku() != null
+                        item.getSku() != null && !item.getSku().isBlank()
                                 ? item.getSku()
                                 : "SKU-" + item.getProductId()
                 );
 
                 line.put(
                         "units",
-                        item.getQuantity()
+                        item.getQuantity() != null ? item.getQuantity() : 1
                 );
 
                 line.put(
                         "selling_price",
-                        item.getPrice()
+                        item.getPrice() != null ? item.getPrice() : 0
                 );
 
                 line.put(
                         "hsn",
-                        item.getHsnCode() != null
+                        item.getHsnCode() != null && !item.getHsnCode().isBlank()
                                 ? item.getHsnCode()
                                 : "0000"
                 );
 
                 orderItems.add(line);
 
-                if (item.getChargeableWeight()
-                        != null) {
-
-                    totalWeight +=
-                            item.getChargeableWeight();
-                }
+                double lineWeight = item.getChargeableWeight() != null
+                        ? item.getChargeableWeight()
+                        : (item.getWeight() != null ? item.getWeight() : 0.5);
+                totalWeight += lineWeight * (item.getQuantity() != null ? item.getQuantity() : 1);
 
                 if (item.getLengthCm() != null) {
-
-                    maxLength =
-                            Math.max(
-                                    maxLength,
-                                    item.getLengthCm()
-                            );
+                    maxLength = Math.max(maxLength, item.getLengthCm());
                 }
-
                 if (item.getWidthCm() != null) {
-
-                    maxWidth =
-                            Math.max(
-                                    maxWidth,
-                                    item.getWidthCm()
-                            );
+                    maxWidth = Math.max(maxWidth, item.getWidthCm());
                 }
-
                 if (item.getHeightCm() != null) {
-
-                    maxHeight =
-                            Math.max(
-                                    maxHeight,
-                                    item.getHeightCm()
-                            );
+                    maxHeight = Math.max(maxHeight, item.getHeightCm());
                 }
             }
 
@@ -420,69 +465,26 @@ import java.util.*;
                     LocalDate.now().toString()
             );
 
-            String pickupName = pickupLocation;
-
-            if (!items.isEmpty()
-                    && items.get(0).getSellerId() != null) {
-
-                Optional<Seller> sellerOpt =
-                        sellerRepository.findById(
-                                items.get(0).getSellerId()
-                        );
-
-                if (sellerOpt.isPresent()) {
-
-                    Seller seller = sellerOpt.get();
-
-                    if (seller.getBusinessName() != null
-                            && !seller.getBusinessName().isBlank()) {
-
-                        pickupName =
-                                seller.getBusinessName();
-                    }
-                }
-            }
-
             payload.put(
                     "pickup_location",
-                    pickupName
+                    resolvePickupLocation(primarySellerId)
             );
 
             // Split customer name into first and last name for Shiprocket
             String fullName = order.getShippingName();
-            String firstName = fullName;
-            String lastName = "Customer"; // Default last name if not provided
-            
+            String firstName = fullName != null && !fullName.isBlank() ? fullName.trim() : "Customer";
+            String lastName = "Customer";
+
             if (fullName != null && fullName.trim().contains(" ")) {
                 String[] nameParts = fullName.trim().split("\\s+", 2);
                 firstName = nameParts[0];
                 lastName = nameParts.length > 1 ? nameParts[1] : "Customer";
             }
-            
-            payload.put(
-                    "billing_first_name",
-                    firstName
-            );
-            
-            payload.put(
-                    "billing_last_name",
-                    lastName
-            );
-            
-            payload.put(
-                    "billing_customer_name",
-                    fullName
-            );
 
-            payload.put(
-                    "billing_phone",
-                    order.getShippingPhone()
-            );
-
-            payload.put(
-                    "billing_email",
-                    order.getShippingEmail()
-            );
+            payload.put("billing_customer_name", firstName);
+            payload.put("billing_last_name", lastName);
+            payload.put("billing_phone", order.getShippingPhone());
+            payload.put("billing_email", order.getShippingEmail() != null ? order.getShippingEmail() : "support@flintnthread.in");
 
             String billingAddress =
                     order.getShippingAddress1();
@@ -493,87 +495,18 @@ import java.util.*;
                 billingAddress +=
                         ", " + order.getShippingAddress2();
             }
+            if (billingAddress == null || billingAddress.isBlank()) {
+                billingAddress = "Address not provided";
+            }
 
-            payload.put(
-                    "billing_address",
-                    billingAddress
-            );
+            payload.put("billing_address", billingAddress);
+            payload.put("billing_city", order.getShippingCity());
+            payload.put("billing_state", order.getShippingState());
+            payload.put("billing_pincode", order.getShippingPincode());
+            payload.put("billing_country", "India");
+            payload.put("shipping_is_billing", true);
 
-            payload.put(
-                    "billing_city",
-                    order.getShippingCity()
-            );
-
-            payload.put(
-                    "billing_state",
-                    order.getShippingState()
-            );
-
-            payload.put(
-                    "billing_pincode",
-                    order.getShippingPincode()
-            );
-
-            payload.put(
-                    "billing_country",
-                    "India"
-            );
-
-            payload.put(
-                    "shipping_is_billing",
-                    true
-            );
-
-            payload.put(
-                    "shipping_first_name",
-                    firstName
-            );
-            
-            payload.put(
-                    "shipping_last_name",
-                    lastName
-            );
-            
-            payload.put(
-                    "shipping_customer_name",
-                    fullName
-            );
-
-            payload.put(
-                    "shipping_phone",
-                    order.getShippingPhone()
-            );
-
-            payload.put(
-                    "shipping_address",
-                    billingAddress
-            );
-
-
-            payload.put(
-                    "shipping_city",
-                    order.getShippingCity()
-            );
-
-            payload.put(
-                    "shipping_state",
-                    order.getShippingState()
-            );
-
-            payload.put(
-                    "shipping_pincode",
-                    order.getShippingPincode()
-            );
-
-            payload.put(
-                    "shipping_country",
-                    "India"
-            );
-
-            payload.put(
-                    "order_items",
-                    orderItems
-            );
+            payload.put("order_items", orderItems);
 
             payload.put(
                     "payment_method",
@@ -584,7 +517,6 @@ import java.util.*;
 
             payload.put(
                     "sub_total",
-
                     order.getTotalAmount() != null
                             ? order.getTotalAmount()
                             : 0
@@ -592,52 +524,112 @@ import java.util.*;
 
             payload.put(
                     "shipping_charges",
-
                     order.getShippingAmount() != null
                             ? order.getShippingAmount()
                             : 0
             );
 
-            payload.put(
-                    "length",
-                    Math.max(maxLength, 1)
-            );
-
-            payload.put(
-                    "breadth",
-                    Math.max(maxWidth, 1)
-            );
-
-            payload.put(
-                    "height",
-                    Math.max(maxHeight, 1)
-            );
-
-            payload.put(
-                    "weight",
-                    totalWeight > 0 ? totalWeight : 0.5
-            );
+            payload.put("length", Math.max(maxLength, 1));
+            payload.put("breadth", Math.max(maxWidth, 1));
+            payload.put("height", Math.max(maxHeight, 1));
+            payload.put("weight", totalWeight > 0 ? totalWeight : 0.5);
 
             payload.put(
                     "comment",
                     "FNT Order " + order.getOrderNumber()
             );
 
-            payload.put(
-                    "channel_id",
-                    ""
-            );
-
-            payload.put(
-                    "tags",
-                    List.of(
-                            "FNT",
-                            "Marketplace",
-                            "AutoShipment"
-                    )
-            );
-
             return payload;
+        }
+
+        /**
+         * Shiprocket pickup_location must match a nickname registered in Shiprocket
+         * (e.g. "work"). Do NOT send seller business names — that causes create failures.
+         */
+        private String resolvePickupLocation(Long sellerId) {
+            String configured = pickupLocation != null && !pickupLocation.isBlank()
+                    ? pickupLocation.trim()
+                    : "work";
+
+            if (sellerId == null || pickupLocationBySeller == null || pickupLocationBySeller.isBlank()) {
+                return configured;
+            }
+
+            for (String part : pickupLocationBySeller.split(",")) {
+                String entry = part.trim();
+                if (entry.isEmpty()) {
+                    continue;
+                }
+                int colon = entry.indexOf(':');
+                if (colon <= 0 || colon >= entry.length() - 1) {
+                    continue;
+                }
+                String idPart = entry.substring(0, colon).trim();
+                String namePart = entry.substring(colon + 1).trim();
+                try {
+                    if (Long.parseLong(idPart) == sellerId && !namePart.isBlank()) {
+                        return namePart;
+                    }
+                } catch (NumberFormatException ignored) {
+                    // skip malformed mapping
+                }
+            }
+            return configured;
+        }
+
+        private void enrichOrderItemFromCatalog(OrderItem item) {
+            if (item == null || item.getProductId() == null) {
+                return;
+            }
+
+            Product product = productRepository.findById(item.getProductId()).orElse(null);
+            ProductVariant variant = null;
+            if (item.getVariantId() != null) {
+                variant = productVariantRepository.findById(item.getVariantId()).orElse(null);
+            }
+
+            if ((item.getProductName() == null || item.getProductName().isBlank()) && product != null) {
+                item.setProductName(product.getName());
+            }
+            if ((item.getHsnCode() == null || item.getHsnCode().isBlank()) && product != null) {
+                item.setHsnCode(product.getHsnCode());
+            }
+            if ((item.getSku() == null || item.getSku().isBlank())) {
+                if (variant != null && variant.getSku() != null && !variant.getSku().isBlank()) {
+                    item.setSku(variant.getSku());
+                } else if (product != null && product.getSku() != null) {
+                    item.setSku(product.getSku());
+                }
+            }
+
+            double length = item.getLengthCm() != null
+                    ? item.getLengthCm()
+                    : (product != null && product.getLengthCm() != null ? product.getLengthCm().doubleValue() : 1.0);
+            double width = item.getWidthCm() != null
+                    ? item.getWidthCm()
+                    : (product != null && product.getWidthCm() != null ? product.getWidthCm().doubleValue() : 1.0);
+            double height = item.getHeightCm() != null
+                    ? item.getHeightCm()
+                    : (product != null && product.getHeightCm() != null ? product.getHeightCm().doubleValue() : 1.0);
+            double weight = item.getWeight() != null
+                    ? item.getWeight()
+                    : (variant != null && variant.getWeight() != null
+                    ? variant.getWeight().doubleValue()
+                    : (product != null && product.getProductWeight() != null
+                    ? product.getProductWeight().doubleValue()
+                    : 0.5));
+
+            item.setLengthCm(length);
+            item.setWidthCm(width);
+            item.setHeightCm(height);
+            item.setWeight(weight);
+            double volumetric = (length * width * height) / 5000.0;
+            item.setVolumetricWeight(volumetric);
+            item.setChargeableWeight(Math.max(weight, volumetric));
+
+            if (item.getSellerId() == null && product != null && product.getSellerId() != null) {
+                item.setSellerId(product.getSellerId());
+            }
         }
 
 

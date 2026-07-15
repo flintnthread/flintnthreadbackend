@@ -137,20 +137,29 @@ public class PaymentController {
                     response.put("orderId", paidOrder.getId());
                     response.put("order_number", paidOrder.getOrderNumber());
 
-                    try {
-                        logger.info("[PAYMENT] verify Shiprocket createShipment START orderNumber={}", paidOrder.getOrderNumber());
-                        ShiprocketShipmentResult sr = shiprocketService.createShipment(paidOrder);
-                        logger.info("[PAYMENT] verify Shiprocket createShipment DONE shipmentId={} awb={}",
-                                sr.getShipmentId(), sr.getAwbCode());
-
+                    // createShipment is already attempted inside markOrderAsPaid (idempotent).
+                    boolean alreadyLinked = paidOrder.getShiprocketOrderId() != null
+                            && !paidOrder.getShiprocketOrderId().isBlank();
+                    if (alreadyLinked) {
                         response.put("shipping_initiated", true);
-                        response.put("shiprocket", sr.toMap());
-                    } catch (Exception shippingError) {
-                        logger.error("[PAYMENT] verify Shiprocket FAILED (payment still ok) orderNumber={}",
-                                paidOrder.getOrderNumber(), shippingError);
-                        response.put("shipping_initiated", false);
-                        response.put("shipping_error", "Shiprocket order could not be created. Order is paid; retry shipment from admin.");
-                        response.put("shipping_error_detail", shippingError.getMessage());
+                        response.put("shiprocket_order_id", paidOrder.getShiprocketOrderId());
+                        response.put("shiprocket_shipment_id", paidOrder.getShiprocketShipmentId());
+                    } else {
+                        try {
+                            logger.info("[PAYMENT] verify Shiprocket createShipment START orderNumber={}", paidOrder.getOrderNumber());
+                            ShiprocketShipmentResult sr = shiprocketService.createShipment(paidOrder);
+                            logger.info("[PAYMENT] verify Shiprocket createShipment DONE shipmentId={} awb={}",
+                                    sr.getShipmentId(), sr.getAwbCode());
+
+                            response.put("shipping_initiated", true);
+                            response.put("shiprocket", sr.toMap());
+                        } catch (Exception shippingError) {
+                            logger.error("[PAYMENT] verify Shiprocket FAILED (payment still ok) orderNumber={}",
+                                    paidOrder.getOrderNumber(), shippingError);
+                            response.put("shipping_initiated", false);
+                            response.put("shipping_error", "Shiprocket order could not be created. Order is paid; retry shipment from admin.");
+                            response.put("shipping_error_detail", shippingError.getMessage());
+                        }
                     }
                 } catch (Exception markPaidError) {
                     logger.error("[PAYMENT] verify markOrderAsPaid FAILED razorpayOrderId={}", orderId, markPaidError);
