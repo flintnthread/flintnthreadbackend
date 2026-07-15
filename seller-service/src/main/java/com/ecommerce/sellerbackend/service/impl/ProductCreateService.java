@@ -184,6 +184,17 @@ public class ProductCreateService {
 
         saveProductLevelImages(product.getId(), request.getImages(), variantIdsByClientKey);
 
+        List<ProductImage> savedImages = productImageRepository.findByProductId(product.getId());
+        boolean requestHadImageSources = (request.getImages() != null && request.getImages().stream()
+                .anyMatch(img -> img.getSource() != null && !img.getSource().isBlank()))
+                || (request.getVariants() != null && request.getVariants().stream()
+                .anyMatch(v -> v.getImages() != null && v.getImages().stream()
+                        .anyMatch(img -> img.getSource() != null && !img.getSource().isBlank())));
+        if (requestHadImageSources && savedImages.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Product images could not be saved. Please re-select images and try again.");
+        }
+
         return CreateProductResponse.builder()
                 .productId(product.getId())
                 .variants(createdVariants)
@@ -226,6 +237,9 @@ public class ProductCreateService {
             return;
         }
         String path = productMediaStorageService.storeProductImage(source);
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("Failed to store product image.");
+        }
         ProductImage image = new ProductImage();
         image.setProductId(productId);
         image.setVariantId(variantId);

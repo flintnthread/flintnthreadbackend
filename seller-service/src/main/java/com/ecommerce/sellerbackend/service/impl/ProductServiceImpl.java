@@ -405,6 +405,14 @@ public class ProductServiceImpl implements ProductService {
             return "";
         }
         if (path.startsWith("http://") || path.startsWith("https://")) {
+            int idx = path.indexOf("/uploads/");
+            String base = mediaBaseUrl == null ? "" : mediaBaseUrl.trim();
+            if (idx >= 0 && !base.isEmpty()) {
+                if (base.endsWith("/")) {
+                    base = base.substring(0, base.length() - 1);
+                }
+                return base + path.substring(idx);
+            }
             return path;
         }
         String base = mediaBaseUrl == null ? "" : mediaBaseUrl.trim();

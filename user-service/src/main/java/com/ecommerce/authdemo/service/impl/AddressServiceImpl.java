@@ -38,29 +38,38 @@ public class AddressServiceImpl implements AddressService {
         return securityUtil.getCurrentUser();
     }
 
+    /** ~100m — treat GPS points this close as the same delivery location. */
+    private static final double SAME_LOCATION_DEGREES = 0.0009;
+
     @Override
     @Transactional
     public Address addAddress(AddressRequest request) {
 
         Long userId = getUserId();
+        List<Address> existing = addressRepository.findByUserId(userId);
+        boolean isFirst = existing.isEmpty();
 
-        boolean isFirst = addressRepository.findByUserId(userId).isEmpty();
-
-        if (Boolean.TRUE.equals(request.getIsDefault())) {
-            clearDefault(userId);
-        }
-
+        // Only fill missing fields from GPS — never overwrite a client-provided address
         if (request.getLatitude() != null && request.getLongitude() != null) {
-
             Map<String, String> location =
                     getAddressFromLatLng(request.getLatitude(), request.getLongitude());
 
-            request.setAddressLine1(location.get("fullAddress"));
-            request.setCity(location.get("city"));
-            request.setState(location.get("state"));
-            request.setCountry(location.get("country"));
-            request.setPincode(location.get("pincode"));
-
+            if (isBlank(request.getAddressLine1())) {
+                request.setAddressLine1(location.get("fullAddress"));
+            }
+            if (isBlank(request.getCity())) {
+                request.setCity(location.get("city"));
+            }
+            if (isBlank(request.getState())) {
+                request.setState(location.get("state"));
+            }
+            if (isBlank(request.getCountry())) {
+                request.setCountry(location.get("country"));
+            }
+            if (isBlank(request.getPincode())
+                    || !String.valueOf(request.getPincode()).trim().matches("^[0-9]{6}$")) {
+                request.setPincode(location.get("pincode"));
+            }
         }
 
         String pincode = request.getPincode() != null ? request.getPincode().trim() : "";
@@ -81,20 +90,40 @@ public class AddressServiceImpl implements AddressService {
             throw new IllegalArgumentException("City is required");
         }
 
+        // Same address already saved for this user → reuse (no duplicate rows)
+        Address duplicate = findDuplicateAddress(existing, request);
+        if (duplicate != null) {
+            return reuseExistingAddress(duplicate, request, userId);
+        }
+
+        if (Boolean.TRUE.equals(request.getIsDefault())) {
+            clearDefault(userId);
+        }
+
         User user = getCurrentUser();
 
-        Address address = Address.builder()
-                .userId(userId)
-                .name(request.getName() != null ? request.getName() : "Current Location")
-                .email(request.getEmail() != null ? request.getEmail() : user.getEmail())
-                .phone(request.getPhone() != null ? request.getPhone() : user.getContactNumber())
+String phone = request.getPhone();
+
+if (phone == null || phone.trim().isEmpty()) {
+    phone = user.getContactNumber();
+}
+
+if (phone == null || phone.trim().isEmpty()) {
+    throw new IllegalArgumentException("Phone number is required");
+}
+
+Address address = Address.builder()
+        .userId(userId)
+        .name(request.getName() != null ? request.getName() : "Current Location")
+        .email(request.getEmail() != null ? request.getEmail() : user.getEmail())
+        .phone(phone)
                 .addressLine1(request.getAddressLine1())
                 .addressLine2(request.getAddressLine2())
                 .city(request.getCity())
                 .state(request.getState())
-                .country(request.getCountry())
+                .country(request.getCountry() != null ? request.getCountry() : "India")
                 .pincode(request.getPincode())
-                .addressType(request.getAddressType() != null ? request.getAddressType() : "current")
+                .addressType(request.getAddressType() != null ? request.getAddressType() : "home")
                 .isDefault(isFirst || Boolean.TRUE.equals(request.getIsDefault()))
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
@@ -103,6 +132,100 @@ public class AddressServiceImpl implements AddressService {
                 .build();
 
         return addressRepository.save(address);
+    }
+
+    private Address reuseExistingAddress(Address existing, AddressRequest request, Long userId) {
+        boolean dirty = false;
+
+        if (request.getLatitude() != null && request.getLongitude() != null) {
+            existing.setLatitude(request.getLatitude());
+            existing.setLongitude(request.getLongitude());
+            dirty = true;
+        }
+        if (!isBlank(request.getPhone()) && isBlank(existing.getPhone())) {
+            existing.setPhone(request.getPhone().trim());
+            dirty = true;
+        }
+        if (!isBlank(request.getEmail()) && isBlank(existing.getEmail())) {
+            existing.setEmail(request.getEmail().trim());
+            dirty = true;
+        }
+        if (!isBlank(request.getName()) && isBlank(existing.getName())) {
+            existing.setName(request.getName().trim());
+            dirty = true;
+        }
+
+        if (Boolean.TRUE.equals(request.getIsDefault()) && !Boolean.TRUE.equals(existing.getIsDefault())) {
+            clearDefault(userId);
+            existing.setIsDefault(true);
+            dirty = true;
+        }
+
+        existing.setUpdatedAt(LocalDateTime.now());
+        return dirty ? addressRepository.save(existing) : existing;
+    }
+
+    private Address findDuplicateAddress(List<Address> existing, AddressRequest request) {
+        if (existing == null || existing.isEmpty()) {
+            return null;
+        }
+
+        String wantedPin = normalizePincode(request.getPincode());
+        String wantedLine = normalizeAddressKey(request.getAddressLine1(), request.getAddressLine2());
+        String wantedCity = normalizeKey(request.getCity());
+        Double lat = request.getLatitude();
+        Double lng = request.getLongitude();
+
+        for (Address row : existing) {
+            String rowPin = normalizePincode(row.getPincode());
+            if (!wantedPin.isEmpty() && !wantedPin.equals(rowPin)) {
+                continue;
+            }
+
+            // Same GPS spot (current location / map pin)
+            if (lat != null && lng != null
+                    && row.getLatitude() != null && row.getLongitude() != null
+                    && Math.abs(lat - row.getLatitude()) <= SAME_LOCATION_DEGREES
+                    && Math.abs(lng - row.getLongitude()) <= SAME_LOCATION_DEGREES) {
+                return row;
+            }
+
+            String rowLine = normalizeAddressKey(row.getAddressLine1(), row.getAddressLine2());
+            String rowCity = normalizeKey(row.getCity());
+            if (!wantedLine.isEmpty() && wantedLine.equals(rowLine)
+                    && (wantedCity.isEmpty() || wantedCity.equals(rowCity))) {
+                return row;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static String normalizePincode(String value) {
+        if (value == null) {
+            return "";
+        }
+        String digits = value.replaceAll("\\D", "");
+        return digits.length() == 6 ? digits : "";
+    }
+
+    private static String normalizeKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase()
+                .replace('\u00b7', ' ')
+                .replaceAll("[,|./\\\\-]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private static String normalizeAddressKey(String line1, String line2) {
+        String joined = ((line1 != null ? line1 : "") + " " + (line2 != null ? line2 : "")).trim();
+        return normalizeKey(joined);
     }
 
     private Map<String, String> getAddressFromLatLng(Double lat, Double lng) {
@@ -187,7 +310,17 @@ public class AddressServiceImpl implements AddressService {
 
         address.setName(request.getName());
         address.setEmail(request.getEmail());
-        address.setPhone(request.getPhone());
+String phone = request.getPhone();
+
+if (phone == null || phone.trim().isEmpty()) {
+    phone = getCurrentUser().getContactNumber();
+}
+
+if (phone == null || phone.trim().isEmpty()) {
+    throw new IllegalArgumentException("Phone number is required");
+}
+
+address.setPhone(phone);
         address.setAddressLine1(request.getAddressLine1());
         address.setAddressLine2(request.getAddressLine2());
         address.setCity(request.getCity());

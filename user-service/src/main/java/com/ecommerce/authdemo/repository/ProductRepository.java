@@ -31,8 +31,10 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     Page<Product> findBySellerIdAndStatus(Long sellerId, String status, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"images", "variants"})
     List<Product> findTop10ByStatusOrderByCreatedAtDesc(String status);
 
+    @EntityGraph(attributePaths = {"images", "variants"})
     List<Product> findTop10ByStatusOrderByIdDesc(String status);
 
     List<Product> findTop5ByNameContainingIgnoreCaseAndStatus(String name, String status);
@@ -868,35 +870,81 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @Query(value = """
     SELECT p.*
     FROM products p
-    JOIN product_variants v ON v.product_id = p.id
-    WHERE p.status = 'active'
-      AND v.selling_price > 0
-    GROUP BY p.id
-    ORDER BY MIN(v.selling_price) ASC
-""", nativeQuery = true)
+    INNER JOIN (
+        SELECT v.product_id AS product_id, MIN(v.selling_price) AS sort_price
+        FROM product_variants v
+        WHERE v.selling_price IS NOT NULL AND v.selling_price > 0
+        GROUP BY v.product_id
+    ) sorted ON sorted.product_id = p.id
+    WHERE LOWER(TRIM(p.status)) IN ('active', 'approved')
+    ORDER BY sorted.sort_price ASC
+""",
+        countQuery = """
+    SELECT COUNT(*)
+    FROM products p
+    INNER JOIN (
+        SELECT v.product_id AS product_id
+        FROM product_variants v
+        WHERE v.selling_price IS NOT NULL AND v.selling_price > 0
+        GROUP BY v.product_id
+    ) sorted ON sorted.product_id = p.id
+    WHERE LOWER(TRIM(p.status)) IN ('active', 'approved')
+""",
+        nativeQuery = true)
     Page<Product> findLowToHigh(Pageable pageable);
 
     @Query(value = """
     SELECT p.*
     FROM products p
-    JOIN product_variants v ON v.product_id = p.id
-    WHERE p.status = 'active'
-      AND v.selling_price > 0
-    GROUP BY p.id
-    ORDER BY MAX(v.selling_price) DESC
-""", nativeQuery = true)
+    INNER JOIN (
+        SELECT v.product_id AS product_id, MAX(v.selling_price) AS sort_price
+        FROM product_variants v
+        WHERE v.selling_price IS NOT NULL AND v.selling_price > 0
+        GROUP BY v.product_id
+    ) sorted ON sorted.product_id = p.id
+    WHERE LOWER(TRIM(p.status)) IN ('active', 'approved')
+    ORDER BY sorted.sort_price DESC
+""",
+        countQuery = """
+    SELECT COUNT(*)
+    FROM products p
+    INNER JOIN (
+        SELECT v.product_id AS product_id
+        FROM product_variants v
+        WHERE v.selling_price IS NOT NULL AND v.selling_price > 0
+        GROUP BY v.product_id
+    ) sorted ON sorted.product_id = p.id
+    WHERE LOWER(TRIM(p.status)) IN ('active', 'approved')
+""",
+        nativeQuery = true)
     Page<Product> findHighToLow(Pageable pageable);
 
     @Query(value = """
     SELECT p.*
     FROM products p
-    JOIN product_variants v ON v.product_id = p.id
-    WHERE p.status = 'active'
-      AND v.discount_percentage > 0
-      AND v.selling_price > 0
-    GROUP BY p.id
-    ORDER BY MAX(v.discount_percentage) DESC
-""", nativeQuery = true)
+    INNER JOIN (
+        SELECT v.product_id AS product_id, MAX(v.discount_percentage) AS sort_discount
+        FROM product_variants v
+        WHERE v.selling_price IS NOT NULL AND v.selling_price > 0
+          AND v.discount_percentage IS NOT NULL AND v.discount_percentage > 0
+        GROUP BY v.product_id
+    ) sorted ON sorted.product_id = p.id
+    WHERE LOWER(TRIM(p.status)) IN ('active', 'approved')
+    ORDER BY sorted.sort_discount DESC
+""",
+        countQuery = """
+    SELECT COUNT(*)
+    FROM products p
+    INNER JOIN (
+        SELECT v.product_id AS product_id
+        FROM product_variants v
+        WHERE v.selling_price IS NOT NULL AND v.selling_price > 0
+          AND v.discount_percentage IS NOT NULL AND v.discount_percentage > 0
+        GROUP BY v.product_id
+    ) sorted ON sorted.product_id = p.id
+    WHERE LOWER(TRIM(p.status)) IN ('active', 'approved')
+""",
+        nativeQuery = true)
     Page<Product> findDiscountProducts(Pageable pageable);
     // ---------------- PRODUCTS BY MAIN CATEGORY (INCLUDING SUBCATEGORIES) ----------------
 

@@ -21,7 +21,7 @@ public class AddressController {
     @PostMapping
     public ResponseEntity<ApiResponse<Address>> add(@Valid @RequestBody AddressRequest request) {
         Address address = addressService.addAddress(request);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Address added successfully", address));
+        return ResponseEntity.ok(new ApiResponse<>(true, "Address saved successfully", address));
     }
 
     @GetMapping
