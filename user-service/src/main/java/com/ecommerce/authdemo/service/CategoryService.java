@@ -32,6 +32,12 @@ public interface CategoryService {
     // Get subcategories from SubCategory table
     List<CategoryWithSubDTO> getSubCategoriesFromTable(Long categoryId);
 
+    /**
+     * Flat list of leaf subcategories under a main category
+     * (walks mid-level category children + their {@code subcategories} rows).
+     */
+    List<SubCategoryResponseDTO> getAllSubcategoriesUnderMain(Long mainCategoryId);
+
     // Search both categories and products
     Map<String, Object> searchAll(String keyword);
 
