@@ -22,11 +22,23 @@ public final class OrderConfirmationEmailBuilder {
     }
 
     public static String buildSubject(String orderNumber) {
+        return buildSubject(orderNumber, OrderConfirmationEmailModel.RECIPIENT_CUSTOMER);
+    }
+
+    public static String buildSubject(String orderNumber, String recipientType) {
         String num = safe(orderNumber);
-        return "Order Confirmation - #" + num + " | Flint & Thread";
+        return switch (normalizeRecipientType(recipientType)) {
+            case OrderConfirmationEmailModel.RECIPIENT_SELLER ->
+                    "New Order Received - #" + num + " | Flint & Thread";
+            case OrderConfirmationEmailModel.RECIPIENT_ADMIN ->
+                    "New Order Notification - #" + num + " | Flint & Thread";
+            default -> "Order Confirmation - #" + num + " | Flint & Thread";
+        };
     }
 
     public static String buildHtml(OrderConfirmationEmailModel model) {
+        String recipientType = normalizeRecipientType(model.recipientType());
+        String greetingName = escape(safe(model.recipientName()));
         String customerName = escape(safe(model.customerName()));
         String orderNumber = escape(safe(model.orderNumber()));
         String orderDate = escape(safe(model.orderDate()));
@@ -34,8 +46,11 @@ public final class OrderConfirmationEmailBuilder {
         String paymentStatus = escape(safe(model.paymentStatusLabel()));
         String shippingAddress = escape(safe(model.shippingAddress())).replace("\n", "<br/>");
         String orderViewUrl = escape(safe(model.orderViewUrl()));
+        // Same branded layout for customer / seller / admin — only copy changes.
         String itemsHtml = buildItemsRows(model.items());
         String breakdownHtml = buildBreakdownRows(model);
+        HeroCopy heroCopy = resolveHeroCopy(recipientType);
+        String introHtml = buildIntroParagraph(recipientType, customerName);
 
         return """
             <!DOCTYPE html>
@@ -61,16 +76,16 @@ public final class OrderConfirmationEmailBuilder {
                       <tr>
                         <td style="padding:0 24px 20px;">
                           <div style="background:linear-gradient(135deg,%1$s 0%%,%2$s 100%%);border-radius:10px;padding:28px 20px;text-align:center;color:#ffffff;">
-                            <div style="font-size:32px;line-height:1;margin-bottom:8px;">&#127881;</div>
-                            <div style="font-size:22px;font-weight:800;margin-bottom:6px;">Order Confirmed!</div>
-                            <div style="font-size:14px;opacity:0.95;">Thank you for your purchase</div>
+                            <div style="font-size:32px;line-height:1;margin-bottom:8px;">%14$s</div>
+                            <div style="font-size:22px;font-weight:800;margin-bottom:6px;">%15$s</div>
+                            <div style="font-size:14px;opacity:0.95;">%16$s</div>
                           </div>
                         </td>
                       </tr>
                       <tr>
                         <td style="padding:0 24px 16px;font-size:15px;line-height:1.6;color:#374151;">
                           <p style="margin:0 0 12px;">Hello <strong>%3$s</strong>,</p>
-                          <p style="margin:0;">Your order has been successfully placed and is being processed. We&apos;re excited to get your items to you!</p>
+                          %17$s
                         </td>
                       </tr>
                       <tr>
@@ -106,7 +121,7 @@ public final class OrderConfirmationEmailBuilder {
                       %13$s
                       <tr>
                         <td style="padding:16px 24px 24px;border-top:1px solid #f3f4f6;font-size:12px;color:#9ca3af;text-align:center;line-height:1.5;">
-                          Questions? Contact us at <a href="mailto:%14$s" style="color:%1$s;">%14$s</a><br/>
+                          Questions? Contact us at <a href="mailto:%18$s" style="color:%1$s;">%18$s</a><br/>
                           &copy; Flint &amp; Thread &mdash; <a href="https://flintnthread.in" style="color:%1$s;">flintnthread.in</a>
                         </td>
                       </tr>
@@ -119,7 +134,7 @@ public final class OrderConfirmationEmailBuilder {
             """.formatted(
                 BRAND_ORANGE,
                 BRAND_ORANGE_DARK,
-                customerName,
+                greetingName,
                 orderNumber,
                 orderDate,
                 paymentLabel,
@@ -130,8 +145,62 @@ public final class OrderConfirmationEmailBuilder {
                 shippingAddress.isBlank() ? "—" : shippingAddress,
                 orderViewUrl.isBlank() ? "https://flintnthread.in" : orderViewUrl,
                 buildNeedHelpSection(),
+                heroCopy.emoji(),
+                heroCopy.title(),
+                heroCopy.subtitle(),
+                introHtml,
                 SUPPORT_EMAIL
         );
+    }
+
+    private record HeroCopy(String emoji, String title, String subtitle) {
+    }
+
+    private static HeroCopy resolveHeroCopy(String recipientType) {
+        return switch (recipientType) {
+            case OrderConfirmationEmailModel.RECIPIENT_SELLER -> new HeroCopy(
+                    "&#128230;",
+                    "New Order Received!",
+                    "Your products from this order are now being processed"
+            );
+            case OrderConfirmationEmailModel.RECIPIENT_ADMIN -> new HeroCopy(
+                    "&#128276;",
+                    "New Order Notification",
+                    "A new customer order has been placed"
+            );
+            default -> new HeroCopy(
+                    "&#127881;",
+                    "Order Confirmed!",
+                    "Thank you for your purchase"
+            );
+        };
+    }
+
+    private static String buildIntroParagraph(String recipientType, String customerName) {
+        String name = customerName == null || customerName.isBlank() ? "a customer" : customerName;
+        return switch (recipientType) {
+            case OrderConfirmationEmailModel.RECIPIENT_SELLER -> """
+                <p style="margin:0;"><strong>%s</strong> has placed an order including your products. Please review the details below and prepare the items for shipment.</p>
+                """.formatted(name);
+            case OrderConfirmationEmailModel.RECIPIENT_ADMIN -> """
+                <p style="margin:0;">A new order from <strong>%s</strong> has been placed on Flint &amp; Thread. Review the order details below.</p>
+                """.formatted(name);
+            default -> """
+                <p style="margin:0;">Your order has been successfully placed and is being processed. We&apos;re excited to get your items to you!</p>
+                """;
+        };
+    }
+
+    private static String normalizeRecipientType(String recipientType) {
+        if (recipientType == null || recipientType.isBlank()) {
+            return OrderConfirmationEmailModel.RECIPIENT_CUSTOMER;
+        }
+        String normalized = recipientType.trim().toLowerCase(Locale.ENGLISH);
+        if (OrderConfirmationEmailModel.RECIPIENT_SELLER.equals(normalized)
+                || OrderConfirmationEmailModel.RECIPIENT_ADMIN.equals(normalized)) {
+            return normalized;
+        }
+        return OrderConfirmationEmailModel.RECIPIENT_CUSTOMER;
     }
 
     private static String buildItemsRows(List<OrderItemDTO> items) {

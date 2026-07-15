@@ -1,6 +1,7 @@
 package com.ecommerce.authdemo.service.impl;
 
 import com.ecommerce.authdemo.dto.*;
+import com.ecommerce.authdemo.dto.Enum.AdminStatus;
 import com.ecommerce.authdemo.entity.*;
 import com.ecommerce.authdemo.event.OrderPlacedEvent;
 import com.ecommerce.authdemo.service.*;
@@ -65,9 +66,20 @@ public class OrderServiceImpl implements OrderService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final WalletService walletService;
     private final OrderItemCustomDetailService orderItemCustomDetailService;
+    private final SellerRepository sellerRepository;
+    private final AdminUserRepository adminUserRepository;
 
     @Value("${app.public-web-base-url:https://flintnthread.in}")
     private String publicWebBaseUrl;
+
+    @Value("${app.seller.frontend.base-url:https://flintnthread.in}")
+    private String sellerFrontendBaseUrl;
+
+    @Value("${app.admin.frontend-url:https://flintnthread.in}")
+    private String adminFrontendBaseUrl;
+
+    @Value("${app.mail.admin-notify:admin@flintnthread.in}")
+    private String adminNotifyEmail;
 
 
     @Override
@@ -1693,57 +1705,36 @@ public class OrderServiceImpl implements OrderService {
             BigDecimal walletApplied
     ) {
         try {
-            String recipient = firstNonBlank(
+            String customerRecipient = firstNonBlank(
                     user != null ? user.getEmail() : null,
                     order.getShippingEmail()
             );
-            if (recipient == null) {
-                log.warn("[EMAIL] No email for order {}", order.getOrderNumber());
-                return;
+            if (customerRecipient == null) {
+                log.warn("[EMAIL] No customer email for order {}", order.getOrderNumber());
+            } else {
+                OrderConfirmationEmailModel customerModel = buildOrderEmailModel(
+                        user,
+                        order,
+                        items,
+                        subtotal,
+                        shipping,
+                        discount,
+                        walletApplied,
+                        OrderConfirmationEmailModel.RECIPIENT_CUSTOMER,
+                        null,
+                        customerRecipient,
+                        buildOrderViewUrl(order)
+                );
+
+                Integer userIdInt = null;
+                if (user != null && user.getId() != null && user.getId() <= Integer.MAX_VALUE) {
+                    userIdInt = user.getId().intValue();
+                }
+                emailService.sendOrderConfirmationEmail(userIdInt, customerModel);
             }
 
-            double subtotalVal = subtotal != null
-                    ? subtotal.doubleValue()
-                    : sumItemSubtotal(items);
-            double shippingVal = shipping != null ? shipping.doubleValue() : safeDouble(order.getShippingAmount());
-            double discountVal = discount != null ? discount.doubleValue() : safeDouble(order.getDiscountAmount());
-            double walletVal = walletApplied != null
-                    ? walletApplied.doubleValue()
-                    : safeDouble(order.getWalletAmountUsed());
-            double payable = safeDouble(order.getTotalAmount());
-            double grandTotal = payable + walletVal;
-
-            String customerName = firstNonBlank(
-                    order.getShippingName(),
-                    user != null ? user.getUsername() : null,
-                    "Customer"
-            );
-
-            String orderViewUrl = buildOrderViewUrl(order);
-
-            OrderConfirmationEmailModel model = new OrderConfirmationEmailModel(
-                    customerName,
-                    recipient,
-                    order.getOrderNumber(),
-                    formatOrderCreatedDate(order.getCreatedAt()),
-                    formatPaymentMethodLabel(order.getPaymentMethod(), walletVal, payable),
-                    formatPaymentStatusLabel(order.getPaymentStatus()),
-                    subtotalVal,
-                    discountVal,
-                    shippingVal,
-                    walletVal,
-                    grandTotal,
-                    payable,
-                    formatShippingAddress(order),
-                    orderViewUrl,
-                    items
-            );
-
-            Integer userIdInt = null;
-            if (user != null && user.getId() != null && user.getId() <= Integer.MAX_VALUE) {
-                userIdInt = user.getId().intValue();
-            }
-            emailService.sendOrderConfirmationEmail(userIdInt, model);
+            sendSellerOrderNotificationEmails(user, order, items);
+            sendAdminOrderNotificationEmails(user, order, items, subtotal, shipping, discount, walletApplied);
         } catch (Exception e) {
             log.warn(
                     "[EMAIL] order confirmation skipped for order {}: {}",
@@ -1751,6 +1742,204 @@ public class OrderServiceImpl implements OrderService {
                     e.getMessage()
             );
         }
+    }
+
+    private void sendSellerOrderNotificationEmails(
+            User user,
+            Order order,
+            List<OrderItemDTO> items
+    ) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        Map<Long, List<OrderItemDTO>> itemsBySeller = new LinkedHashMap<>();
+        for (OrderItemDTO item : items) {
+            if (item.getSellerId() == null || item.getSellerId() <= 0) {
+                continue;
+            }
+            itemsBySeller.computeIfAbsent(item.getSellerId(), ignored -> new ArrayList<>()).add(item);
+        }
+
+        for (Map.Entry<Long, List<OrderItemDTO>> entry : itemsBySeller.entrySet()) {
+            Long sellerId = entry.getKey();
+            List<OrderItemDTO> sellerItems = entry.getValue();
+            Seller seller = sellerRepository.findById(sellerId).orElse(null);
+            String sellerEmail = seller != null ? firstNonBlank(seller.getEmail()) : null;
+            if (sellerEmail == null) {
+                log.warn("[EMAIL] No seller email for sellerId {} on order {}", sellerId, order.getOrderNumber());
+                continue;
+            }
+
+            String sellerName = resolveSellerDisplayName(seller, sellerItems);
+            // Same layout as customer; amounts match only this seller's items.
+            BigDecimal sellerSubtotal = BigDecimal.valueOf(sumItemSubtotal(sellerItems));
+            OrderConfirmationEmailModel sellerModel = buildOrderEmailModel(
+                    user,
+                    order,
+                    sellerItems,
+                    sellerSubtotal,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    OrderConfirmationEmailModel.RECIPIENT_SELLER,
+                    sellerName,
+                    sellerEmail,
+                    buildSellerOrderViewUrl(order)
+            );
+            emailService.sendOrderConfirmationEmail(null, sellerModel);
+        }
+    }
+
+    private void sendAdminOrderNotificationEmails(
+            User user,
+            Order order,
+            List<OrderItemDTO> items,
+            BigDecimal subtotal,
+            BigDecimal shipping,
+            BigDecimal discount,
+            BigDecimal walletApplied
+    ) {
+        LinkedHashSet<String> adminRecipients = new LinkedHashSet<>();
+        try {
+            adminUserRepository.findByStatus(AdminStatus.ACTIVE).stream()
+                    .map(AdminUser::getEmail)
+                    .map(this::firstNonBlank)
+                    .filter(Objects::nonNull)
+                    .forEach(adminRecipients::add);
+        } catch (Exception e) {
+            log.warn("[EMAIL] Could not load admin recipients: {}", e.getMessage());
+        }
+
+        String fallbackAdminEmail = firstNonBlank(adminNotifyEmail);
+        if (fallbackAdminEmail != null) {
+            adminRecipients.add(fallbackAdminEmail);
+        }
+
+        if (adminRecipients.isEmpty()) {
+            log.warn("[EMAIL] No admin recipients configured for order {}", order.getOrderNumber());
+            return;
+        }
+
+        for (String adminEmail : adminRecipients) {
+            OrderConfirmationEmailModel adminModel = buildOrderEmailModel(
+                    user,
+                    order,
+                    items,
+                    subtotal,
+                    shipping,
+                    discount,
+                    walletApplied,
+                    OrderConfirmationEmailModel.RECIPIENT_ADMIN,
+                    "Admin Team",
+                    adminEmail,
+                    buildAdminOrderViewUrl(order)
+            );
+            emailService.sendOrderConfirmationEmail(null, adminModel);
+        }
+    }
+
+    private OrderConfirmationEmailModel buildOrderEmailModel(
+            User user,
+            Order order,
+            List<OrderItemDTO> items,
+            BigDecimal subtotal,
+            BigDecimal shipping,
+            BigDecimal discount,
+            BigDecimal walletApplied,
+            String recipientType,
+            String recipientName,
+            String recipientEmail,
+            String orderViewUrl
+    ) {
+        double subtotalVal = subtotal != null
+                ? subtotal.doubleValue()
+                : sumItemSubtotal(items);
+        double shippingVal = shipping != null ? shipping.doubleValue() : safeDouble(order.getShippingAmount());
+        double discountVal = discount != null ? discount.doubleValue() : safeDouble(order.getDiscountAmount());
+        double walletVal = walletApplied != null
+                ? walletApplied.doubleValue()
+                : safeDouble(order.getWalletAmountUsed());
+        double payable;
+        double grandTotal;
+        if (OrderConfirmationEmailModel.RECIPIENT_SELLER.equals(recipientType)) {
+            // Seller mail uses same layout; totals are for this seller's items only.
+            grandTotal = Math.max(0.0d, subtotalVal - discountVal + shippingVal);
+            payable = Math.max(0.0d, grandTotal - walletVal);
+        } else {
+            payable = safeDouble(order.getTotalAmount());
+            grandTotal = payable + walletVal;
+        }
+
+        String customerName = firstNonBlank(
+                order.getShippingName(),
+                user != null ? user.getUsername() : null,
+                "Customer"
+        );
+
+        return new OrderConfirmationEmailModel(
+                customerName,
+                recipientEmail,
+                order.getOrderNumber(),
+                formatOrderCreatedDate(order.getCreatedAt()),
+                formatPaymentMethodLabel(order.getPaymentMethod(), walletVal, payable),
+                formatPaymentStatusLabel(order.getPaymentStatus()),
+                subtotalVal,
+                discountVal,
+                shippingVal,
+                walletVal,
+                grandTotal,
+                payable,
+                formatShippingAddress(order),
+                orderViewUrl,
+                items,
+                recipientType,
+                recipientName != null ? recipientName : customerName
+        );
+    }
+
+    private String resolveSellerDisplayName(Seller seller, List<OrderItemDTO> sellerItems) {
+        if (seller != null) {
+            String businessName = firstNonBlank(seller.getBusinessName());
+            if (businessName != null) {
+                return businessName;
+            }
+            String fullName = firstNonBlank(
+                    joinName(seller.getFirstName(), seller.getLastName()),
+                    seller.getEmail()
+            );
+            if (fullName != null) {
+                return fullName;
+            }
+        }
+        if (sellerItems != null && !sellerItems.isEmpty()) {
+            String itemSellerName = firstNonBlank(sellerItems.get(0).getSellerName());
+            if (itemSellerName != null) {
+                return itemSellerName;
+            }
+        }
+        return "Seller";
+    }
+
+    private String joinName(String firstName, String lastName) {
+        String first = firstName != null ? firstName.trim() : "";
+        String last = lastName != null ? lastName.trim() : "";
+        String combined = (first + " " + last).trim();
+        return combined.isBlank() ? null : combined;
+    }
+
+    private String buildSellerOrderViewUrl(Order order) {
+        String base = sellerFrontendBaseUrl != null
+                ? sellerFrontendBaseUrl.replaceAll("/+$", "")
+                : "https://flintnthread.in";
+        return base + "/orderDetails?orderId=" + order.getId();
+    }
+
+    private String buildAdminOrderViewUrl(Order order) {
+        String base = adminFrontendBaseUrl != null
+                ? adminFrontendBaseUrl.replaceAll("/+$", "")
+                : "https://flintnthread.in";
+        return base + "/orders/" + order.getId();
     }
 
     private String buildOrderViewUrl(Order order) {

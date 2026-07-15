@@ -117,9 +117,11 @@ public class EmailService {
             return;
         }
 
-        String subject = OrderConfirmationEmailBuilder.buildSubject(model.orderNumber());
+        String recipientType = model.recipientType();
+        String subject = OrderConfirmationEmailBuilder.buildSubject(model.orderNumber(), recipientType);
         String html = OrderConfirmationEmailBuilder.buildHtml(model);
         String recipient = model.customerEmail().trim();
+        String emailType = resolveOrderEmailType(recipientType);
 
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
@@ -132,34 +134,44 @@ public class EmailService {
 
             emailLogService.createLog(
                     userId,
-                    "order_confirmation",
+                    emailType,
                     recipient,
                     subject,
                     EmailLogStatus.sent,
                     null
             );
-            log.info("[EMAIL] Order confirmation sent to {} for order {}", recipient, model.orderNumber());
+            log.info("[EMAIL] {} sent to {} for order {}", emailType, recipient, model.orderNumber());
         } catch (MailException | MessagingException e) {
             emailLogService.createLog(
                     userId,
-                    "order_confirmation",
+                    emailType,
                     recipient,
                     subject,
                     EmailLogStatus.failed,
                     e.getMessage()
             );
-            log.error("[EMAIL] Failed order confirmation to {}: {}", recipient, e.getMessage(), e);
+            log.error("[EMAIL] Failed {} to {}: {}", emailType, recipient, e.getMessage(), e);
         } catch (Exception e) {
             emailLogService.createLog(
                     userId,
-                    "order_confirmation",
+                    emailType,
                     recipient,
                     subject,
                     EmailLogStatus.failed,
                     e.getMessage()
             );
-            log.error("[EMAIL] Unexpected order confirmation failure: {}", e.getMessage(), e);
+            log.error("[EMAIL] Unexpected {} failure: {}", emailType, e.getMessage(), e);
         }
+    }
+
+    private String resolveOrderEmailType(String recipientType) {
+        if (OrderConfirmationEmailModel.RECIPIENT_SELLER.equals(recipientType)) {
+            return "order_notification_seller";
+        }
+        if (OrderConfirmationEmailModel.RECIPIENT_ADMIN.equals(recipientType)) {
+            return "order_notification_admin";
+        }
+        return "order_confirmation";
     }
 }
 
