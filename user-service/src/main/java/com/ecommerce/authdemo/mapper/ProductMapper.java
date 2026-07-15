@@ -134,8 +134,7 @@ public class ProductMapper {
                                 vd.setFinalPrice(pricing.priceAfterGst());
                                 vd.setCustomerPrice(pricing.customerPrice());
                                 vd.setMrpPrice(
-                                        customerPriceResolver.resolveCustomerStrikeMrp(
-                                                v, pricing.customerPrice()));
+                                        customerPriceResolver.resolveCustomerStrikeMrp(p, v));
                                 vd.setTaxPercentage(pricing.gstPercent());
                                 vd.setTaxAmount(pricing.taxAmount());
                                 vd.setCommissionPercentage(pricing.commissionPercent());

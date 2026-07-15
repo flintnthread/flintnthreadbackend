@@ -208,7 +208,7 @@ public class ActivityServiceImpl implements ActivityService {
                 ? customerPriceResolver.resolveCustomerUnitPrice(product, variant)
                 : null;
         BigDecimal mrp = variant != null
-                ? customerPriceResolver.resolveCustomerStrikeMrp(variant, selling)
+                ? customerPriceResolver.resolveCustomerStrikeMrp(product, variant)
                 : null;
         Integer stock = variant != null ? variant.getStock() : null;
         boolean inStock = stock != null ? stock > 0 : true;
