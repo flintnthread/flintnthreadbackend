@@ -8,8 +8,6 @@ import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.ProductVariantRepository;
-import com.ecommerce.authdemo.repository.SellerRepository;
-import com.ecommerce.authdemo.service.OrderService;
 import com.ecommerce.authdemo.service.ShiprocketService;
 
 import lombok.RequiredArgsConstructor;
@@ -42,8 +40,6 @@ import java.util.*;
         private final RestTemplate restTemplate;
 
         private final OrderItemRepository orderItemRepository;
-
-        private final SellerRepository sellerRepository;
 
         private final OrderRepository orderRepository;
 
@@ -138,211 +134,9 @@ import java.util.*;
             }
 
             try {
-
-                String token = getToken();
-
-                String url =
-                        apiBaseUrl +
-                                "/v1/external/orders/create/adhoc";
-
-                HttpHeaders headers =
-                        new HttpHeaders();
-
-                headers.setBearerAuth(token);
-
-                headers.setContentType(
-                        MediaType.APPLICATION_JSON
-                );
-
-                Map<String, Object> payload =
-                        buildShipmentPayload(order);
-
-                HttpEntity<Map<String, Object>>
-                        request =
-                        new HttpEntity<>(
-                                payload,
-                                headers
-                        );
-                log.info(
-                        "Shiprocket Payload orderNumber={} pickup={} items={}",
-                        order.getOrderNumber(),
-                        payload.get("pickup_location"),
-                        payload.get("order_items") instanceof List<?> list ? list.size() : 0
-                );
-
-                ResponseEntity<Map> response =
-                        restTemplate.postForEntity(
-                                url,
-                                request,
-                                Map.class
-                        );
-
-                Map<String, Object> body =
-                        response.getBody();
-
-                if (body == null) {
-
-                    throw new RuntimeException(
-                            "Empty Shiprocket response"
-                    );
-                }
-                log.info(
-                        "Shiprocket Response for {}: {}",
-                        order.getOrderNumber(),
-                        body
-                );
-
-                // status_code 1 = success on Shiprocket create/adhoc
-                Object statusCode = body.get("status_code");
-                if (statusCode != null) {
-                    int code;
-                    try {
-                        code = Integer.parseInt(String.valueOf(statusCode));
-                    } catch (NumberFormatException ex) {
-                        code = -1;
-                    }
-                    if (code != 1 && code != 200) {
-                        String message = body.get("message") != null
-                                ? String.valueOf(body.get("message"))
-                                : body.toString();
-                        throw new RuntimeException("Shiprocket rejected order: " + message);
-                    }
-                }
-
-                String shipmentId = null;
-
-                String shiprocketOrderId = null;
-
-                if (body.containsKey("order_id")) {
-
-                    Object orderObj =
-                            body.get("order_id");
-
-                    shiprocketOrderId =
-                            String.valueOf(orderObj);
-                }
-
-                if (body.containsKey("shipment_id")) {
-
-                    Object shipmentObj =
-                            body.get("shipment_id");
-
-                    if (shipmentObj instanceof List<?>) {
-
-                        List<?> shipmentList =
-                                (List<?>) shipmentObj;
-
-                        if (!shipmentList.isEmpty()) {
-
-                            shipmentId =
-                                    String.valueOf(
-                                            shipmentList.get(0)
-                                    );
-                        }
-
-                    } else {
-
-                        shipmentId =
-                                String.valueOf(shipmentObj);
-                    }
-                }
-
-                if ((shipmentId == null || shipmentId.isBlank())
-                        && body.containsKey("shipment_ids")) {
-
-                    Object idsObj =
-                            body.get("shipment_ids");
-
-                    if (idsObj instanceof List<?>) {
-
-                        List<?> ids =
-                                (List<?>) idsObj;
-
-                        if (!ids.isEmpty()) {
-
-                            shipmentId =
-                                    String.valueOf(ids.get(0));
-                        }
-                    }
-                }
-
-                if (shiprocketOrderId == null || shiprocketOrderId.isBlank()
-                        || "null".equalsIgnoreCase(shiprocketOrderId)) {
-                    throw new RuntimeException(
-                            "Shiprocket did not return order_id. Response: " + body
-                    );
-                }
-
-                order.setShiprocketOrderId(
-                        shiprocketOrderId
-                );
-
-                order.setShiprocketShipmentId(
-                        shipmentId
-                );
-
-                log.info(
-                        "Shiprocket IDs saved orderNumber={} orderId={} shipmentId={}",
-                        order.getOrderNumber(),
-                        shiprocketOrderId,
-                        shipmentId
-                );
-
-                order.setShiprocketPushedAt(
-                        java.time.LocalDateTime.now()
-                );
-
-                order.setShiprocketSyncedAt(
-                        java.time.LocalDateTime.now()
-                );
-
-                String awb =
-                        body.get("awb_code") != null
-                                && !"null".equalsIgnoreCase(String.valueOf(body.get("awb_code")))
-                                && !String.valueOf(body.get("awb_code")).isBlank()
-                                ? String.valueOf(body.get("awb_code"))
-                                : null;
-
-                String trackingUrl =
-                        awb != null
-                                ? "https://shiprocket.co/tracking/"
-                                + awb
-                                : null;
-
-                String shiprocketStatus = awb != null ? "awb_assigned" : "new";
-
-                orderRepository.updateShipment(
-                        order.getOrderNumber(),
-                        awb,
-                        "Shiprocket",
-                        trackingUrl,
-                        shiprocketStatus
-                );
-
-                order.setShiprocketAwbCode(awb);
-
-                order.setShiprocketCourierName(
-                        "Shiprocket"
-                );
-
-                order.setShiprocketTrackingUrl(
-                        trackingUrl
-                );
-
-                order.setShiprocketStatus(
-                        shiprocketStatus
-                );
-
-                orderRepository.save(order);
-
-                return ShiprocketShipmentResult
-                        .builder()
-                        .shipmentId(shipmentId)
-                        .awbCode(awb)
-                        .trackingUrl(trackingUrl)
-                        .courierName("Shiprocket")
-                        .build();
-
+                Map<String, Object> payload = buildShipmentPayload(order);
+                Map<String, Object> body = postCreateAdhocWithPickupFallback(order, payload);
+                return persistShiprocketCreateResponse(order, body);
             } catch (
                     HttpClientErrorException
                     | HttpServerErrorException e
@@ -366,6 +160,183 @@ import java.util.*;
                         e
                 );
             }
+        }
+
+        /**
+         * Create on Shiprocket. If pickup nickname is wrong, retry once with configured default (work).
+         */
+        private Map<String, Object> postCreateAdhocWithPickupFallback(
+                Order order,
+                Map<String, Object> payload
+        ) {
+            try {
+                return postCreateAdhoc(order, payload);
+            } catch (RuntimeException first) {
+                String configured = pickupLocation != null && !pickupLocation.isBlank()
+                        ? pickupLocation.trim()
+                        : "work";
+                Object usedPickup = payload.get("pickup_location");
+                String used = usedPickup != null ? String.valueOf(usedPickup) : "";
+                String detail = first.getMessage() != null ? first.getMessage() : "";
+                if (first instanceof HttpClientErrorException httpEx) {
+                    String apiBody = httpEx.getResponseBodyAsString();
+                    if (apiBody != null && !apiBody.isBlank()) {
+                        detail = detail + " " + apiBody;
+                    }
+                }
+                String msg = detail.toLowerCase();
+                boolean pickupIssue = msg.contains("pickup")
+                        || msg.contains("location")
+                        || msg.contains("warehouse")
+                        || msg.contains("invalid pickup");
+                boolean phoneIssue = msg.contains("phone");
+
+                if (phoneIssue || !pickupIssue || configured.equalsIgnoreCase(used)) {
+                    throw first;
+                }
+
+                log.warn(
+                        "Shiprocket create failed with pickup={} for orderNumber={} — retrying with pickup={}",
+                        used,
+                        order.getOrderNumber(),
+                        configured
+                );
+                payload.put("pickup_location", configured);
+                return postCreateAdhoc(order, payload);
+            }
+        }
+
+        private Map<String, Object> postCreateAdhoc(
+                Order order,
+                Map<String, Object> payload
+        ) {
+            String token = getToken();
+            String url = apiBaseUrl + "/v1/external/orders/create/adhoc";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+            log.info(
+                    "Shiprocket Payload orderNumber={} pickup={} phone={} items={}",
+                    order.getOrderNumber(),
+                    payload.get("pickup_location"),
+                    payload.get("billing_phone"),
+                    payload.get("order_items") instanceof List<?> list ? list.size() : 0
+            );
+
+            ResponseEntity<Map> response =
+                    restTemplate.postForEntity(url, request, Map.class);
+
+            Map<String, Object> body = response.getBody();
+            if (body == null) {
+                throw new RuntimeException("Empty Shiprocket response");
+            }
+            log.info("Shiprocket Response for {}: {}", order.getOrderNumber(), body);
+
+            Object statusCode = body.get("status_code");
+            if (statusCode != null) {
+                int code;
+                try {
+                    code = Integer.parseInt(String.valueOf(statusCode));
+                } catch (NumberFormatException ex) {
+                    code = -1;
+                }
+                // status_code 1 = success on Shiprocket create/adhoc
+                if (code != 1 && code != 200) {
+                    String message = body.get("message") != null
+                            ? String.valueOf(body.get("message"))
+                            : body.toString();
+                    throw new RuntimeException("Shiprocket rejected order: " + message);
+                }
+            }
+            return body;
+        }
+
+        private ShiprocketShipmentResult persistShiprocketCreateResponse(
+                Order order,
+                Map<String, Object> body
+        ) {
+            String shipmentId = null;
+            String shiprocketOrderId = null;
+
+            if (body.containsKey("order_id")) {
+                shiprocketOrderId = String.valueOf(body.get("order_id"));
+            }
+
+            if (body.containsKey("shipment_id")) {
+                Object shipmentObj = body.get("shipment_id");
+                if (shipmentObj instanceof List<?> shipmentList) {
+                    if (!shipmentList.isEmpty()) {
+                        shipmentId = String.valueOf(shipmentList.get(0));
+                    }
+                } else {
+                    shipmentId = String.valueOf(shipmentObj);
+                }
+            }
+
+            if ((shipmentId == null || shipmentId.isBlank()) && body.containsKey("shipment_ids")) {
+                Object idsObj = body.get("shipment_ids");
+                if (idsObj instanceof List<?> ids && !ids.isEmpty()) {
+                    shipmentId = String.valueOf(ids.get(0));
+                }
+            }
+
+            if (shiprocketOrderId == null || shiprocketOrderId.isBlank()
+                    || "null".equalsIgnoreCase(shiprocketOrderId)) {
+                throw new RuntimeException(
+                        "Shiprocket did not return order_id. Response: " + body
+                );
+            }
+
+            order.setShiprocketOrderId(shiprocketOrderId);
+            order.setShiprocketShipmentId(shipmentId);
+            order.setShiprocketPushedAt(java.time.LocalDateTime.now());
+            order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
+
+            log.info(
+                    "Shiprocket IDs saved orderNumber={} orderId={} shipmentId={}",
+                    order.getOrderNumber(),
+                    shiprocketOrderId,
+                    shipmentId
+            );
+
+            String awb =
+                    body.get("awb_code") != null
+                            && !"null".equalsIgnoreCase(String.valueOf(body.get("awb_code")))
+                            && !String.valueOf(body.get("awb_code")).isBlank()
+                            ? String.valueOf(body.get("awb_code"))
+                            : null;
+
+            String trackingUrl = awb != null
+                    ? "https://shiprocket.co/tracking/" + awb
+                    : null;
+
+            String shiprocketStatus = awb != null ? "awb_assigned" : "new";
+
+            order.setShiprocketAwbCode(awb);
+            order.setShiprocketCourierName("Shiprocket");
+            order.setShiprocketTrackingUrl(trackingUrl);
+            order.setShiprocketStatus(shiprocketStatus);
+
+            // Persist Shiprocket IDs first so a later AWB update cannot leave the order unlinked.
+            orderRepository.save(order);
+            orderRepository.updateShipment(
+                    order.getOrderNumber(),
+                    awb,
+                    "Shiprocket",
+                    trackingUrl,
+                    shiprocketStatus
+            );
+
+            return ShiprocketShipmentResult
+                    .builder()
+                    .shipmentId(shipmentId)
+                    .awbCode(awb)
+                    .trackingUrl(trackingUrl)
+                    .courierName("Shiprocket")
+                    .build();
         }
 
         private Map<String, Object>
@@ -483,7 +454,8 @@ import java.util.*;
 
             payload.put("billing_customer_name", firstName);
             payload.put("billing_last_name", lastName);
-            payload.put("billing_phone", order.getShippingPhone());
+            // Shiprocket requires a valid 10-digit Indian mobile (6–9…). Invalid phones → HTTP 422.
+            payload.put("billing_phone", normalizeIndianMobile(order.getShippingPhone()));
             payload.put("billing_email", order.getShippingEmail() != null ? order.getShippingEmail() : "support@flintnthread.in");
 
             String billingAddress =
@@ -500,9 +472,24 @@ import java.util.*;
             }
 
             payload.put("billing_address", billingAddress);
-            payload.put("billing_city", order.getShippingCity());
-            payload.put("billing_state", order.getShippingState());
-            payload.put("billing_pincode", order.getShippingPincode());
+            payload.put("billing_city",
+                    order.getShippingCity() != null && !order.getShippingCity().isBlank()
+                            ? order.getShippingCity().trim()
+                            : "Hyderabad");
+            payload.put("billing_state",
+                    order.getShippingState() != null && !order.getShippingState().isBlank()
+                            ? order.getShippingState().trim()
+                            : "Telangana");
+            String pincode = order.getShippingPincode() != null
+                    ? order.getShippingPincode().replaceAll("[^0-9]", "")
+                    : "";
+            if (pincode.length() != 6) {
+                throw new RuntimeException(
+                        "Invalid shipping pincode for Shiprocket: '" + order.getShippingPincode()
+                                + "'. Need a valid 6-digit PIN."
+                );
+            }
+            payload.put("billing_pincode", pincode);
             payload.put("billing_country", "India");
             payload.put("shipping_is_billing", true);
 
@@ -544,7 +531,10 @@ import java.util.*;
 
         /**
          * Shiprocket pickup_location must match a nickname registered in Shiprocket
-         * (e.g. "work"). Do NOT send seller business names — that causes create failures.
+         * (Settings → Pickup Addresses), e.g. "work".
+         * Prefer: per-seller map → configured default (work).
+         * Seller business names are only used when they appear in the map; inventing them
+         * caused 422s when the warehouse nickname differed.
          */
         private String resolvePickupLocation(Long sellerId) {
             String configured = pickupLocation != null && !pickupLocation.isBlank()
@@ -575,6 +565,34 @@ import java.util.*;
                 }
             }
             return configured;
+        }
+
+        /**
+         * Shiprocket India phones: exactly 10 digits starting with 6–9.
+         * Strips +91 / 91 / leading 0 and non-digits.
+         */
+        private String normalizeIndianMobile(String rawPhone) {
+            if (rawPhone == null || rawPhone.isBlank()) {
+                throw new RuntimeException(
+                        "Shipping phone is required for Shiprocket. Update the delivery address phone."
+                );
+            }
+            String digits = rawPhone.replaceAll("[^0-9]", "");
+            if (digits.startsWith("91") && digits.length() > 10) {
+                digits = digits.substring(digits.length() - 10);
+            } else if (digits.startsWith("0") && digits.length() == 11) {
+                digits = digits.substring(1);
+            } else if (digits.length() > 10) {
+                digits = digits.substring(digits.length() - 10);
+            }
+
+            if (!digits.matches("^[6-9]\\d{9}$")) {
+                throw new RuntimeException(
+                        "Invalid shipping phone for Shiprocket: '" + rawPhone
+                                + "'. Need a valid 10-digit Indian mobile."
+                );
+            }
+            return digits;
         }
 
         private void enrichOrderItemFromCatalog(OrderItem item) {
