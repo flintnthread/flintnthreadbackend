@@ -1,30 +1,34 @@
 package com.ecommerce.authdemo.entity;
 
-import jakarta.persistence.*;
-import lombok.Data;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-    @Data
-    @Entity
-    @Table(name = "product_pincodes")
-    public class ProductPincode {
+@Entity
+@Table(name = "product_pincodes")
+@Getter
+@Setter
+public class ProductPincode {
 
-        @Id
-        @GeneratedValue(strategy = GenerationType.IDENTITY)
-        private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
+    @Column(name = "product_id", nullable = false)
+    private Long productId;
 
-        @Column(name = "pincode_id")
-        private Long pincodeId;
+    @Column(name = "pincode_id", nullable = false)
+    private Integer pincodeId;
 
-        private Integer status;
+    private Integer status;
 
-        @Column(name = "created_at")
-        private LocalDateTime createdAt;
-
-        @ManyToOne
-        @JoinColumn(name = "product_id")
-        private Product product;
-    }
-
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+}
