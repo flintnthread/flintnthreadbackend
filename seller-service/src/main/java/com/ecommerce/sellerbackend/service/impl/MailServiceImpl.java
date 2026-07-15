@@ -41,11 +41,15 @@ public class MailServiceImpl implements MailService {
     @Value("${app.mail.dev-mode:false}")
     private boolean mailDevMode;
 
+    @Value("${app.mail.allow-localhost-links:false}")
+    private boolean allowLocalhostLinks;
+
     @Value("${spring.mail.password:}")
     private String mailPassword;
 
     @Override
     public void sendEmailVerificationLinkEmail(String toEmail, String recipientName, String verifyLink) {
+        assertPublicVerificationLink(verifyLink);
         if (mailDevMode) {
             log.warn("[MAIL DEV] Verification link for {} -> {}", maskEmail(toEmail), verifyLink);
             return;
@@ -100,6 +104,7 @@ public class MailServiceImpl implements MailService {
 
     @Override
     public void sendPasswordResetEmail(String toEmail, String recipientName, String resetLink) {
+        assertPublicVerificationLink(resetLink);
         if (mailDevMode) {
             log.warn("[MAIL DEV] Password reset for {} -> {}", maskEmail(toEmail), resetLink);
             return;
@@ -569,6 +574,28 @@ public class MailServiceImpl implements MailService {
                 </html>
                 """
                 .formatted(name, amount, invoiceNumber, displayOrderNumber, paymentId, amount, year);
+    }
+
+    /**
+     * Prevents shipping verification/reset emails that open {@code localhost} on the recipient's device.
+     */
+    private void assertPublicVerificationLink(String link) {
+        if (link == null || link.isBlank()) {
+            throw new IllegalStateException(
+                    "Email link is missing. Set APP_BACKEND_PUBLIC_URL / APP_FRONTEND_BASE_URL to your public domain.");
+        }
+        String lower = link.toLowerCase();
+        boolean isLocal =
+                lower.contains("://localhost")
+                        || lower.contains("://127.0.0.1")
+                        || lower.contains("://0.0.0.0");
+        if (isLocal && !allowLocalhostLinks) {
+            throw new IllegalStateException(
+                    "Refusing to send an email with a localhost link (" + link + "). "
+                            + "Set APP_BACKEND_PUBLIC_URL=https://flintnthread.online and "
+                            + "APP_FRONTEND_BASE_URL=https://flintnthread.online/Seller "
+                            + "(or set app.mail.allow-localhost-links=true only for local development).");
+        }
     }
 
     private String maskEmail(String email) {

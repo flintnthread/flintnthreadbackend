@@ -405,6 +405,12 @@ public class ProductServiceImpl implements ProductService {
             return "";
         }
         if (path.startsWith("http://") || path.startsWith("https://")) {
+            String lower = path.toLowerCase(Locale.ROOT);
+            // New products: Cloudinary secure_url — return exactly as stored
+            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+                return path;
+            }
+            // Old products: absolute URL that still points at /uploads/ — rewrite to media host
             int idx = path.indexOf("/uploads/");
             String base = mediaBaseUrl == null ? "" : mediaBaseUrl.trim();
             if (idx >= 0 && !base.isEmpty()) {
@@ -415,6 +421,7 @@ public class ProductServiceImpl implements ProductService {
             }
             return path;
         }
+        // Old products: relative uploads/products/... path
         String base = mediaBaseUrl == null ? "" : mediaBaseUrl.trim();
         if (base.isEmpty()) {
             return path.startsWith("/") ? path : "/" + path;
@@ -435,8 +442,10 @@ public class ProductServiceImpl implements ProductService {
                 return "Pending";
             }
             if (normalized.equals("inactive")
-                    || normalized.equals("disabled")
-                    || normalized.equals("draft")
+                    || normalized.equals("disabled")) {
+                return "Deactivated";
+            }
+            if (normalized.equals("draft")
                     || normalized.equals("rejected")) {
                 return "Inactive";
             }

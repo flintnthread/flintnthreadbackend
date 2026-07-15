@@ -27,6 +27,11 @@ public class SellerAdminController {
 
     private final SellerAdminService sellerAdminService;
 
+    @PostMapping
+    public Map<String, Object> createSeller(@RequestBody Map<String, Object> body) {
+        return sellerAdminService.createSeller(body);
+    }
+
     @GetMapping
     public PageResponse<Map<String, Object>> listSellers(
             @RequestParam(required = false) String status,

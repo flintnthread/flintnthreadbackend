@@ -35,7 +35,11 @@ public class ProductMapper {
             return null;
         }
         if (storedPath.startsWith("http://") || storedPath.startsWith("https://")) {
-            // Legacy rows / mis-saves that point at API host for /uploads — rewrite to CDN
+            String lower = storedPath.toLowerCase();
+            // Cloudinary absolute URLs — never rewrite onto media host
+            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+                return storedPath;
+            }
             int idx = storedPath.indexOf("/uploads/");
             if (idx >= 0 && !mediaPublicBaseUrl.isEmpty()) {
                 String base = mediaPublicBaseUrl.endsWith("/")

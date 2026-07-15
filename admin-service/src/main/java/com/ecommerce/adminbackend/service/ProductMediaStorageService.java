@@ -1,124 +1,133 @@
 package com.ecommerce.adminbackend.service;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.Locale;
-import java.util.UUID;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Admin product images use Cloudinary absolute HTTPS URLs — same as seller-service.
+ */
 @Service
+@RequiredArgsConstructor
 public class ProductMediaStorageService {
 
     private static final Pattern DATA_URL =
             Pattern.compile("^data:image/([a-zA-Z0-9+.-]+);base64,(.+)$", Pattern.DOTALL);
 
-    private final Path productsDir;
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
-            .build();
+    private final Cloudinary cloudinary;
 
-    public ProductMediaStorageService(
-            @Value("${app.upload.products-directory:uploads/products}") String productsDirectory) {
-        this.productsDir = Paths.get(productsDirectory).toAbsolutePath().normalize();
-    }
+    @Value("${app.cloudinary.folder-prefix:flintnthread}")
+    private String cloudinaryFolderPrefix;
 
-    /**
-     * Persists an image and returns a DB-safe relative path (e.g. uploads/products/abc.png).
-     */
     public String storeProductImage(String source) {
         if (source == null || source.isBlank()) {
             throw new IllegalArgumentException("Image source is required.");
         }
         String trimmed = source.trim();
-        if (trimmed.startsWith("uploads/")) {
+
+        if (isCloudinaryUrl(trimmed)) {
             return trimmed;
         }
-        if (trimmed.startsWith("data:")) {
-            return saveBase64DataUrl(trimmed);
+        if ((trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+                && !trimmed.contains("/uploads/")) {
+            return trimmed;
+        }
+        if (trimmed.startsWith("uploads/") || trimmed.startsWith("/uploads/")) {
+            return trimmed.startsWith("/") ? trimmed.substring(1) : trimmed;
         }
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            if (trimmed.length() <= 255 && trimmed.contains("/uploads/")) {
-                int idx = trimmed.indexOf("/uploads/");
-                return trimmed.substring(idx + 1);
+            String relative = extractUploadsRelativePath(trimmed);
+            if (relative != null) {
+                return relative;
             }
-            if (trimmed.length() <= 255) {
-                return trimmed;
-            }
-            return downloadToUploads(trimmed);
+        }
+        if (trimmed.startsWith("data:")) {
+            return uploadBytes(decodeDataUrl(trimmed));
         }
         throw new IllegalArgumentException("Unsupported image source. Use a picked image or https URL.");
     }
 
-    private String saveBase64DataUrl(String dataUrl) {
+    public String uploadMultipart(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Image file is required.");
+        }
+        try {
+            return uploadBytes(file.getBytes());
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Failed to upload product image: " + ex.getMessage());
+        }
+    }
+
+    public String toPublicUrl(String storedPath) {
+        if (storedPath == null || storedPath.isBlank()) {
+            return "";
+        }
+        return storedPath.trim();
+    }
+
+    private byte[] decodeDataUrl(String dataUrl) {
         Matcher matcher = DATA_URL.matcher(dataUrl);
         if (!matcher.matches()) {
             throw new IllegalArgumentException("Invalid image data URL.");
         }
-        String ext = extensionForMime(matcher.group(1));
-        byte[] bytes = Base64.getDecoder().decode(matcher.group(2));
-        return writeBytes(bytes, ext);
+        return Base64.getDecoder().decode(matcher.group(2));
     }
 
-    private String downloadToUploads(String url) {
+    @SuppressWarnings("rawtypes")
+    private String uploadBytes(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException("Image bytes are empty.");
+        }
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(30))
-                    .GET()
-                    .build();
-            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalArgumentException("Failed to download image (" + response.statusCode() + ").");
+            String folder = buildFolder("products");
+            Map options = ObjectUtils.asMap(
+                    "folder", folder,
+                    "resource_type", "image",
+                    "overwrite", false
+            );
+            Map result = cloudinary.uploader().upload(bytes, options);
+            Object secureUrl = result.get("secure_url");
+            if (secureUrl == null || String.valueOf(secureUrl).isBlank()) {
+                throw new IllegalArgumentException("Cloudinary did not return a secure_url.");
             }
-            return writeBytes(response.body(), guessExtensionFromUrl(url));
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalArgumentException("Image download interrupted.");
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("Failed to download image: " + ex.getMessage());
+            return String.valueOf(secureUrl).trim();
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Cloudinary upload failed: " + ex.getMessage());
         }
     }
 
-    private String writeBytes(byte[] bytes, String ext) {
-        try {
-            Files.createDirectories(productsDir);
-            String fileName = UUID.randomUUID().toString().replace("-", "") + ext;
-            Path target = productsDir.resolve(fileName).normalize();
-            if (!target.startsWith(productsDir)) {
-                throw new IllegalArgumentException("Invalid upload path.");
-            }
-            Files.write(target, bytes);
-            return "uploads/products/" + fileName;
-        } catch (IOException ex) {
-            throw new IllegalArgumentException("Failed to save image: " + ex.getMessage());
+    private String buildFolder(String suffix) {
+        String prefix = cloudinaryFolderPrefix == null ? "flintnthread" : cloudinaryFolderPrefix.trim();
+        if (prefix.endsWith("/")) {
+            prefix = prefix.substring(0, prefix.length() - 1);
         }
+        return prefix.isBlank() ? suffix : prefix + "/" + suffix;
     }
 
-    private static String extensionForMime(String mime) {
-        String m = mime.toLowerCase(Locale.ROOT);
-        if (m.contains("png")) return ".png";
-        if (m.contains("webp")) return ".webp";
-        if (m.contains("gif")) return ".gif";
-        return ".jpg";
-    }
-
-    private static String guessExtensionFromUrl(String url) {
+    private static boolean isCloudinaryUrl(String url) {
         String lower = url.toLowerCase(Locale.ROOT);
-        if (lower.contains(".png")) return ".png";
-        if (lower.contains(".webp")) return ".webp";
-        if (lower.contains(".gif")) return ".gif";
-        return ".jpg";
+        return lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/");
+    }
+
+    private static String extractUploadsRelativePath(String url) {
+        int idx = url.indexOf("/uploads/");
+        if (idx < 0) {
+            return null;
+        }
+        String path = url.substring(idx + 1);
+        return path.length() > 1024 ? null : path;
     }
 }

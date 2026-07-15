@@ -41,41 +41,51 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
 
     @Override
     @Transactional
-    public StartEmailVerificationResponse confirmEmailLink(StartEmailVerificationRequest request) {
-        String token = request.getToken().trim();
-        Seller seller = sellerRepository.findByEmailVerificationToken(token)
+    public EmailVerificationResponse verifyEmailFromLinkToken(String token) {
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("Invalid or expired verification link.");
+        }
+        Seller seller = sellerRepository.findByEmailVerificationToken(token.trim())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid or expired verification link."));
 
         String email = seller.getEmail().toLowerCase(Locale.ROOT);
 
         if (Boolean.TRUE.equals(seller.getEmailVerified())) {
-            return new StartEmailVerificationResponse(
+            return new EmailVerificationResponse(
                     "Your email is already verified. You can log in now.",
+                    true,
                     email,
-                    false,
-                    true
+                    seller.getId()
             );
         }
 
         assertVerificationLinkNotExpired(seller);
 
-        String otp = generateOtp();
-        LocalDateTime now = LocalDateTime.now();
-        seller.setOtp(otp);
-        seller.setOtpExpiresAt(now.plusMinutes(emailOtpExpiryMinutes));
-        seller.setOtpSentAt(now);
+        seller.setEmailVerified(true);
+        seller.setEmailVerifiedAt(LocalDateTime.now());
+        seller.setEmailVerificationToken(null);
+        seller.setOtp(null);
+        seller.setOtpExpiresAt(null);
+        seller.setStatus(SellerAccountStatus.active);
         sellerRepository.save(seller);
 
-        mailService.sendEmailVerificationOtpEmail(
-                seller.getEmail(),
-                buildDisplayName(seller),
-                otp);
-
-        return new StartEmailVerificationResponse(
-                "OTP has been sent to your email address. Please enter the 6-digit code below.",
-                email,
+        return new EmailVerificationResponse(
+                "Email verified successfully. You can now log in to your seller account.",
                 true,
-                false
+                email,
+                seller.getId()
+        );
+    }
+
+    @Override
+    @Transactional
+    public StartEmailVerificationResponse confirmEmailLink(StartEmailVerificationRequest request) {
+        EmailVerificationResponse verified = verifyEmailFromLinkToken(request.getToken());
+        return new StartEmailVerificationResponse(
+                verified.getMessage(),
+                verified.getEmail(),
+                false,
+                true
         );
     }
 

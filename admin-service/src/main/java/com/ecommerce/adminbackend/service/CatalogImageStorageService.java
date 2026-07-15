@@ -21,12 +21,20 @@ public class CatalogImageStorageService {
     @Value("${app.upload.categories-directory:uploads/categories}")
     private String categoriesDirectory;
 
+    @Value("${app.upload.cms-directory:uploads/cms}")
+    private String cmsDirectory;
+
     public String storeSubcategoryImage(MultipartFile file) {
         return storeMultipart(file, subcategoriesDirectory, "uploads/subcategories");
     }
 
     public String storeCategoryImage(MultipartFile file) {
         return storeMultipart(file, categoriesDirectory, "uploads/categories");
+    }
+
+    public String storeCmsMedia(MultipartFile file, String subfolder) {
+        String folder = (subfolder == null || subfolder.isBlank()) ? "general" : subfolder.trim();
+        return storeMultipart(file, cmsDirectory + "/" + folder, "uploads/cms/" + folder);
     }
 
     /**

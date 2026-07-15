@@ -27,7 +27,7 @@ public class ProductImage {
     @Column(name = "variant_id")
     private Long variantId;
 
-    @Column(name = "image_path", nullable = false)
+    @Column(name = "image_path", nullable = false, length = 1024)
     private String imagePath;
 
     @Column(name = "is_primary", nullable = false)
