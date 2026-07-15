@@ -104,8 +104,17 @@ public class PaymentController {
             logger.error("[PAYMENT] create-order FAILED: {}", e.getMessage(), e);
             Map<String, Object> response = new HashMap<>();
             response.put("success", false);
-            response.put("message", "Failed to create order");
-            return ResponseEntity.internalServerError().body(response);
+            String detail = e.getMessage() != null ? e.getMessage() : "Unknown error";
+            // Surface auth misconfig clearly (wrong key/secret causes opaque 500 on checkout).
+            if (detail.toLowerCase().contains("auth")
+                    || detail.toLowerCase().contains("authentication")
+                    || detail.toLowerCase().contains("credentials")) {
+                response.put("message", "Razorpay authentication failed. Check razorpay.key_id / razorpay.key_secret.");
+            } else {
+                response.put("message", "Failed to create payment order: " + detail);
+            }
+            response.put("error", detail);
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
         }
     }
 
