@@ -96,6 +96,19 @@ public class CategoryController {
         );
     }
 
+    /**
+     * Flat leaf subcategories under a main department (for filters / PLP chips).
+     * GET /api/categories/main/{mainCategoryId}/all-subcategories
+     */
+    @GetMapping("/main/{mainCategoryId}/all-subcategories")
+    public ResponseEntity<List<SubCategoryResponseDTO>> getAllSubcategoriesUnderMain(
+            @PathVariable Long mainCategoryId) {
+
+        return ResponseEntity.ok(
+                categoryService.getAllSubcategoriesUnderMain(mainCategoryId)
+        );
+    }
+
 
     /**
      * 7️⃣ HOME SEARCH (Category + Product)
