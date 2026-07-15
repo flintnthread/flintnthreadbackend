@@ -14,8 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Multipart product-image upload to local disk.
- * Returns relative {@code imagePath} for DB storage plus absolute {@code url} for previews.
+ * Multipart product-image upload to Cloudinary.
+ * Returns absolute HTTPS secure_url for create/update payloads.
  */
 @RestController
 @RequestMapping("/api/seller/product-media")
@@ -33,12 +33,11 @@ public class ProductMediaController {
         if (sellerId == null || sellerId <= 0) {
             throw new IllegalArgumentException("X-Seller-Id header is required");
         }
-        String imagePath = productMediaStorageService.uploadMultipart(file);
-        String publicUrl = productMediaStorageService.toPublicUrl(imagePath);
+        String url = productMediaStorageService.uploadMultipart(file);
         Map<String, String> body = new LinkedHashMap<>();
-        body.put("imagePath", imagePath);
-        body.put("url", publicUrl);
-        body.put("imageUrl", publicUrl);
+        body.put("url", url);
+        body.put("imageUrl", url);
+        body.put("imagePath", url);
         return body;
     }
 }

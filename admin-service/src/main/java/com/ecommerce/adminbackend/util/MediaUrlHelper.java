@@ -46,11 +46,15 @@ public class MediaUrlHelper {
         }
         String trimmed = path.trim();
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            String lower = trimmed.toLowerCase();
+            // Cloudinary / other absolute CDN URLs — use exactly what is stored.
+            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+                return trimmed;
+            }
             int idx = trimmed.indexOf("/uploads/");
             if (idx >= 0 && !publicBaseUrl.isBlank()) {
                 return publicBaseUrl + trimmed.substring(idx);
             }
-            // Legacy absolute URLs (e.g. old Cloudinary rows) — keep as stored.
             return trimmed;
         }
         String normalized = normalizeMediaPath(trimmed, folder);

@@ -9,10 +9,10 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class PasswordResetUrlHelper {
 
-    @Value("${app.backend.public-url:http://localhost:8083}")
+    @Value("${app.backend.public-url:https://flintnthread.online}")
     private String backendPublicUrl;
 
-    @Value("${app.frontend.base-url:http://localhost:8081}")
+    @Value("${app.frontend.base-url:https://flintnthread.online/Seller}")
     private String frontendBaseUrl;
 
     @Value("${app.frontend.password-reset-redirect-url:}")

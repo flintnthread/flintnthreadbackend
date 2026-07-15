@@ -35,7 +35,11 @@ public class ProductMapper {
             return null;
         }
         if (storedPath.startsWith("http://") || storedPath.startsWith("https://")) {
-            // Prefer media base for /uploads/ paths (local-disk product images).
+            String lower = storedPath.toLowerCase();
+            // Cloudinary absolute URLs — never rewrite onto media host
+            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+                return storedPath;
+            }
             int idx = storedPath.indexOf("/uploads/");
             if (idx >= 0 && !mediaPublicBaseUrl.isEmpty()) {
                 String base = mediaPublicBaseUrl.endsWith("/")
@@ -43,7 +47,6 @@ public class ProductMapper {
                         : mediaPublicBaseUrl;
                 return base + storedPath.substring(idx);
             }
-            // Legacy absolute URLs (e.g. old Cloudinary rows).
             return storedPath;
         }
         String path = storedPath.startsWith("/") ? storedPath : "/" + storedPath;
