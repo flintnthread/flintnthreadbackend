@@ -67,41 +67,54 @@ import java.util.*;
         public String getToken() {
 
             try {
+                if (email == null || email.isBlank()
+                        || password == null || password.isBlank()) {
+                    throw new RuntimeException(
+                            "Shiprocket credentials missing (shiprocket.email / shiprocket.password)"
+                    );
+                }
 
-                String url =
-                        apiBaseUrl +
-                                "/v1/external/auth/login";
+                String url = apiBaseUrl + "/v1/external/auth/login";
 
-                Map<String, String> body =
-                        Map.of(
-                                "email", email,
-                                "password", password
-                        );
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+                Map<String, String> body = new LinkedHashMap<>();
+                body.put("email", email.trim());
+                body.put("password", password);
+
+                HttpEntity<Map<String, String>> request =
+                        new HttpEntity<>(body, headers);
 
                 ResponseEntity<Map> response =
-                        restTemplate.postForEntity(
-                                url,
-                                body,
-                                Map.class
-                        );
+                        restTemplate.postForEntity(url, request, Map.class);
 
                 if (response.getBody() != null
-                        && response.getBody()
-                        .containsKey("token")) {
-
-                    return (String)
-                            response.getBody()
-                                    .get("token");
+                        && response.getBody().containsKey("token")) {
+                    return (String) response.getBody().get("token");
                 }
 
                 throw new RuntimeException(
-                        "Shiprocket token failed"
+                        "Shiprocket token failed: " + response.getBody()
                 );
 
-            } catch (Exception e) {
-
+            } catch (HttpClientErrorException | HttpServerErrorException e) {
+                String apiBody = e.getResponseBodyAsString();
+                log.error(
+                        "Shiprocket auth API error status={} body={}",
+                        e.getStatusCode(),
+                        apiBody
+                );
                 throw new RuntimeException(
-                        "Shiprocket auth failed",
+                        "Shiprocket auth failed: "
+                                + (apiBody != null && !apiBody.isBlank() ? apiBody : e.getMessage()),
+                        e
+                );
+            } catch (Exception e) {
+                log.error("Shiprocket auth failed: {}", e.getMessage(), e);
+                throw new RuntimeException(
+                        "Shiprocket auth failed: " + e.getMessage(),
                         e
                 );
             }

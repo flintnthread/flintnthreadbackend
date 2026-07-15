@@ -156,6 +156,14 @@ public class PaymentController {
                         } catch (Exception shippingError) {
                             logger.error("[PAYMENT] verify Shiprocket FAILED (payment still ok) orderNumber={}",
                                     paidOrder.getOrderNumber(), shippingError);
+                            try {
+                                orderService.markShiprocketCreateFailed(
+                                        paidOrder.getOrderNumber(),
+                                        shippingError.getMessage()
+                                );
+                            } catch (Exception ignore) {
+                                // ignore
+                            }
                             response.put("shipping_initiated", false);
                             response.put("shipping_error", "Shiprocket order could not be created. Order is paid; retry shipment from admin.");
                             response.put("shipping_error_detail", shippingError.getMessage());

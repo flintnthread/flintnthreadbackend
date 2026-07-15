@@ -313,6 +313,11 @@ public class OrderServiceImpl implements OrderService {
                         e.getMessage(),
                         e
                 );
+                try {
+                    markShiprocketCreateFailed(order.getOrderNumber(), e.getMessage());
+                } catch (Exception ignore) {
+                    // keep place-order path resilient
+                }
             }
 
             return buildOrderResponse(order, itemDTOList);
@@ -853,12 +858,58 @@ public class OrderServiceImpl implements OrderService {
                         e.getMessage(),
                         e
                 );
+                try {
+                    markShiprocketCreateFailed(order.getOrderNumber(), e.getMessage());
+                } catch (Exception ignore) {
+                    // keep payment path resilient
+                }
             }
         }
 
         order = orderRepository.save(order);
         sendOrderConfirmationEmailForOrder(order);
         return order;
+    }
+
+    @Override
+    @Transactional
+    public ShiprocketShipmentResult pushOrderToShiprocket(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
+            return ShiprocketShipmentResult.builder()
+                    .shipmentId(order.getShiprocketShipmentId())
+                    .awbCode(order.getShiprocketAwbCode())
+                    .trackingUrl(order.getShiprocketTrackingUrl())
+                    .courierName(order.getShiprocketCourierName() != null
+                            ? order.getShiprocketCourierName()
+                            : "Shiprocket")
+                    .build();
+        }
+
+        String paymentStatus = order.getPaymentStatus() != null
+                ? order.getPaymentStatus().trim().toLowerCase()
+                : "";
+        boolean paymentConfirmed = paymentStatus.equals("paid")
+                || paymentStatus.equals("completed")
+                || paymentStatus.equals("success")
+                || paymentStatus.equals("captured");
+        boolean isCod = isCodPaymentMethod(order.getPaymentMethod());
+
+        if (!isCod && !paymentConfirmed) {
+            throw new OrderException(
+                    "Order is not paid yet; Shiprocket push is only for paid or COD orders."
+            );
+        }
+
+        ShiprocketShipmentResult result = shiprocketService.createShipment(order);
+        log.info(
+                "Shiprocket push retry OK orderNumber={} shipmentId={}",
+                order.getOrderNumber(),
+                result.getShipmentId()
+        );
+        return result;
     }
 
     private boolean isPendingOnlinePayment(Order order) {
@@ -979,7 +1030,9 @@ public class OrderServiceImpl implements OrderService {
                                     ));
 
             order.setShiprocketStatus(
-                    "shipment_creation_failed"
+                    reason == null || reason.isBlank()
+                            ? "shipment_creation_failed"
+                            : ("failed: " + reason).substring(0, Math.min(50, ("failed: " + reason).length()))
             );
 
             orderRepository.save(order);
