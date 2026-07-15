@@ -950,9 +950,10 @@ import java.util.*;
                 JSONArray ids =
                         new JSONArray();
 
+                // Shiprocket order ids can exceed Integer range.
                 ids.put(
-                        Integer.parseInt(
-                                shiprocketOrderId
+                        Long.parseLong(
+                                shiprocketOrderId.trim()
                         )
                 );
 
@@ -978,21 +979,51 @@ import java.util.*;
                                 String.class
                         );
 
+                String responseBody =
+                        response.getBody() != null
+                                ? response.getBody()
+                                : "";
+
                 log.info(
                         "Shiprocket cancel response={}",
-                        response.getBody()
+                        responseBody
                 );
 
-                return response.getStatusCode()
-                        .is2xxSuccessful();
+                if (response.getStatusCode()
+                        .is2xxSuccessful()) {
+                    return true;
+                }
+
+                String lower = responseBody.toLowerCase();
+                // Treat already-cancelled / not-found as success for local cancel flow.
+                return lower.contains("already cancel")
+                        || lower.contains("already cancelled")
+                        || lower.contains("canceled")
+                        || lower.contains("not found")
+                        || lower.contains("does not exist");
 
             } catch (HttpClientErrorException ex) {
 
+                String apiBody =
+                        ex.getResponseBodyAsString() != null
+                                ? ex.getResponseBodyAsString()
+                                : "";
+                String lower = apiBody.toLowerCase();
+
                 log.error(
                         "Shiprocket cancel API error={}",
-                        ex.getResponseBodyAsString(),
+                        apiBody,
                         ex
                 );
+
+                // Order already cancelled on Shiprocket — treat as success.
+                if (lower.contains("already cancel")
+                        || lower.contains("already cancelled")
+                        || lower.contains("canceled")
+                        || lower.contains("not found")
+                        || lower.contains("does not exist")) {
+                    return true;
+                }
 
                 return false;
 
