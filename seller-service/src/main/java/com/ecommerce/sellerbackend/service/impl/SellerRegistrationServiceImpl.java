@@ -180,8 +180,9 @@ public class SellerRegistrationServiceImpl implements SellerRegistrationService 
 
         return new RegisterSellerResponse(
                 seller.getId(),
-                "Registration successful! Please check your email and click the verification link to activate your account. "
-                        + "The verification link will expire in 1 hour.",
+                "Registration successful! Please check your email and click the verification link. "
+                        + "After you click it, a 6-digit OTP will be sent to the same email. "
+                        + "The verification link expires in 1 hour.",
                 true
         );
     }

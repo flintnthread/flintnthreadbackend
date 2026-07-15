@@ -3,9 +3,11 @@ package com.ecommerce.adminbackend.service.impl;
 import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.entity.Seller;
 import com.ecommerce.adminbackend.entity.SellerAccountStatus;
+import com.ecommerce.adminbackend.entity.SellerBankVerification;
 import com.ecommerce.adminbackend.entity.SellerKycImage;
 import com.ecommerce.adminbackend.repository.OrderItemRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
+import com.ecommerce.adminbackend.repository.SellerBankVerificationRepository;
 import com.ecommerce.adminbackend.repository.SellerKycImageRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
 import com.ecommerce.adminbackend.service.MailService;
@@ -32,10 +34,12 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -48,6 +52,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
     private final SellerRepository sellerRepository;
     private final ProductRepository productRepository;
     private final OrderItemRepository orderItemRepository;
+    private final SellerBankVerificationRepository sellerBankVerificationRepository;
     private final SellerKycImageRepository sellerKycImageRepository;
     private final MediaUrlHelper mediaUrlHelper;
     private final MailService mailService;
@@ -134,12 +139,14 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         long productsAdded = sellerId == null
                 ? productRepository.count()
                 : productRepository.countBySellerId(sellerId);
+        long ordersPlaced = orderItemRepository.countDistinctOrdersForSeller(sellerId);
         long shiprocketUploaded = sellerRepository.countShiprocketReady(sellerId);
 
         summary.put("registered", registered);
         summary.put("profileCompleted", profileCompleted);
         summary.put("approved", approved);
         summary.put("productsAdded", productsAdded);
+        summary.put("ordersPlaced", ordersPlaced);
         summary.put("shiprocketUploaded", shiprocketUploaded);
         summary.put("shiprocketPending", sellerId == null
                 ? sellerRepository.countShiprocketPending()
@@ -181,6 +188,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         List<Long> profileCompleted = new ArrayList<>();
         List<Long> approved = new ArrayList<>();
         List<Long> productsAdded = new ArrayList<>();
+        List<Long> ordersPlaced = new ArrayList<>();
         List<Long> shiprocketUploaded = new ArrayList<>();
 
         long maxValue = 0L;
@@ -193,16 +201,19 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
             long profileCount = sellerRepository.countProfileCompletedInPeriod(sellerId, periodStart, periodEnd);
             long approvedCount = sellerRepository.countApprovedInPeriod(sellerId, periodStart, periodEnd);
             long productCount = productRepository.countCreatedInPeriod(sellerId, periodStart, periodEnd);
+            long orderCount = orderItemRepository.countOrdersPlacedInPeriod(sellerId, periodStart, periodEnd);
             long shiprocketCount = sellerRepository.countShiprocketReadyInPeriod(sellerId, periodStart, periodEnd);
 
             registered.add(registeredCount);
             profileCompleted.add(profileCount);
             approved.add(approvedCount);
             productsAdded.add(productCount);
+            ordersPlaced.add(orderCount);
             shiprocketUploaded.add(shiprocketCount);
 
             maxValue = Math.max(maxValue, Math.max(registeredCount,
-                    Math.max(profileCount, Math.max(approvedCount, Math.max(productCount, shiprocketCount)))));
+                    Math.max(profileCount, Math.max(approvedCount,
+                            Math.max(productCount, Math.max(orderCount, shiprocketCount))))));
         }
 
         Map<String, Object> chart = new LinkedHashMap<>();
@@ -211,6 +222,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         chart.put("profileCompleted", profileCompleted);
         chart.put("approved", approved);
         chart.put("productsAdded", productsAdded);
+        chart.put("ordersPlaced", ordersPlaced);
         chart.put("shiprocketUploaded", shiprocketUploaded);
         chart.put("maxY", computeChartMaxY(maxValue));
         chart.put("year", year);
@@ -378,7 +390,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("sellerId", id);
         response.put("email", seller.getEmail());
-        response.put("message", "Verification email sent successfully.");
+        response.put("message", "Verification email sent. After the seller clicks the link, an OTP will be emailed.");
         return response;
     }
 
@@ -425,6 +437,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
 
         LocalDateTime now = LocalDateTime.now();
         String token = UUID.randomUUID().toString().replace("-", "");
+        boolean sendEmail = body.get("sendEmail") == null || Boolean.TRUE.equals(asBool(body.get("sendEmail")));
 
         Seller seller = new Seller();
         seller.setFirstName(firstName.trim());
@@ -440,6 +453,9 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         seller.setKycCompleted(false);
         seller.setKycVerified(false);
         seller.setWalletBalance(BigDecimal.ZERO);
+        seller.setOtp(null);
+        seller.setOtpExpiresAt(null);
+        seller.setOtpSentAt(sendEmail ? now : null);
         seller.setCreatedAt(now);
         seller.setUpdatedAt(now);
         seller.setSellerUniqueId(null);
@@ -450,7 +466,6 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
             seller = sellerRepository.save(seller);
         }
 
-        boolean sendEmail = body.get("sendEmail") == null || Boolean.TRUE.equals(asBool(body.get("sendEmail")));
         if (sendEmail) {
             String verifyLink = sellerEmailVerificationUrlHelper.buildEmailLinkClickUrl(token);
             mailService.sendEmailVerificationLinkEmail(seller.getEmail(), seller.getFullName(), verifyLink);
@@ -498,17 +513,62 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> bankStats() {
-        long pending = sellerRepository.countPendingBankVerification();
-        long verified = sellerRepository.countBankVerified();
+        sellerBankVerificationRepository.expireOverdue();
+
+        long pending = 0L;
+        long processing = 0L;
+        long verified = 0L;
+        long failed = 0L;
+        long expired = 0L;
+
+        for (Object[] row : sellerBankVerificationRepository.countLatestByEffectiveStatus()) {
+            if (row == null || row[0] == null) {
+                continue;
+            }
+            String status = row[0].toString().trim().toLowerCase(Locale.ROOT);
+            long count = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+            switch (status) {
+                case "processing" -> processing = count;
+                case "verified" -> verified = count;
+                case "failed" -> failed = count;
+                case "expired" -> expired = count;
+                default -> pending = count;
+            }
+        }
+
+        Set<Long> sellersWithVerification = new HashSet<>(sellerBankVerificationRepository.findDistinctSellerIds());
+        long sellerPending = sellerRepository.countPendingBankVerification();
+        long sellerVerified = sellerRepository.countBankVerified();
+
+        if (sellersWithVerification.isEmpty()) {
+            pending = sellerPending;
+            verified = sellerVerified;
+        } else {
+            long fallbackPending = 0L;
+            for (Seller seller : sellerRepository.findPendingBankVerification(Pageable.unpaged())) {
+                if (!sellersWithVerification.contains(seller.getId())) {
+                    fallbackPending++;
+                }
+            }
+            long fallbackVerified = 0L;
+            for (Seller seller : sellerRepository.findBankVerified(Pageable.unpaged())) {
+                if (!sellersWithVerification.contains(seller.getId())) {
+                    fallbackVerified++;
+                }
+            }
+            pending += fallbackPending;
+            verified += fallbackVerified;
+        }
+
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("pending", pending);
+        stats.put("processing", processing);
         stats.put("verified", verified);
-        stats.put("total", pending + verified);
-        stats.put("processing", 0L);
-        stats.put("failed", 0L);
-        stats.put("expired", 0L);
+        stats.put("failed", failed);
+        stats.put("expired", expired);
+        stats.put("total", pending + processing + verified + failed + expired);
         return stats;
     }
 
@@ -527,6 +587,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
             seller.setAdminRemarks(note.trim());
         }
         sellerRepository.save(seller);
+        markLatestBankVerification(seller, "verified", note);
         return Map.of("sellerId", id, "bankVerified", true, "message", "Bank details approved.");
     }
 
@@ -537,6 +598,7 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
         seller.setBankVerified(false);
         seller.setAdminRemarks(note != null && !note.isBlank() ? note.trim() : "Bank details rejected.");
         sellerRepository.save(seller);
+        markLatestBankVerification(seller, "failed", note);
         return Map.of("sellerId", id, "bankVerified", false, "message", "Bank details rejected.");
     }
 
@@ -558,14 +620,140 @@ public class SellerAdminServiceImpl extends BaseAdminService implements SellerAd
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public PageResponse<Map<String, Object>> listBankVerifications(String status, int page, int size) {
+        sellerBankVerificationRepository.expireOverdue();
         Pageable pageable = PageRequest.of(page, size);
-        String normalized = status == null ? "pending" : status.trim().toLowerCase();
-        Page<Seller> result = "verified".equals(normalized)
-                ? sellerRepository.findBankVerified(pageable)
+        String normalized = status == null ? "pending" : status.trim().toLowerCase(Locale.ROOT);
+
+        if ("processing".equals(normalized) || "failed".equals(normalized) || "expired".equals(normalized)) {
+            Page<SellerBankVerification> result =
+                    sellerBankVerificationRepository.findLatestByEffectiveStatus(normalized, pageable);
+            return PageResponse.from(result.map(this::toBankSummaryFromVerification));
+        }
+
+        if ("verified".equals(normalized)) {
+            Page<SellerBankVerification> fromTable =
+                    sellerBankVerificationRepository.findLatestByEffectiveStatus("verified", pageable);
+            if (fromTable.getTotalElements() > 0) {
+                return PageResponse.from(fromTable.map(this::toBankSummaryFromVerification));
+            }
+            Page<Seller> result = sellerBankVerificationRepository.count() > 0
+                    ? sellerRepository.findBankVerifiedWithoutVerificationRows(pageable)
+                    : sellerRepository.findBankVerified(pageable);
+            return PageResponse.from(result.map(seller -> toBankSummary(seller, "Verified")));
+        }
+
+        // pending
+        Page<SellerBankVerification> pendingFromTable =
+                sellerBankVerificationRepository.findLatestByEffectiveStatus("pending", pageable);
+        if (pendingFromTable.getTotalElements() > 0) {
+            return PageResponse.from(pendingFromTable.map(this::toBankSummaryFromVerification));
+        }
+        Page<Seller> result = sellerBankVerificationRepository.count() > 0
+                ? sellerRepository.findPendingBankWithoutVerificationRows(pageable)
                 : sellerRepository.findPendingBankVerification(pageable);
-        return PageResponse.from(result.map(this::toBankSummary));
+        return PageResponse.from(result.map(seller -> toBankSummary(seller, "Pending")));
+    }
+
+    private void markLatestBankVerification(Seller seller, String status, String note) {
+        LocalDateTime now = LocalDateTime.now();
+        SellerBankVerification verification = sellerBankVerificationRepository
+                .findFirstBySellerIdOrderByIdDesc(seller.getId())
+                .orElseGet(() -> {
+                    SellerBankVerification created = new SellerBankVerification();
+                    created.setSellerId(seller.getId());
+                    created.setAccountNumber(seller.getAccountNumber() != null ? seller.getAccountNumber() : "—");
+                    created.setIfscCode(seller.getIfscCode() != null ? seller.getIfscCode() : "—");
+                    created.setAccountHolder(seller.getAccountHolder() != null ? seller.getAccountHolder() : seller.getFullName());
+                    created.setBankName(seller.getBankName());
+                    created.setBranchName(seller.getBranchName());
+                    created.setReferenceNumber("ADMIN-" + seller.getId() + "-" + System.currentTimeMillis());
+                    created.setAttempts(0);
+                    created.setMaxAttempts(3);
+                    created.setCreatedAt(now);
+                    return created;
+                });
+        verification.setStatus(status);
+        verification.setUpdatedAt(now);
+        if ("verified".equalsIgnoreCase(status)) {
+            verification.setVerifiedAt(now);
+            verification.setErrorMessage(null);
+        } else if ("failed".equalsIgnoreCase(status)) {
+            verification.setErrorMessage(note != null && !note.isBlank() ? note.trim() : "Bank details rejected.");
+        }
+        if (seller.getAccountNumber() != null) {
+            verification.setAccountNumber(seller.getAccountNumber());
+        }
+        if (seller.getIfscCode() != null) {
+            verification.setIfscCode(seller.getIfscCode());
+        }
+        if (seller.getAccountHolder() != null) {
+            verification.setAccountHolder(seller.getAccountHolder());
+        }
+        if (seller.getBankName() != null) {
+            verification.setBankName(seller.getBankName());
+        }
+        sellerBankVerificationRepository.save(verification);
+    }
+
+    private Map<String, Object> toBankSummaryFromVerification(SellerBankVerification verification) {
+        Seller seller = sellerRepository.findById(verification.getSellerId()).orElse(null);
+        String effectiveStatus = resolveEffectiveBankVerificationStatus(verification);
+        if (seller == null) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", verification.getSellerId());
+            row.put("sellerId", verification.getSellerId());
+            row.put("fullName", verification.getAccountHolder());
+            row.put("bankName", verification.getBankName());
+            row.put("accountHolder", verification.getAccountHolder());
+            row.put("accountNumber", verification.getAccountNumber());
+            row.put("ifscCode", verification.getIfscCode());
+            row.put("branchName", verification.getBranchName());
+            row.put("bankVerified", "verified".equalsIgnoreCase(effectiveStatus));
+            row.put("verificationStatus", capitalizeStatus(effectiveStatus));
+            row.put("attempts", verification.getAttempts() != null ? verification.getAttempts() : 0);
+            row.put("createdAt", verification.getCreatedAt());
+            row.put("updatedAt", verification.getUpdatedAt());
+            row.put("verifiedAt", verification.getVerifiedAt());
+            row.put("expiresAt", verification.getExpiresAt());
+            return row;
+        }
+        Map<String, Object> summary = toBankSummary(seller, capitalizeStatus(effectiveStatus));
+        summary.put("attempts", verification.getAttempts() != null ? verification.getAttempts() : 0);
+        summary.put("verifiedAt", verification.getVerifiedAt());
+        summary.put("expiresAt", verification.getExpiresAt());
+        if (isPresent(verification.getBankName())) {
+            summary.put("bankName", verification.getBankName());
+        }
+        if (isPresent(verification.getAccountNumber())) {
+            summary.put("accountNumber", verification.getAccountNumber());
+        }
+        if (isPresent(verification.getIfscCode())) {
+            summary.put("ifscCode", verification.getIfscCode());
+        }
+        if (isPresent(verification.getAccountHolder())) {
+            summary.put("accountHolder", verification.getAccountHolder());
+        }
+        return summary;
+    }
+
+    private String resolveEffectiveBankVerificationStatus(SellerBankVerification verification) {
+        String status = verification.getStatus() == null ? "pending" : verification.getStatus().trim().toLowerCase(Locale.ROOT);
+        if (("pending".equals(status) || "processing".equals(status))
+                && verification.getExpiresAt() != null
+                && verification.getExpiresAt().isBefore(LocalDateTime.now())) {
+            return "expired";
+        }
+        return status;
+    }
+
+    private String capitalizeStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return "Pending";
+        }
+        String lower = status.trim().toLowerCase(Locale.ROOT);
+        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
     }
 
     private boolean isResendVerificationEligible(Seller seller) {
@@ -1076,12 +1264,11 @@ private String resolveSellerUniqueId(Seller seller) {
         counts.put("inactive", 0L);
         counts.put("pending", 0L);
         for (Object[] row : productRepository.countProductsByStatusForSeller(sellerId)) {
-            if (row[0] == null) {
-                continue;
-            }
-            String status = row[0].toString().toLowerCase();
+            String status = row[0] == null ? "active" : row[0].toString().toLowerCase(Locale.ROOT);
             long count = row[1] != null ? ((Number) row[1]).longValue() : 0L;
-            if (status.contains("pending") || status.contains("review")) {
+            if (status.isBlank()) {
+                counts.merge("active", count, Long::sum);
+            } else if (status.contains("pending") || status.contains("review")) {
                 counts.merge("pending", count, Long::sum);
             } else if (status.contains("inactive") || status.contains("reject") || status.contains("draft")) {
                 counts.merge("inactive", count, Long::sum);
@@ -1105,18 +1292,21 @@ private String resolveSellerUniqueId(Seller seller) {
         counts.put("cancelled", 0L);
         for (Object[] row : orderItemRepository.countOrdersByStatusForSeller(sellerId)) {
             if (row[0] == null) {
+                counts.merge("pending", row[1] != null ? ((Number) row[1]).longValue() : 0L, Long::sum);
                 continue;
             }
-            String status = row[0].toString().toLowerCase();
+            String status = row[0].toString().toLowerCase(Locale.ROOT);
             long count = row[1] != null ? ((Number) row[1]).longValue() : 0L;
-            if (status.contains("cancel")) {
+            if (status.contains("cancel") || status.contains("refund") || status.contains("return")
+                    || status.contains("replac")) {
                 counts.merge("cancelled", count, Long::sum);
             } else if (status.contains("deliver") || status.contains("complete")) {
                 counts.merge("delivered", count, Long::sum);
             } else if (status.contains("ship") || status.contains("transit") || status.contains("pick")
                     || status.contains("awb") || status.contains("out_for")) {
                 counts.merge("shipped", count, Long::sum);
-            } else if (status.contains("process") || status.contains("pack") || status.contains("confirm")) {
+            } else if (status.contains("process") || status.contains("pack") || status.contains("confirm")
+                    || status.contains("sent_to")) {
                 counts.merge("processing", count, Long::sum);
             } else {
                 counts.merge("pending", count, Long::sum);
@@ -1228,6 +1418,10 @@ private String resolveSellerUniqueId(Seller seller) {
     }
 
     private Map<String, Object> toBankSummary(Seller seller) {
+        return toBankSummary(seller, Boolean.TRUE.equals(seller.getBankVerified()) ? "Verified" : "Pending");
+    }
+
+    private Map<String, Object> toBankSummary(Seller seller, String verificationStatus) {
         Map<String, Object> summary = toSellerSummary(seller);
         summary.put("bankName", seller.getBankName());
         summary.put("accountHolder", seller.getAccountHolder());
@@ -1235,6 +1429,8 @@ private String resolveSellerUniqueId(Seller seller) {
         summary.put("ifscCode", seller.getIfscCode());
         summary.put("branchName", seller.getBranchName());
         summary.put("updatedAt", seller.getUpdatedAt());
+        summary.put("verificationStatus", verificationStatus);
+        summary.put("bankVerified", "Verified".equalsIgnoreCase(verificationStatus));
         return summary;
     }
 

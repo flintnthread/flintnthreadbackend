@@ -315,7 +315,8 @@ public class MailServiceImpl implements MailService {
                         selling, please verify your email address.
                       </p>
                       <p style="color:#374151;line-height:1.6;margin:0 0 16px;font-size:15px;">
-                        Click the button below to verify your email:
+                        Click the button below. After you click it, we will email a <strong>6-digit OTP</strong> to this
+                        address — enter that code on the verification page to activate your account.
                       </p>
                       <p style="text-align:center;margin:28px 0;">
                         <a href="%s" style="background:linear-gradient(135deg,#F97316 0%%,#B45309 100%%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:bold;display:inline-block;font-size:16px;">

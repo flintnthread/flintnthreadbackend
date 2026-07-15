@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -166,6 +167,6 @@ public class Order {
     @Column(name = "referral_discount_percent", precision = 5, scale = 2)
     private BigDecimal referralDiscountPercent;
 
-    @Column(name = "address_id")
+    @Transient
     private Long addressId;
 }

@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -52,42 +53,42 @@ public class OrderItem {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @Column(name = "product_name")
+    @Transient
     private String productName;
 
-    @Column(name = "sku", length = 100)
+    @Transient
     private String sku;
 
-    @Column(name = "hsn_code", length = 50)
+    @Transient
     private String hsnCode;
 
-    @Column(name = "color", length = 100)
+    @Transient
     private String color;
 
-    @Column(name = "size", length = 100)
+    @Transient
     private String size;
 
-    @Column(name = "weight", precision = 10, scale = 2)
+    @Transient
     private BigDecimal weight;
 
-    @Column(name = "length_cm", precision = 10, scale = 2)
+    @Transient
     private BigDecimal lengthCm;
 
-    @Column(name = "width_cm", precision = 10, scale = 2)
+    @Transient
     private BigDecimal widthCm;
 
-    @Column(name = "height_cm", precision = 10, scale = 2)
+    @Transient
     private BigDecimal heightCm;
 
-    @Column(name = "seller_name")
+    @Transient
     private String sellerName;
 
-    @Column(name = "package_dead_weight", precision = 10, scale = 2)
+    @Transient
     private BigDecimal packageDeadWeight;
 
-    @Column(name = "volumetric_weight", precision = 10, scale = 2)
+    @Transient
     private BigDecimal volumetricWeight;
 
-    @Column(name = "chargeable_weight", precision = 10, scale = 2)
+    @Transient
     private BigDecimal chargeableWeight;
 }

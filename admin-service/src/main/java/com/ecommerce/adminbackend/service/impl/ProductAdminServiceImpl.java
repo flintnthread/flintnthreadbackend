@@ -2,6 +2,7 @@ package com.ecommerce.adminbackend.service.impl;
 
 import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.entity.Color;
+import com.ecommerce.adminbackend.entity.DeliveryCharge;
 import com.ecommerce.adminbackend.entity.Product;
 import com.ecommerce.adminbackend.entity.ProductImage;
 import com.ecommerce.adminbackend.entity.ProductVariant;
@@ -12,6 +13,7 @@ import com.ecommerce.adminbackend.entity.SizeChart;
 import com.ecommerce.adminbackend.entity.Subcategory;
 import com.ecommerce.adminbackend.repository.CategoryRepository;
 import com.ecommerce.adminbackend.repository.ColorRepository;
+import com.ecommerce.adminbackend.repository.DeliveryChargeRepository;
 import com.ecommerce.adminbackend.repository.ProductImageRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.ProductVariantRepository;
@@ -23,6 +25,7 @@ import com.ecommerce.adminbackend.dto.product.CreateProductRequest;
 import com.ecommerce.adminbackend.dto.product.UpdateProductRequest;
 import com.ecommerce.adminbackend.service.ProductAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
+import com.ecommerce.adminbackend.service.support.MaterialSlabParser;
 import com.ecommerce.adminbackend.service.support.ProductVariantCommissionSupport;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +65,7 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
     private final ColorRepository colorRepository;
     private final SizeRepository sizeRepository;
     private final SizeChartRepository sizeChartRepository;
+    private final DeliveryChargeRepository deliveryChargeRepository;
     private final MediaUrlHelper mediaUrlHelper;
     private final ObjectMapper objectMapper;
     private final ProductVariantCommissionSupport commissionSupport;
@@ -124,22 +128,49 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
     @Transactional(readOnly = true)
     public Map<String, Object> catalog() {
         List<Map<String, Object>> categories = new ArrayList<>();
-        for (Category category : categoryRepository.findAll()) {
-            List<Map<String, Object>> subcategories = subcategoryRepository
-                    .findByCategoryIdOrderBySubcategoryNameAsc(category.getId())
-                    .stream()
-                    .map(sub -> {
-                        Map<String, Object> row = new LinkedHashMap<>();
-                        row.put("id", sub.getId());
-                        row.put("name", sub.getSubcategoryName());
-                        return row;
-                    })
-                    .toList();
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("id", category.getId());
-            row.put("name", category.getCategoryName());
-            row.put("subcategories", subcategories);
-            categories.add(row);
+        for (Category main : categoryRepository.findByParentIdIsNullOrderByCategoryNameAsc()) {
+            if (!isActive(main.getStatus())) {
+                continue;
+            }
+            List<Map<String, Object>> middleRows = new ArrayList<>();
+            for (Category middle : categoryRepository.findByParentIdOrderByCategoryNameAsc(main.getId())) {
+                if (!isActive(middle.getStatus())) {
+                    continue;
+                }
+                List<Map<String, Object>> children = subcategoryRepository
+                        .findByCategoryIdOrderBySubcategoryNameAsc(middle.getId())
+                        .stream()
+                        .filter(sub -> isActive(sub.getStatus()))
+                        .map(this::toLeafSubcategory)
+                        .toList();
+                Map<String, Object> middleRow = new LinkedHashMap<>();
+                middleRow.put("id", middle.getId());
+                middleRow.put("name", middle.getCategoryName());
+                middleRow.put("gstPercentage", middle.getGstPercentage());
+                middleRow.put("materials", List.of());
+                middleRow.put("children", children);
+                middleRows.add(middleRow);
+            }
+            // Flat hierarchy fallback: subcategories linked directly to main (no child categories)
+            if (middleRows.isEmpty()) {
+                for (Subcategory sub : subcategoryRepository.findByCategoryIdOrderBySubcategoryNameAsc(main.getId())) {
+                    if (!isActive(sub.getStatus())) {
+                        continue;
+                    }
+                    Map<String, Object> middleRow = new LinkedHashMap<>();
+                    middleRow.put("id", sub.getId());
+                    middleRow.put("name", sub.getSubcategoryName());
+                    middleRow.put("gstPercentage", sub.getGstPercentage());
+                    middleRow.put("materials", MaterialSlabParser.parse(sub.getMaterialSlabs()));
+                    middleRow.put("children", List.of());
+                    middleRows.add(middleRow);
+                }
+            }
+            Map<String, Object> mainRow = new LinkedHashMap<>();
+            mainRow.put("id", main.getId());
+            mainRow.put("name", main.getCategoryName());
+            mainRow.put("subcategories", middleRows);
+            categories.add(mainRow);
         }
 
         List<Map<String, Object>> colors = colorRepository.findAllByOrderByColorNameAsc().stream()
@@ -164,11 +195,99 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
                 })
                 .toList();
 
+        List<Map<String, Object>> deliverySlabs = deliveryChargeRepository
+                .findByStatusTrueOrderByWeightMinAscIdAsc()
+                .stream()
+                .map(this::toDeliverySlab)
+                .toList();
+
         Map<String, Object> catalog = new LinkedHashMap<>();
         catalog.put("categories", categories);
         catalog.put("colors", colors);
         catalog.put("sizes", sizes);
+        catalog.put("deliverySlabs", deliverySlabs);
         return catalog;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> resolveDeliveryCharge(BigDecimal weightKg) {
+        List<DeliveryCharge> slabs = deliveryChargeRepository.findByStatusTrueOrderByWeightMinAscIdAsc();
+        if (weightKg == null || weightKg.compareTo(BigDecimal.ZERO) <= 0) {
+            return emptyDeliverySlab("—");
+        }
+        for (DeliveryCharge slab : slabs) {
+            if (weightKg.compareTo(slab.getWeightMin()) >= 0
+                    && weightKg.compareTo(slab.getWeightMax()) <= 0) {
+                return toDeliverySlab(slab);
+            }
+        }
+        DeliveryCharge nextHigher = null;
+        for (DeliveryCharge slab : slabs) {
+            if (weightKg.compareTo(slab.getWeightMin()) < 0
+                    && (nextHigher == null
+                            || slab.getWeightMin().compareTo(nextHigher.getWeightMin()) < 0)) {
+                nextHigher = slab;
+            }
+        }
+        if (nextHigher != null) {
+            return toDeliverySlab(nextHigher);
+        }
+        if (!slabs.isEmpty()) {
+            return toDeliverySlab(slabs.get(slabs.size() - 1));
+        }
+        return emptyDeliverySlab(weightLabelFor(weightKg));
+    }
+
+    private Map<String, Object> toLeafSubcategory(Subcategory sub) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", sub.getId());
+        row.put("name", sub.getSubcategoryName());
+        row.put("gstPercentage", sub.getGstPercentage());
+        row.put("materials", MaterialSlabParser.parse(sub.getMaterialSlabs()));
+        return row;
+    }
+
+    private Map<String, Object> toDeliverySlab(DeliveryCharge charge) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", charge.getId());
+        row.put("label", charge.getWeightSlab());
+        row.put("minWeightKg", charge.getWeightMin());
+        row.put("maxWeightKg", charge.getWeightMax());
+        row.put("intraCityCharge", charge.getIntraCityCharge());
+        row.put("metroMetroCharge", charge.getMetroMetroCharge());
+        row.put("custom", Boolean.TRUE.equals(charge.getCustom()));
+        return row;
+    }
+
+    private Map<String, Object> emptyDeliverySlab(String label) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", null);
+        row.put("label", label);
+        row.put("minWeightKg", BigDecimal.ZERO);
+        row.put("maxWeightKg", BigDecimal.ZERO);
+        row.put("intraCityCharge", new BigDecimal("175.00"));
+        row.put("metroMetroCharge", new BigDecimal("205.00"));
+        row.put("custom", false);
+        return row;
+    }
+
+    private String weightLabelFor(BigDecimal weightKg) {
+        double w = weightKg.doubleValue();
+        if (w <= 1) {
+            return "500gms-1kg";
+        }
+        if (w <= 2) {
+            return "1-2 kg";
+        }
+        if (w <= 5) {
+            return "2-5 kg";
+        }
+        return "Above 5 kg";
+    }
+
+    private boolean isActive(Boolean status) {
+        return Boolean.TRUE.equals(status);
     }
 
     @Override

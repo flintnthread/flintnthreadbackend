@@ -1,0 +1,4866 @@
+17:32:16.990 [main] INFO com.ecommerce.adminbackend.AdminBackendApplication -- Starting admin-backend...
+17:32:17.272 [restartedMain] INFO com.ecommerce.adminbackend.AdminBackendApplication -- Starting admin-backend...
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::               (v3.5.14)
+
+2026-07-15 17:32:17.868 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - Starting AdminBackendApplication using Java 17.0.4.1 with PID 21452 (C:\completeproject\flintnthread-platform\admin-service\target\classes started by adari in C:\completeproject\flintnthread-platform\admin-service)
+2026-07-15 17:32:17.871 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - The following 1 profile is active: "local"
+2026-07-15 17:32:17.920 INFO  [restartedMain] o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-07-15 17:32:17.921 INFO  [restartedMain] o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-07-15 17:32:19.101 INFO  [restartedMain] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-07-15 17:32:19.353 INFO  [restartedMain] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 247 ms. Found 46 JPA repository interfaces.
+2026-07-15 17:32:20.119 INFO  [restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer - Tomcat initialized with port 8082 (http)
+2026-07-15 17:32:20.135 INFO  [restartedMain] o.apache.catalina.core.StandardService - Starting service [Tomcat]
+2026-07-15 17:32:20.135 INFO  [restartedMain] org.apache.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.54]
+2026-07-15 17:32:20.185 INFO  [restartedMain] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-07-15 17:32:20.185 INFO  [restartedMain] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 2263 ms
+2026-07-15 17:32:20.402 INFO  [restartedMain] o.hibernate.jpa.internal.util.LogHelper - HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-07-15 17:32:20.466 INFO  [restartedMain] org.hibernate.Version - HHH000412: Hibernate ORM core version 6.6.49.Final
+2026-07-15 17:32:20.502 INFO  [restartedMain] o.h.c.internal.RegionFactoryInitiator - HHH000026: Second-level cache disabled
+2026-07-15 17:32:20.785 INFO  [restartedMain] o.s.o.j.p.SpringPersistenceUnitInfo - No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-07-15 17:32:20.818 INFO  [restartedMain] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-07-15 17:32:21.005 INFO  [restartedMain] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@2984598e
+2026-07-15 17:32:21.011 INFO  [restartedMain] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-07-15 17:32:21.069 WARN  [restartedMain] org.hibernate.orm.deprecation - HHH90000025: MySQLDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2026-07-15 17:32:21.091 INFO  [restartedMain] org.hibernate.orm.connections.pooling - HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 8.0.45
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-07-15 17:32:22.970 INFO  [restartedMain] o.h.e.t.j.p.i.JtaPlatformInitiator - HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-07-15 17:32:22.982 INFO  [restartedMain] o.s.o.j.LocalContainerEntityManagerFactoryBean - Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-07-15 17:32:23.397 INFO  [restartedMain] o.s.d.j.r.query.QueryEnhancerFactory - Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-07-15 17:32:24.946 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:24.946 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT setting_value FROM admin_settings WHERE setting_key = ? LIMIT 1]
+2026-07-15 17:32:24.962 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:25.012 WARN  [restartedMain] c.e.a.s.PlatformIntegrationSettings - Could not read admin setting sendgrid_api_key: PreparedStatementCallback; bad SQL grammar [SELECT setting_value FROM admin_settings WHERE setting_key = ? LIMIT 1]
+2026-07-15 17:32:26.544 WARN  [restartedMain] o.s.b.a.o.j.JpaBaseConfiguration$JpaWebConfiguration - spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2026-07-15 17:32:26.760 WARN  [restartedMain] o.s.b.a.s.s.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 40daec65-bbc2-4c3f-95cf-bd29b78461f8
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2026-07-15 17:32:26.777 INFO  [restartedMain] o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
+2026-07-15 17:32:27.077 INFO  [restartedMain] o.s.b.d.a.OptionalLiveReloadServer - LiveReload server is running on port 35729
+2026-07-15 17:32:27.127 INFO  [restartedMain] o.s.b.w.embedded.tomcat.TomcatWebServer - Tomcat started on port 8082 (http) with context path '/'
+2026-07-15 17:32:27.143 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - Started AdminBackendApplication in 9.863 seconds (process running for 10.647)
+2026-07-15 17:32:27.243 DEBUG [restartedMain] org.hibernate.SQL - 
+    select
+        au1_0.id 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        au1_0.id 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?) 
+    limit
+        ?
+2026-07-15 17:32:27.260 TRACE [restartedMain] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@flintnthread.in]
+2026-07-15 17:32:27.260 TRACE [restartedMain] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:32:27.277 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.277 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:32:27.277 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.277 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.292 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:32:27.292 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:32:27.295 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+]
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL query
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.springframework.jdbc.core.JdbcTemplate - Executing prepared SQL statement [SELECT COUNT(*)
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+  AND COLUMN_NAME = ?
+]
+2026-07-15 17:32:27.310 DEBUG [restartedMain] o.s.jdbc.datasource.DataSourceUtils - Fetching JDBC Connection from DataSource
+2026-07-15 17:32:27.310 INFO  [restartedMain] c.e.adminbackend.AdminBackendApplication - admin-backend is ready and accepting requests on port 8082
+2026-07-15 17:32:27.593 INFO  [http-nio-0.0.0.0-8082-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-07-15 17:32:27.593 INFO  [http-nio-0.0.0.0-8082-exec-1] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-07-15 17:32:27.593 INFO  [http-nio-0.0.0.0-8082-exec-1] o.s.web.servlet.DispatcherServlet - Completed initialization in 0 ms
+2026-07-15 17:32:27.816 DEBUG [http-nio-0.0.0.0-8082-exec-1] org.hibernate.SQL - 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+Hibernate: 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+2026-07-15 17:32:27.816 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:32:27.961 INFO  [http-nio-0.0.0.0-8082-exec-1] c.e.a.service.impl.AdminAuthServiceImpl - Admin login successful: adminId=4, email=admin@gmail.com
+2026-07-15 17:32:28.110 DEBUG [http-nio-0.0.0.0-8082-exec-1] org.hibernate.SQL - 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+Hibernate: 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:32:27.944917]
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [Super Admin]
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [$2a$10$roE16DRSlPDlA.lHxLOmJeLXJIK/vWbSwYqO4.nKxX1PSSC/VebN2]
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (5:ENUM) <- [super_admin]
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (6:ENUM) <- [active]
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [superadmin]
+2026-07-15 17:32:28.110 TRACE [http-nio-0.0.0.0-8082-exec-1] org.hibernate.orm.jdbc.bind - binding parameter (8:BIGINT) <- [4]
+2026-07-15 17:32:28.149 INFO  [http-nio-0.0.0.0-8082-exec-1] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/auth/login -> 200 (539 ms)
+2026-07-15 17:32:28.311 DEBUG [http-nio-0.0.0.0-8082-exec-5] o.s.jdbc.datasource.DataSourceUtils - Setting JDBC Connection [HikariProxyConnection@1602682615 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e] read-only
+2026-07-15 17:32:28.343 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    select
+        o1_0.id,
+        o1_0.billing_address1,
+        o1_0.billing_address2,
+        o1_0.billing_city,
+        o1_0.billing_country,
+        o1_0.billing_email,
+        o1_0.billing_name,
+        o1_0.billing_phone,
+        o1_0.billing_pincode,
+        o1_0.billing_state,
+        o1_0.created_at,
+        o1_0.discount_amount,
+        o1_0.gst_info,
+        o1_0.gst_number,
+        o1_0.order_notes,
+        o1_0.order_number,
+        o1_0.order_status,
+        o1_0.payment_method,
+        o1_0.payment_status,
+        o1_0.razorpay_order_id,
+        o1_0.razorpay_payment_id,
+        o1_0.razorpay_signature,
+        o1_0.referral_discount_amount,
+        o1_0.referral_discount_percent,
+        o1_0.seller_payment_status,
+        o1_0.session_id,
+        o1_0.shipping_address1,
+        o1_0.shipping_address2,
+        o1_0.shipping_amount,
+        o1_0.shipping_city,
+        o1_0.shipping_country,
+        o1_0.shipping_email,
+        o1_0.shipping_name,
+        o1_0.shipping_phone,
+        o1_0.shipping_pincode,
+        o1_0.shipping_state,
+        o1_0.shiprocket_awb_code,
+        o1_0.shiprocket_courier_name,
+        o1_0.shiprocket_order_id,
+        o1_0.shiprocket_pushed_at,
+        o1_0.shiprocket_shipment_id,
+        o1_0.shiprocket_status,
+        o1_0.shiprocket_synced_at,
+        o1_0.shiprocket_tracking_url,
+        o1_0.tax_amount,
+        o1_0.total_amount,
+        o1_0.updated_at,
+        o1_0.user_id,
+        o1_0.wallet_deduction 
+    from
+        orders o1_0 
+    where
+        (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.payment_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(coalesce(o1_0.payment_method, '')) like lower(concat('%', ?, '%')) escape ''
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_number) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_name) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_email) like lower(concat('%', ?, '%')) escape '' 
+            or o1_0.shipping_phone like concat('%', ?, '%') escape ''
+        ) 
+        and (
+            ? is null 
+            or exists(select
+                1 
+            from
+                order_items oi1_0 
+            where
+                oi1_0.order_id=o1_0.id 
+                and oi1_0.seller_id=?)
+        ) 
+    order by
+        o1_0.created_at desc 
+    limit
+        ?
+Hibernate: 
+    select
+        o1_0.id,
+        o1_0.billing_address1,
+        o1_0.billing_address2,
+        o1_0.billing_city,
+        o1_0.billing_country,
+        o1_0.billing_email,
+        o1_0.billing_name,
+        o1_0.billing_phone,
+        o1_0.billing_pincode,
+        o1_0.billing_state,
+        o1_0.created_at,
+        o1_0.discount_amount,
+        o1_0.gst_info,
+        o1_0.gst_number,
+        o1_0.order_notes,
+        o1_0.order_number,
+        o1_0.order_status,
+        o1_0.payment_method,
+        o1_0.payment_status,
+        o1_0.razorpay_order_id,
+        o1_0.razorpay_payment_id,
+        o1_0.razorpay_signature,
+        o1_0.referral_discount_amount,
+        o1_0.referral_discount_percent,
+        o1_0.seller_payment_status,
+        o1_0.session_id,
+        o1_0.shipping_address1,
+        o1_0.shipping_address2,
+        o1_0.shipping_amount,
+        o1_0.shipping_city,
+        o1_0.shipping_country,
+        o1_0.shipping_email,
+        o1_0.shipping_name,
+        o1_0.shipping_phone,
+        o1_0.shipping_pincode,
+        o1_0.shipping_state,
+        o1_0.shiprocket_awb_code,
+        o1_0.shiprocket_courier_name,
+        o1_0.shiprocket_order_id,
+        o1_0.shiprocket_pushed_at,
+        o1_0.shiprocket_shipment_id,
+        o1_0.shiprocket_status,
+        o1_0.shiprocket_synced_at,
+        o1_0.shiprocket_tracking_url,
+        o1_0.tax_amount,
+        o1_0.total_amount,
+        o1_0.updated_at,
+        o1_0.user_id,
+        o1_0.wallet_deduction 
+    from
+        orders o1_0 
+    where
+        (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.payment_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(coalesce(o1_0.payment_method, '')) like lower(concat('%', ?, '%')) escape ''
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_number) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_name) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_email) like lower(concat('%', ?, '%')) escape '' 
+            or o1_0.shipping_phone like concat('%', ?, '%') escape ''
+        ) 
+        and (
+            ? is null 
+            or exists(select
+                1 
+            from
+                order_items oi1_0 
+            where
+                oi1_0.order_id=o1_0.id 
+                and oi1_0.seller_id=?)
+        ) 
+    order by
+        o1_0.created_at desc 
+    limit
+        ?
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (2:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (5:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (6:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (8:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (9:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (10:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (11:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (12:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (13:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (14:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (15:VARCHAR) <- [null]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (16:BIGINT) <- [248]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (17:BIGINT) <- [248]
+2026-07-15 17:32:28.343 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (18:INTEGER) <- [3]
+2026-07-15 17:32:28.376 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    select
+        count(o1_0.id) 
+    from
+        orders o1_0 
+    where
+        (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.payment_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(coalesce(o1_0.payment_method, '')) like lower(concat('%', ?, '%')) escape ''
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_number) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_name) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_email) like lower(concat('%', ?, '%')) escape '' 
+            or o1_0.shipping_phone like concat('%', ?, '%') escape ''
+        ) 
+        and (
+            ? is null 
+            or exists(select
+                1 
+            from
+                order_items oi1_0 
+            where
+                oi1_0.order_id=o1_0.id 
+                and oi1_0.seller_id=?)
+        )
+Hibernate: 
+    select
+        count(o1_0.id) 
+    from
+        orders o1_0 
+    where
+        (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.payment_status)=lower(?)
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(coalesce(o1_0.payment_method, '')) like lower(concat('%', ?, '%')) escape ''
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(o1_0.order_number) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_name) like lower(concat('%', ?, '%')) escape '' 
+            or lower(o1_0.shipping_email) like lower(concat('%', ?, '%')) escape '' 
+            or o1_0.shipping_phone like concat('%', ?, '%') escape ''
+        ) 
+        and (
+            ? is null 
+            or exists(select
+                1 
+            from
+                order_items oi1_0 
+            where
+                oi1_0.order_id=o1_0.id 
+                and oi1_0.seller_id=?)
+        )
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (2:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (5:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (6:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (8:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (9:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (10:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (11:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (12:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (13:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (14:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (15:VARCHAR) <- [null]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (16:BIGINT) <- [248]
+2026-07-15 17:32:28.377 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (17:BIGINT) <- [248]
+2026-07-15 17:32:28.391 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    select
+        oi1_0.id,
+        oi1_0.created_at,
+        oi1_0.order_id,
+        oi1_0.price,
+        oi1_0.product_id,
+        oi1_0.product_image_path,
+        oi1_0.quantity,
+        oi1_0.seller_id,
+        oi1_0.status,
+        oi1_0.total,
+        oi1_0.variant_id 
+    from
+        order_items oi1_0 
+    where
+        oi1_0.order_id in (?, ?, ?)
+Hibernate: 
+    select
+        oi1_0.id,
+        oi1_0.created_at,
+        oi1_0.order_id,
+        oi1_0.price,
+        oi1_0.product_id,
+        oi1_0.product_image_path,
+        oi1_0.quantity,
+        oi1_0.seller_id,
+        oi1_0.status,
+        oi1_0.total,
+        oi1_0.variant_id 
+    from
+        order_items oi1_0 
+    where
+        oi1_0.order_id in (?, ?, ?)
+2026-07-15 17:32:28.394 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [213]
+2026-07-15 17:32:28.394 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [212]
+2026-07-15 17:32:28.394 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (3:BIGINT) <- [196]
+2026-07-15 17:32:28.394 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.id in (?)
+Hibernate: 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.id in (?)
+2026-07-15 17:32:28.394 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.414 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    select
+        p1_0.id,
+        p1_0.accept_cod,
+        p1_0.admin_notes,
+        p1_0.care_instructions,
+        p1_0.category_id,
+        p1_0.created_at,
+        p1_0.deliver_all_locations,
+        p1_0.delivery_info,
+        p1_0.delivery_time_max,
+        p1_0.delivery_time_min,
+        p1_0.description,
+        p1_0.features,
+        p1_0.is_fragile,
+        p1_0.gst_percentage,
+        p1_0.height_cm,
+        p1_0.hsn_code,
+        p1_0.intra_city_charge,
+        p1_0.length_cm,
+        p1_0.metro_metro_charge,
+        p1_0.name,
+        p1_0.product_material_type,
+        p1_0.product_weight,
+        p1_0.return_policy,
+        p1_0.reviewed_at,
+        p1_0.seller_id,
+        p1_0.short_description,
+        p1_0.size_chart_id,
+        p1_0.sku,
+        p1_0.specifications,
+        p1_0.status,
+        p1_0.subcategory_id,
+        p1_0.updated_at,
+        p1_0.warranty_info,
+        p1_0.width_cm 
+    from
+        products p1_0 
+    where
+        p1_0.id in (?, ?)
+Hibernate: 
+    select
+        p1_0.id,
+        p1_0.accept_cod,
+        p1_0.admin_notes,
+        p1_0.care_instructions,
+        p1_0.category_id,
+        p1_0.created_at,
+        p1_0.deliver_all_locations,
+        p1_0.delivery_info,
+        p1_0.delivery_time_max,
+        p1_0.delivery_time_min,
+        p1_0.description,
+        p1_0.features,
+        p1_0.is_fragile,
+        p1_0.gst_percentage,
+        p1_0.height_cm,
+        p1_0.hsn_code,
+        p1_0.intra_city_charge,
+        p1_0.length_cm,
+        p1_0.metro_metro_charge,
+        p1_0.name,
+        p1_0.product_material_type,
+        p1_0.product_weight,
+        p1_0.return_policy,
+        p1_0.reviewed_at,
+        p1_0.seller_id,
+        p1_0.short_description,
+        p1_0.size_chart_id,
+        p1_0.sku,
+        p1_0.specifications,
+        p1_0.status,
+        p1_0.subcategory_id,
+        p1_0.updated_at,
+        p1_0.warranty_info,
+        p1_0.width_cm 
+    from
+        products p1_0 
+    where
+        p1_0.id in (?, ?)
+2026-07-15 17:32:28.414 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [972]
+2026-07-15 17:32:28.414 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [1018]
+2026-07-15 17:32:28.426 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    select
+        p1_0.id,
+        p1_0.accept_cod,
+        p1_0.admin_notes,
+        p1_0.care_instructions,
+        p1_0.category_id,
+        p1_0.created_at,
+        p1_0.deliver_all_locations,
+        p1_0.delivery_info,
+        p1_0.delivery_time_max,
+        p1_0.delivery_time_min,
+        p1_0.description,
+        p1_0.features,
+        p1_0.is_fragile,
+        p1_0.gst_percentage,
+        p1_0.height_cm,
+        p1_0.hsn_code,
+        p1_0.intra_city_charge,
+        p1_0.length_cm,
+        p1_0.metro_metro_charge,
+        p1_0.name,
+        p1_0.product_material_type,
+        p1_0.product_weight,
+        p1_0.return_policy,
+        p1_0.reviewed_at,
+        p1_0.seller_id,
+        p1_0.short_description,
+        p1_0.size_chart_id,
+        p1_0.sku,
+        p1_0.specifications,
+        p1_0.status,
+        p1_0.subcategory_id,
+        p1_0.updated_at,
+        p1_0.warranty_info,
+        p1_0.width_cm 
+    from
+        products p1_0 
+    where
+        p1_0.id in (?, ?)
+Hibernate: 
+    select
+        p1_0.id,
+        p1_0.accept_cod,
+        p1_0.admin_notes,
+        p1_0.care_instructions,
+        p1_0.category_id,
+        p1_0.created_at,
+        p1_0.deliver_all_locations,
+        p1_0.delivery_info,
+        p1_0.delivery_time_max,
+        p1_0.delivery_time_min,
+        p1_0.description,
+        p1_0.features,
+        p1_0.is_fragile,
+        p1_0.gst_percentage,
+        p1_0.height_cm,
+        p1_0.hsn_code,
+        p1_0.intra_city_charge,
+        p1_0.length_cm,
+        p1_0.metro_metro_charge,
+        p1_0.name,
+        p1_0.product_material_type,
+        p1_0.product_weight,
+        p1_0.return_policy,
+        p1_0.reviewed_at,
+        p1_0.seller_id,
+        p1_0.short_description,
+        p1_0.size_chart_id,
+        p1_0.sku,
+        p1_0.specifications,
+        p1_0.status,
+        p1_0.subcategory_id,
+        p1_0.updated_at,
+        p1_0.warranty_info,
+        p1_0.width_cm 
+    from
+        products p1_0 
+    where
+        p1_0.id in (?, ?)
+2026-07-15 17:32:28.426 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [972]
+2026-07-15 17:32:28.426 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [1018]
+2026-07-15 17:32:28.426 DEBUG [http-nio-0.0.0.0-8082-exec-5] o.s.jdbc.datasource.DataSourceUtils - Resetting read-only flag of JDBC Connection [HikariProxyConnection@1602682615 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e]
+2026-07-15 17:32:28.443 INFO  [http-nio-0.0.0.0-8082-exec-5] c.e.a.logging.AdminRequestLoggingFilter - API GET /api/admin/orders?sellerId=248&page=0&size=3 -> 200 (183 ms) adminId=4
+2026-07-15 17:32:28.493 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    UPDATE
+        seller_bank_verifications 
+    SET
+        status = 'expired',
+        updated_at = CURRENT_TIMESTAMP 
+    WHERE
+        status IN ('pending', 'processing')   
+        AND expires_at IS NOT NULL   
+        AND expires_at < NOW() 
+Hibernate: 
+    UPDATE
+        seller_bank_verifications 
+    SET
+        status = 'expired',
+        updated_at = CURRENT_TIMESTAMP 
+    WHERE
+        status IN ('pending', 'processing')   
+        AND expires_at IS NOT NULL   
+        AND expires_at < NOW() 
+2026-07-15 17:32:28.511 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    SELECT
+        effective_status,
+        COUNT(*) AS cnt 
+    FROM
+        (     SELECT
+            CASE                
+                WHEN v.status IN ('pending', 'processing')                     
+                AND v.expires_at IS NOT NULL                     
+                AND v.expires_at < NOW() 
+                    THEN 'expired'                
+                ELSE LOWER(v.status)            
+        END AS effective_status     
+    FROM
+        seller_bank_verifications v     
+    INNER JOIN
+        (         SELECT
+            seller_id, MAX(id) AS max_id         
+        FROM
+            seller_bank_verifications         
+        GROUP BY
+            seller_id     ) latest 
+            ON latest.max_id = v.id ) t 
+GROUP BY
+    effective_status 
+Hibernate: 
+    SELECT
+        effective_status,
+        COUNT(*) AS cnt 
+    FROM
+        (     SELECT
+            CASE                
+                WHEN v.status IN ('pending', 'processing')                     
+                AND v.expires_at IS NOT NULL                     
+                AND v.expires_at < NOW() 
+                    THEN 'expired'                
+                ELSE LOWER(v.status)            
+        END AS effective_status     
+    FROM
+        seller_bank_verifications v     
+    INNER JOIN
+        (         SELECT
+            seller_id, MAX(id) AS max_id         
+        FROM
+            seller_bank_verifications         
+        GROUP BY
+            seller_id     ) latest 
+            ON latest.max_id = v.id ) t 
+GROUP BY
+    effective_status 
+2026-07-15 17:32:28.528 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    SELECT
+        DISTINCT seller_id 
+    FROM
+        seller_bank_verifications 
+Hibernate: 
+    SELECT
+        DISTINCT seller_id 
+    FROM
+        seller_bank_verifications 
+2026-07-15 17:32:28.528 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and (
+            s1_0.bank_verified is null 
+            or s1_0.bank_verified=0
+        )
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and (
+            s1_0.bank_verified is null 
+            or s1_0.bank_verified=0
+        )
+2026-07-15 17:32:28.542 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_verified=1
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_verified=1
+2026-07-15 17:32:28.544 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and (
+            s1_0.bank_verified is null 
+            or s1_0.bank_verified=0
+        ) 
+    order by
+        s1_0.updated_at desc
+Hibernate: 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and (
+            s1_0.bank_verified is null 
+            or s1_0.bank_verified=0
+        ) 
+    order by
+        s1_0.updated_at desc
+2026-07-15 17:32:28.593 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and s1_0.bank_verified=1 
+    order by
+        s1_0.updated_at desc
+Hibernate: 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and s1_0.bank_verified=1 
+    order by
+        s1_0.updated_at desc
+2026-07-15 17:32:28.593 INFO  [http-nio-0.0.0.0-8082-exec-3] c.e.a.logging.AdminRequestLoggingFilter - API GET /api/admin/sellers/bank/stats -> 200 (133 ms) adminId=4
+2026-07-15 17:32:28.663 DEBUG [http-nio-0.0.0.0-8082-exec-9] o.s.jdbc.datasource.DataSourceUtils - Setting JDBC Connection [HikariProxyConnection@93084542 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e] read-only
+2026-07-15 17:32:28.676 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.id=?
+Hibernate: 
+    select
+        s1_0.id,
+        s1_0.aadhaar_number,
+        s1_0.aadhar_back,
+        s1_0.aadhar_front,
+        s1_0.account_holder,
+        s1_0.account_number,
+        s1_0.address,
+        s1_0.admin_remarks,
+        s1_0.area,
+        s1_0.bank_name,
+        s1_0.bank_proof,
+        s1_0.bank_verified,
+        s1_0.branch_name,
+        s1_0.business_name,
+        s1_0.business_proof,
+        s1_0.business_type,
+        s1_0.cancelled_cheque,
+        s1_0.city,
+        s1_0.company_pan,
+        s1_0.company_pan_doc,
+        s1_0.country,
+        s1_0.created_at,
+        s1_0.email,
+        s1_0.email_verification_token,
+        s1_0.email_verified,
+        s1_0.email_verified_at,
+        s1_0.first_name,
+        s1_0.gst_number,
+        s1_0.gst_type,
+        s1_0.has_gst,
+        s1_0.iec_certificate,
+        s1_0.ifsc_code,
+        s1_0.incorporation_certificate,
+        s1_0.kyc_completed,
+        s1_0.kyc_remarks,
+        s1_0.kyc_submitted_at,
+        s1_0.kyc_verified,
+        s1_0.kyc_verified_at,
+        s1_0.landmark,
+        s1_0.last_login_at,
+        s1_0.last_login_ip,
+        s1_0.last_name,
+        s1_0.live_selfie,
+        s1_0.mobile,
+        s1_0.mobile_verified,
+        s1_0.mobile_verified_at,
+        s1_0.msme_certificate,
+        s1_0.otp,
+        s1_0.otp_expires_at,
+        s1_0.otp_sent_at,
+        s1_0.pan_card,
+        s1_0.pan_number,
+        s1_0.partnership_deed,
+        s1_0.password,
+        s1_0.password_reset_expires_at,
+        s1_0.password_reset_token,
+        s1_0.pincode,
+        s1_0.profile_completed,
+        s1_0.profile_needs_verification,
+        s1_0.profile_pic,
+        s1_0.profile_updated_at,
+        s1_0.referral_code,
+        s1_0.referred_by_seller_id,
+        s1_0.road_number,
+        s1_0.seller_category,
+        s1_0.seller_unique_id,
+        s1_0.state,
+        s1_0.status,
+        s1_0.updated_at,
+        s1_0.wallet_balance,
+        s1_0.warehouse_address,
+        s1_0.warehouse_area,
+        s1_0.warehouse_city,
+        s1_0.warehouse_country,
+        s1_0.warehouse_state 
+    from
+        sellers s1_0 
+    where
+        s1_0.id=?
+2026-07-15 17:32:28.679 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.684 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    SELECT
+        oi.seller_id,
+        COALESCE(SUM(oi.total), 0) 
+    FROM
+        order_items oi 
+    WHERE
+        oi.seller_id IS NOT NULL 
+    GROUP BY
+        oi.seller_id 
+Hibernate: 
+    SELECT
+        oi.seller_id,
+        COALESCE(SUM(oi.total), 0) 
+    FROM
+        order_items oi 
+    WHERE
+        oi.seller_id IS NOT NULL 
+    GROUP BY
+        oi.seller_id 
+2026-07-15 17:32:28.695 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        p1_0.seller_id,
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        p1_0.seller_id in (?) 
+    group by
+        p1_0.seller_id
+Hibernate: 
+    select
+        p1_0.seller_id,
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        p1_0.seller_id in (?) 
+    group by
+        p1_0.seller_id
+2026-07-15 17:32:28.697 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.701 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    SELECT
+        oi.seller_id,
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    WHERE
+        oi.seller_id IS NOT NULL 
+    GROUP BY
+        oi.seller_id 
+Hibernate: 
+    SELECT
+        oi.seller_id,
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    WHERE
+        oi.seller_id IS NOT NULL 
+    GROUP BY
+        oi.seller_id 
+2026-07-15 17:32:28.707 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id in (?) 
+        and ski1_0.doc_type='live_selfie' 
+    order by
+        ski1_0.captured_at desc
+Hibernate: 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id in (?) 
+        and ski1_0.doc_type='live_selfie' 
+    order by
+        ski1_0.captured_at desc
+2026-07-15 17:32:28.710 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.716 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id in (?) 
+        and ski1_0.image_type='face' 
+        and ski1_0.image_path is not null 
+        and trim(BOTH from ski1_0.image_path)<>'' 
+    order by
+        ski1_0.captured_at desc
+Hibernate: 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id in (?) 
+        and ski1_0.image_type='face' 
+        and ski1_0.image_path is not null 
+        and trim(BOTH from ski1_0.image_path)<>'' 
+    order by
+        ski1_0.captured_at desc
+2026-07-15 17:32:28.716 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.729 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        ski1_0.seller_id,
+        count(ski1_0.id) 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id in (?) 
+    group by
+        ski1_0.seller_id
+Hibernate: 
+    select
+        ski1_0.seller_id,
+        count(ski1_0.id) 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id in (?) 
+    group by
+        ski1_0.seller_id
+2026-07-15 17:32:28.729 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.729 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        count(ski1_0.id) 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id=?
+Hibernate: 
+    select
+        count(ski1_0.id) 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id=?
+2026-07-15 17:32:28.729 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.741 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id=? 
+    order by
+        ski1_0.captured_at desc
+Hibernate: 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id=? 
+    order by
+        ski1_0.captured_at desc
+2026-07-15 17:32:28.743 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.748 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id=? 
+    order by
+        ski1_0.captured_at desc
+Hibernate: 
+    select
+        ski1_0.id,
+        ski1_0.captured_at,
+        ski1_0.doc_type,
+        ski1_0.file_name,
+        ski1_0.image_path,
+        ski1_0.image_type,
+        ski1_0.seller_id 
+    from
+        seller_kyc_images ski1_0 
+    where
+        ski1_0.seller_id=? 
+    order by
+        ski1_0.captured_at desc
+2026-07-15 17:32:28.749 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.755 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        lower(p1_0.status),
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        p1_0.seller_id=? 
+    group by
+        lower(p1_0.status)
+Hibernate: 
+    select
+        lower(p1_0.status),
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        p1_0.seller_id=? 
+    group by
+        lower(p1_0.status)
+2026-07-15 17:32:28.756 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.763 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    SELECT
+        LOWER(COALESCE(o.order_status, oi.status, 'pending')),
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        oi.seller_id = ? 
+    GROUP BY
+        LOWER(COALESCE(o.order_status, oi.status, 'pending')) 
+Hibernate: 
+    SELECT
+        LOWER(COALESCE(o.order_status, oi.status, 'pending')),
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        oi.seller_id = ? 
+    GROUP BY
+        LOWER(COALESCE(o.order_status, oi.status, 'pending')) 
+2026-07-15 17:32:28.764 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [55]
+2026-07-15 17:32:28.764 DEBUG [http-nio-0.0.0.0-8082-exec-9] o.s.jdbc.datasource.DataSourceUtils - Resetting read-only flag of JDBC Connection [HikariProxyConnection@93084542 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e]
+2026-07-15 17:32:28.774 INFO  [http-nio-0.0.0.0-8082-exec-9] c.e.a.logging.AdminRequestLoggingFilter - API GET /api/admin/sellers/55 -> 200 (121 ms) adminId=4
+2026-07-15 17:32:28.795 DEBUG [http-nio-0.0.0.0-8082-exec-2] o.s.jdbc.datasource.DataSourceUtils - Setting JDBC Connection [HikariProxyConnection@1229483294 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e] read-only
+2026-07-15 17:32:28.806 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:28.807 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.808 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.809 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-01-01T00:00]
+2026-07-15 17:32:28.810 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-01-31T23:59:59.999999999]
+2026-07-15 17:32:28.817 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:28.818 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.819 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.820 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-01-01T00:00]
+2026-07-15 17:32:28.820 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-01-31T23:59:59.999999999]
+2026-07-15 17:32:28.828 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:28.831 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.831 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.832 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-01-01T00:00]
+2026-07-15 17:32:28.833 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-01-31T23:59:59.999999999]
+2026-07-15 17:32:28.838 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:28.839 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.840 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.841 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-01-01T00:00]
+2026-07-15 17:32:28.841 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-01-31T23:59:59.999999999]
+2026-07-15 17:32:28.848 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:28.850 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.850 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.851 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-01-01T00:00]
+2026-07-15 17:32:28.852 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-01-31T23:59:59.999999999]
+2026-07-15 17:32:28.860 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:28.863 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.863 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.864 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-01-01T00:00]
+2026-07-15 17:32:28.865 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-01-31T23:59:59.999999999]
+2026-07-15 17:32:28.870 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:28.872 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.873 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.873 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-02-01T00:00]
+2026-07-15 17:32:28.874 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-02-28T23:59:59.999999999]
+2026-07-15 17:32:28.877 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:28.878 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.879 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.879 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-02-01T00:00]
+2026-07-15 17:32:28.879 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-02-28T23:59:59.999999999]
+2026-07-15 17:32:28.882 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:28.883 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.884 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.885 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-02-01T00:00]
+2026-07-15 17:32:28.886 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-02-28T23:59:59.999999999]
+2026-07-15 17:32:28.890 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:28.891 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.892 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.893 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-02-01T00:00]
+2026-07-15 17:32:28.894 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-02-28T23:59:59.999999999]
+2026-07-15 17:32:28.895 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-02-01T00:00]
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-02-28T23:59:59.999999999]
+2026-07-15 17:32:28.895 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-02-01T00:00]
+2026-07-15 17:32:28.895 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-02-28T23:59:59.999999999]
+2026-07-15 17:32:28.908 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:28.910 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.911 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.911 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-03-01T00:00]
+2026-07-15 17:32:28.912 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-03-31T23:59:59.999999999]
+2026-07-15 17:32:28.915 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:28.915 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.915 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.915 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-03-01T00:00]
+2026-07-15 17:32:28.915 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-03-31T23:59:59.999999999]
+2026-07-15 17:32:28.915 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:28.915 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.915 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.915 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-03-01T00:00]
+2026-07-15 17:32:28.924 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-03-31T23:59:59.999999999]
+2026-07-15 17:32:28.928 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:28.930 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.930 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.930 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-03-01T00:00]
+2026-07-15 17:32:28.930 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-03-31T23:59:59.999999999]
+2026-07-15 17:32:28.934 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:28.934 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.936 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.936 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-03-01T00:00]
+2026-07-15 17:32:28.938 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-03-31T23:59:59.999999999]
+2026-07-15 17:32:28.941 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:28.943 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.943 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.944 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-03-01T00:00]
+2026-07-15 17:32:28.944 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-03-31T23:59:59.999999999]
+2026-07-15 17:32:28.946 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:28.948 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.948 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.948 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-04-01T00:00]
+2026-07-15 17:32:28.948 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-04-30T23:59:59.999999999]
+2026-07-15 17:32:28.948 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:28.948 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.948 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.948 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-04-01T00:00]
+2026-07-15 17:32:28.958 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-04-30T23:59:59.999999999]
+2026-07-15 17:32:28.961 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:28.962 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.962 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.963 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-04-01T00:00]
+2026-07-15 17:32:28.964 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-04-30T23:59:59.999999999]
+2026-07-15 17:32:28.965 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:28.965 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.965 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.965 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-04-01T00:00]
+2026-07-15 17:32:28.965 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-04-30T23:59:59.999999999]
+2026-07-15 17:32:28.970 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:28.970 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.970 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.974 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-04-01T00:00]
+2026-07-15 17:32:28.974 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-04-30T23:59:59.999999999]
+2026-07-15 17:32:28.977 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:28.978 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.979 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.980 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-04-01T00:00]
+2026-07-15 17:32:28.980 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-04-30T23:59:59.999999999]
+2026-07-15 17:32:28.982 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:28.983 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.984 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.984 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-05-01T00:00]
+2026-07-15 17:32:28.985 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-05-31T23:59:59.999999999]
+2026-07-15 17:32:28.987 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:28.988 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.989 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.989 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-05-01T00:00]
+2026-07-15 17:32:28.990 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-05-31T23:59:59.999999999]
+2026-07-15 17:32:28.993 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:28.994 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:28.996 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:28.996 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-05-01T00:00]
+2026-07-15 17:32:28.996 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-05-31T23:59:59.999999999]
+2026-07-15 17:32:28.999 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.000 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.000 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.001 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-05-01T00:00]
+2026-07-15 17:32:29.001 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-05-31T23:59:59.999999999]
+2026-07-15 17:32:29.004 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.005 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.005 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.005 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-05-01T00:00]
+2026-07-15 17:32:29.005 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-05-31T23:59:59.999999999]
+2026-07-15 17:32:29.008 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.009 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.010 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.011 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-05-01T00:00]
+2026-07-15 17:32:29.011 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-05-31T23:59:59.999999999]
+2026-07-15 17:32:29.014 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:29.015 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.016 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.016 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-06-01T00:00]
+2026-07-15 17:32:29.017 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-06-30T23:59:59.999999999]
+2026-07-15 17:32:29.019 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:29.020 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.021 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.022 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-06-01T00:00]
+2026-07-15 17:32:29.022 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-06-30T23:59:59.999999999]
+2026-07-15 17:32:29.025 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:29.027 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.027 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.028 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-06-01T00:00]
+2026-07-15 17:32:29.028 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-06-30T23:59:59.999999999]
+2026-07-15 17:32:29.031 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.033 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.033 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.033 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-06-01T00:00]
+2026-07-15 17:32:29.033 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-06-30T23:59:59.999999999]
+2026-07-15 17:32:29.033 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.033 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.033 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.041 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-06-01T00:00]
+2026-07-15 17:32:29.041 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-06-30T23:59:59.999999999]
+2026-07-15 17:32:29.044 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.046 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.046 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.047 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-06-01T00:00]
+2026-07-15 17:32:29.047 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-06-30T23:59:59.999999999]
+2026-07-15 17:32:29.050 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:29.051 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.051 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.052 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-07-01T00:00]
+2026-07-15 17:32:29.052 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-07-31T23:59:59.999999999]
+2026-07-15 17:32:29.054 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:29.055 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.055 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.056 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-07-01T00:00]
+2026-07-15 17:32:29.056 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-07-31T23:59:59.999999999]
+2026-07-15 17:32:29.058 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:29.059 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.060 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.060 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-07-01T00:00]
+2026-07-15 17:32:29.061 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-07-31T23:59:59.999999999]
+2026-07-15 17:32:29.063 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-07-01T00:00]
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-07-31T23:59:59.999999999]
+2026-07-15 17:32:29.064 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-07-01T00:00]
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-07-31T23:59:59.999999999]
+2026-07-15 17:32:29.064 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.064 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.074 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-07-01T00:00]
+2026-07-15 17:32:29.074 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-07-31T23:59:59.999999999]
+2026-07-15 17:32:29.076 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:29.077 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.078 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.078 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-08-01T00:00]
+2026-07-15 17:32:29.079 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-08-31T23:59:59.999999999]
+2026-07-15 17:32:29.081 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-08-01T00:00]
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-08-31T23:59:59.999999999]
+2026-07-15 17:32:29.081 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-08-01T00:00]
+2026-07-15 17:32:29.081 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-08-31T23:59:59.999999999]
+2026-07-15 17:32:29.093 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.094 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.094 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.095 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-08-01T00:00]
+2026-07-15 17:32:29.095 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-08-31T23:59:59.999999999]
+2026-07-15 17:32:29.097 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-08-01T00:00]
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-08-31T23:59:59.999999999]
+2026-07-15 17:32:29.098 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-08-01T00:00]
+2026-07-15 17:32:29.098 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-08-31T23:59:59.999999999]
+2026-07-15 17:32:29.107 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:29.109 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.109 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.109 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-09-01T00:00]
+2026-07-15 17:32:29.109 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-09-30T23:59:59.999999999]
+2026-07-15 17:32:29.111 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:29.113 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.113 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.113 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-09-01T00:00]
+2026-07-15 17:32:29.113 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-09-30T23:59:59.999999999]
+2026-07-15 17:32:29.114 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-09-01T00:00]
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-09-30T23:59:59.999999999]
+2026-07-15 17:32:29.114 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-09-01T00:00]
+2026-07-15 17:32:29.114 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-09-30T23:59:59.999999999]
+2026-07-15 17:32:29.124 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.125 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.126 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.126 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-09-01T00:00]
+2026-07-15 17:32:29.126 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-09-30T23:59:59.999999999]
+2026-07-15 17:32:29.129 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.130 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-09-01T00:00]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-09-30T23:59:59.999999999]
+2026-07-15 17:32:29.131 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-10-01T00:00]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-10-31T23:59:59.999999999]
+2026-07-15 17:32:29.131 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-10-01T00:00]
+2026-07-15 17:32:29.131 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-10-31T23:59:59.999999999]
+2026-07-15 17:32:29.143 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-10-01T00:00]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-10-31T23:59:59.999999999]
+2026-07-15 17:32:29.143 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-10-01T00:00]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-10-31T23:59:59.999999999]
+2026-07-15 17:32:29.143 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-10-01T00:00]
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-10-31T23:59:59.999999999]
+2026-07-15 17:32:29.143 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.143 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.158 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.158 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-10-01T00:00]
+2026-07-15 17:32:29.159 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-10-31T23:59:59.999999999]
+2026-07-15 17:32:29.162 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:29.163 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.163 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.163 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-11-01T00:00]
+2026-07-15 17:32:29.164 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-11-30T23:59:59.999999999]
+2026-07-15 17:32:29.165 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:29.166 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.166 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.167 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-11-01T00:00]
+2026-07-15 17:32:29.167 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-11-30T23:59:59.999999999]
+2026-07-15 17:32:29.168 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:29.169 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.169 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.170 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-11-01T00:00]
+2026-07-15 17:32:29.170 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-11-30T23:59:59.999999999]
+2026-07-15 17:32:29.172 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.173 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.173 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.174 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-11-01T00:00]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-11-30T23:59:59.999999999]
+2026-07-15 17:32:29.175 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-11-01T00:00]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-11-30T23:59:59.999999999]
+2026-07-15 17:32:29.175 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-11-01T00:00]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-11-30T23:59:59.999999999]
+2026-07-15 17:32:29.175 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.created_at>=? 
+        and s1_0.created_at<=?
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-12-01T00:00]
+2026-07-15 17:32:29.175 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-12-31T23:59:59.999999999]
+2026-07-15 17:32:29.192 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)>=? 
+        and coalesce(s1_0.profile_updated_at, s1_0.updated_at, s1_0.created_at)<=?
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-12-01T00:00]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-12-31T23:59:59.999999999]
+2026-07-15 17:32:29.192 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.profile_completed=1 
+        and (
+            s1_0.profile_needs_verification=0 
+            or s1_0.profile_needs_verification is null
+        ) 
+        and s1_0.status='active' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)>=? 
+        and coalesce(s1_0.kyc_verified_at, s1_0.profile_updated_at, s1_0.updated_at)<=?
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-12-01T00:00]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-12-31T23:59:59.999999999]
+2026-07-15 17:32:29.192 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+Hibernate: 
+    select
+        count(p1_0.id) 
+    from
+        products p1_0 
+    where
+        (
+            ? is null 
+            or p1_0.seller_id=?
+        ) 
+        and p1_0.created_at>=? 
+        and p1_0.created_at<=?
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-12-01T00:00]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-12-31T23:59:59.999999999]
+2026-07-15 17:32:29.192 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+Hibernate: 
+    SELECT
+        COUNT(DISTINCT oi.order_id) 
+    FROM
+        order_items oi 
+    LEFT JOIN
+        orders o 
+            ON o.id = oi.order_id 
+    WHERE
+        (
+            ? IS NULL 
+            OR oi.seller_id = ?
+        )   
+        AND COALESCE(o.created_at, oi.created_at) >= ?   
+        AND COALESCE(o.created_at, oi.created_at) <= ? 
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.192 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-12-01T00:00]
+2026-07-15 17:32:29.207 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-12-31T23:59:59.999999999]
+2026-07-15 17:32:29.208 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.warehouse_address is not null 
+        and trim(BOTH from s1_0.warehouse_address)<>'' 
+        and (
+            ? is null 
+            or s1_0.id=?
+        ) 
+        and s1_0.updated_at>=? 
+        and s1_0.updated_at<=?
+2026-07-15 17:32:29.208 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:BIGINT) <- [248]
+2026-07-15 17:32:29.208 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (2:BIGINT) <- [248]
+2026-07-15 17:32:29.208 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (3:TIMESTAMP) <- [2026-12-01T00:00]
+2026-07-15 17:32:29.208 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (4:TIMESTAMP) <- [2026-12-31T23:59:59.999999999]
+2026-07-15 17:32:29.208 DEBUG [http-nio-0.0.0.0-8082-exec-2] o.s.jdbc.datasource.DataSourceUtils - Resetting read-only flag of JDBC Connection [HikariProxyConnection@1229483294 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e]
+2026-07-15 17:32:29.208 INFO  [http-nio-0.0.0.0-8082-exec-2] c.e.a.logging.AdminRequestLoggingFilter - API GET /api/admin/sellers/analytics/chart?filterType=monthly&sellerId=248 -> 200 (429 ms) adminId=4
+2026-07-15 17:33:50.266 DEBUG [http-nio-0.0.0.0-8082-exec-8] org.hibernate.SQL - 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+Hibernate: 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+2026-07-15 17:33:50.287 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:33:50.447 INFO  [http-nio-0.0.0.0-8082-exec-8] c.e.a.service.impl.AdminAuthServiceImpl - Admin login successful: adminId=4, email=admin@gmail.com
+2026-07-15 17:33:50.472 DEBUG [http-nio-0.0.0.0-8082-exec-8] org.hibernate.SQL - 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+Hibernate: 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+2026-07-15 17:33:50.475 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:33:50.475 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:33:50.444887600]
+2026-07-15 17:33:50.477 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [Super Admin]
+2026-07-15 17:33:50.477 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [$2a$10$roE16DRSlPDlA.lHxLOmJeLXJIK/vWbSwYqO4.nKxX1PSSC/VebN2]
+2026-07-15 17:33:50.479 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (5:ENUM) <- [super_admin]
+2026-07-15 17:33:50.479 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (6:ENUM) <- [active]
+2026-07-15 17:33:50.479 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [superadmin]
+2026-07-15 17:33:50.482 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (8:BIGINT) <- [4]
+2026-07-15 17:33:50.507 INFO  [http-nio-0.0.0.0-8082-exec-8] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/auth/login -> 200 (367 ms)
+2026-07-15 17:33:50.668 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    UPDATE
+        seller_bank_verifications 
+    SET
+        status = 'expired',
+        updated_at = CURRENT_TIMESTAMP 
+    WHERE
+        status IN ('pending', 'processing')   
+        AND expires_at IS NOT NULL   
+        AND expires_at < NOW() 
+Hibernate: 
+    UPDATE
+        seller_bank_verifications 
+    SET
+        status = 'expired',
+        updated_at = CURRENT_TIMESTAMP 
+    WHERE
+        status IN ('pending', 'processing')   
+        AND expires_at IS NOT NULL   
+        AND expires_at < NOW() 
+2026-07-15 17:33:50.677 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    SELECT
+        effective_status,
+        COUNT(*) AS cnt 
+    FROM
+        (     SELECT
+            CASE                
+                WHEN v.status IN ('pending', 'processing')                     
+                AND v.expires_at IS NOT NULL                     
+                AND v.expires_at < NOW() 
+                    THEN 'expired'                
+                ELSE LOWER(v.status)            
+        END AS effective_status     
+    FROM
+        seller_bank_verifications v     
+    INNER JOIN
+        (         SELECT
+            seller_id, MAX(id) AS max_id         
+        FROM
+            seller_bank_verifications         
+        GROUP BY
+            seller_id     ) latest 
+            ON latest.max_id = v.id ) t 
+GROUP BY
+    effective_status 
+Hibernate: 
+    SELECT
+        effective_status,
+        COUNT(*) AS cnt 
+    FROM
+        (     SELECT
+            CASE                
+                WHEN v.status IN ('pending', 'processing')                     
+                AND v.expires_at IS NOT NULL                     
+                AND v.expires_at < NOW() 
+                    THEN 'expired'                
+                ELSE LOWER(v.status)            
+        END AS effective_status     
+    FROM
+        seller_bank_verifications v     
+    INNER JOIN
+        (         SELECT
+            seller_id, MAX(id) AS max_id         
+        FROM
+            seller_bank_verifications         
+        GROUP BY
+            seller_id     ) latest 
+            ON latest.max_id = v.id ) t 
+GROUP BY
+    effective_status 
+2026-07-15 17:33:50.684 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    SELECT
+        DISTINCT seller_id 
+    FROM
+        seller_bank_verifications 
+Hibernate: 
+    SELECT
+        DISTINCT seller_id 
+    FROM
+        seller_bank_verifications 
+2026-07-15 17:33:50.687 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and (
+            s1_0.bank_verified is null 
+            or s1_0.bank_verified=0
+        )
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_name is not null 
+        and (
+            s1_0.bank_verified is null 
+            or s1_0.bank_verified=0
+        )
+2026-07-15 17:33:50.687 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_verified=1
+Hibernate: 
+    select
+        count(s1_0.id) 
+    from
+        sellers s1_0 
+    where
+        s1_0.bank_verified=1
+2026-07-15 17:33:50.697 INFO  [http-nio-0.0.0.0-8082-exec-7] c.e.a.logging.AdminRequestLoggingFilter - API GET /api/admin/sellers/bank/stats -> 200 (46 ms) adminId=4
+2026-07-15 17:34:49.815 DEBUG [http-nio-0.0.0.0-8082-exec-10] org.hibernate.SQL - 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+Hibernate: 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+2026-07-15 17:34:49.827 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:34:49.945 INFO  [http-nio-0.0.0.0-8082-exec-10] c.e.a.service.impl.AdminAuthServiceImpl - Admin login successful: adminId=4, email=admin@gmail.com
+2026-07-15 17:34:49.955 DEBUG [http-nio-0.0.0.0-8082-exec-10] org.hibernate.SQL - 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+Hibernate: 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+2026-07-15 17:34:49.955 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:34:49.955 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:34:49.945194900]
+2026-07-15 17:34:49.955 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [Super Admin]
+2026-07-15 17:34:49.955 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [$2a$10$roE16DRSlPDlA.lHxLOmJeLXJIK/vWbSwYqO4.nKxX1PSSC/VebN2]
+2026-07-15 17:34:49.955 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (5:ENUM) <- [super_admin]
+2026-07-15 17:34:49.958 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (6:ENUM) <- [active]
+2026-07-15 17:34:49.958 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [superadmin]
+2026-07-15 17:34:49.958 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (8:BIGINT) <- [4]
+2026-07-15 17:34:49.965 INFO  [http-nio-0.0.0.0-8082-exec-10] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/auth/login -> 200 (183 ms)
+2026-07-15 17:39:36.394 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+Hibernate: 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+2026-07-15 17:39:36.395 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:39:36.627 INFO  [http-nio-0.0.0.0-8082-exec-5] c.e.a.service.impl.AdminAuthServiceImpl - Admin login successful: adminId=4, email=admin@gmail.com
+2026-07-15 17:39:36.660 DEBUG [http-nio-0.0.0.0-8082-exec-5] org.hibernate.SQL - 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+Hibernate: 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:39:36.627212700]
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [Super Admin]
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [$2a$10$roE16DRSlPDlA.lHxLOmJeLXJIK/vWbSwYqO4.nKxX1PSSC/VebN2]
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (5:ENUM) <- [super_admin]
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (6:ENUM) <- [active]
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [superadmin]
+2026-07-15 17:39:36.660 TRACE [http-nio-0.0.0.0-8082-exec-5] org.hibernate.orm.jdbc.bind - binding parameter (8:BIGINT) <- [4]
+2026-07-15 17:39:36.711 INFO  [http-nio-0.0.0.0-8082-exec-5] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/auth/login -> 200 (635 ms)
+2026-07-15 17:39:36.942 DEBUG [http-nio-0.0.0.0-8082-exec-3] o.s.jdbc.datasource.DataSourceUtils - Setting JDBC Connection [HikariProxyConnection@1759762653 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e] read-only
+2026-07-15 17:39:37.108 DEBUG [http-nio-0.0.0.0-8082-exec-3] org.hibernate.SQL - 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        (
+            ? is null 
+            or ?='' 
+            or lower(aau1_0.username) like lower(concat('%', ?, '%')) escape '' 
+            or lower(aau1_0.email) like lower(concat('%', ?, '%')) escape '' 
+            or lower(aau1_0.full_name) like lower(concat('%', ?, '%')) escape ''
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(aau1_0.status)=lower(?)
+        ) 
+    order by
+        aau1_0.id desc
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        (
+            ? is null 
+            or ?='' 
+            or lower(aau1_0.username) like lower(concat('%', ?, '%')) escape '' 
+            or lower(aau1_0.email) like lower(concat('%', ?, '%')) escape '' 
+            or lower(aau1_0.full_name) like lower(concat('%', ?, '%')) escape ''
+        ) 
+        and (
+            ? is null 
+            or ?='' 
+            or lower(aau1_0.status)=lower(?)
+        ) 
+    order by
+        aau1_0.id desc
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [null]
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (2:VARCHAR) <- [null]
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [null]
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [null]
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (5:VARCHAR) <- [null]
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (6:VARCHAR) <- [null]
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [null]
+2026-07-15 17:39:37.108 TRACE [http-nio-0.0.0.0-8082-exec-3] org.hibernate.orm.jdbc.bind - binding parameter (8:VARCHAR) <- [null]
+2026-07-15 17:39:37.192 DEBUG [http-nio-0.0.0.0-8082-exec-3] o.s.jdbc.datasource.DataSourceUtils - Resetting read-only flag of JDBC Connection [HikariProxyConnection@1759762653 wrapping com.mysql.cj.jdbc.ConnectionImpl@2984598e]
+2026-07-15 17:39:37.291 INFO  [http-nio-0.0.0.0-8082-exec-3] c.e.a.logging.AdminRequestLoggingFilter - API GET /api/admin/ads/admin-users -> 200 (449 ms) adminId=4
+2026-07-15 17:39:37.376 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+2026-07-15 17:39:37.390 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [testuser58128]
+2026-07-15 17:39:37.391 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:39:37.393 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+2026-07-15 17:39:37.393 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [testuser58128@example.com]
+2026-07-15 17:39:37.393 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:39:37.830 DEBUG [http-nio-0.0.0.0-8082-exec-9] org.hibernate.SQL - 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+Hibernate: 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+2026-07-15 17:39:37.841 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [null]
+2026-07-15 17:39:37.842 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:39:37.659657]
+2026-07-15 17:39:37.842 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [testuser58128@example.com]
+2026-07-15 17:39:37.843 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [Test User]
+2026-07-15 17:39:37.844 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (5:TIMESTAMP) <- [null]
+2026-07-15 17:39:37.845 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (6:VARCHAR) <- [$2a$10$Xu78vx9w3alfpocUuoFKXe9X6lCyVr2icJDxYNlqtGOGJcuFKvB66]
+2026-07-15 17:39:37.845 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [manager]
+2026-07-15 17:39:37.846 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (8:VARCHAR) <- [active]
+2026-07-15 17:39:37.847 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (9:TIMESTAMP) <- [2026-07-15T17:39:37.659657]
+2026-07-15 17:39:37.847 TRACE [http-nio-0.0.0.0-8082-exec-9] org.hibernate.orm.jdbc.bind - binding parameter (10:VARCHAR) <- [testuser58128]
+2026-07-15 17:39:37.963 INFO  [http-nio-0.0.0.0-8082-exec-9] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/ads/admin-users -> 200 (637 ms) adminId=4
+2026-07-15 17:39:37.997 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        aau1_0.id=?
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        aau1_0.id=?
+2026-07-15 17:39:37.997 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:INTEGER) <- [12]
+2026-07-15 17:39:38.060 DEBUG [http-nio-0.0.0.0-8082-exec-2] org.hibernate.SQL - 
+    delete 
+    from
+        ads_admin_users 
+    where
+        id=?
+Hibernate: 
+    delete 
+    from
+        ads_admin_users 
+    where
+        id=?
+2026-07-15 17:39:38.061 TRACE [http-nio-0.0.0.0-8082-exec-2] org.hibernate.orm.jdbc.bind - binding parameter (1:INTEGER) <- [12]
+2026-07-15 17:39:38.126 INFO  [http-nio-0.0.0.0-8082-exec-2] c.e.a.logging.AdminRequestLoggingFilter - API DELETE /api/admin/ads/admin-users/12 -> 200 (163 ms) adminId=4
+2026-07-15 17:41:32.767 DEBUG [http-nio-0.0.0.0-8082-exec-8] org.hibernate.SQL - 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+Hibernate: 
+    select
+        au1_0.id,
+        au1_0.created_at,
+        au1_0.email,
+        au1_0.last_login,
+        au1_0.name,
+        au1_0.password,
+        au1_0.role,
+        au1_0.status,
+        au1_0.updated_at,
+        au1_0.username 
+    from
+        admin_users au1_0 
+    where
+        upper(au1_0.email)=upper(?)
+2026-07-15 17:41:32.767 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:41:32.933 INFO  [http-nio-0.0.0.0-8082-exec-8] c.e.a.service.impl.AdminAuthServiceImpl - Admin login successful: adminId=4, email=admin@gmail.com
+2026-07-15 17:41:32.950 DEBUG [http-nio-0.0.0.0-8082-exec-8] org.hibernate.SQL - 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+Hibernate: 
+    update
+        admin_users 
+    set
+        email=?,
+        last_login=?,
+        name=?,
+        password=?,
+        role=?,
+        status=?,
+        username=? 
+    where
+        id=?
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [admin@gmail.com]
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:41:32.933247100]
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [Super Admin]
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [$2a$10$roE16DRSlPDlA.lHxLOmJeLXJIK/vWbSwYqO4.nKxX1PSSC/VebN2]
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (5:ENUM) <- [super_admin]
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (6:ENUM) <- [active]
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [superadmin]
+2026-07-15 17:41:32.950 TRACE [http-nio-0.0.0.0-8082-exec-8] org.hibernate.orm.jdbc.bind - binding parameter (8:BIGINT) <- [4]
+2026-07-15 17:41:32.983 INFO  [http-nio-0.0.0.0-8082-exec-8] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/auth/login -> 200 (400 ms)
+2026-07-15 17:41:33.133 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+2026-07-15 17:41:33.133 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [addu511]
+2026-07-15 17:41:33.133 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:41:33.133 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+2026-07-15 17:41:33.133 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [addu511@flintnthread.test]
+2026-07-15 17:41:33.133 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:41:33.249 DEBUG [http-nio-0.0.0.0-8082-exec-7] org.hibernate.SQL - 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+Hibernate: 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [null]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:41:33.249583600]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [addu511@flintnthread.test]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [Add User QA]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (5:TIMESTAMP) <- [null]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (6:VARCHAR) <- [$2a$10$IkE0R9.cU24zospu3ZW0s.LiWJ/oDqsCyafLEGOqeGU9L4QEvYVt.]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [viewer]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (8:VARCHAR) <- [active]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (9:TIMESTAMP) <- [2026-07-15T17:41:33.249583600]
+2026-07-15 17:41:33.249 TRACE [http-nio-0.0.0.0-8082-exec-7] org.hibernate.orm.jdbc.bind - binding parameter (10:VARCHAR) <- [addu511]
+2026-07-15 17:41:33.266 INFO  [http-nio-0.0.0.0-8082-exec-7] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/ads/admin-users -> 200 (150 ms) adminId=4
+2026-07-15 17:41:33.282 DEBUG [http-nio-0.0.0.0-8082-exec-4] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.username)=upper(?) 
+    limit
+        ?
+2026-07-15 17:41:33.282 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [y]
+2026-07-15 17:41:33.282 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:41:33.282 DEBUG [http-nio-0.0.0.0-8082-exec-4] org.hibernate.SQL - 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+Hibernate: 
+    select
+        aau1_0.id 
+    from
+        ads_admin_users aau1_0 
+    where
+        upper(aau1_0.email)=upper(?) 
+    limit
+        ?
+2026-07-15 17:41:33.282 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [bad]
+2026-07-15 17:41:33.282 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (2:INTEGER) <- [1]
+2026-07-15 17:41:33.386 DEBUG [http-nio-0.0.0.0-8082-exec-4] org.hibernate.SQL - 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+Hibernate: 
+    insert 
+    into
+        ads_admin_users
+        (avatar, created_at, email, full_name, last_login, password, role, status, updated_at, username) 
+    values
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+2026-07-15 17:41:33.386 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (1:VARCHAR) <- [null]
+2026-07-15 17:41:33.386 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (2:TIMESTAMP) <- [2026-07-15T17:41:33.386194100]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (3:VARCHAR) <- [bad]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (4:VARCHAR) <- [X]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (5:TIMESTAMP) <- [null]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (6:VARCHAR) <- [$2a$10$t1Ea1VSIB5VhqSPuS8NtZOAj6Y.JtJzPQ7PAY2RE6eQbQHwUOY9qO]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (7:VARCHAR) <- [admin]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (8:VARCHAR) <- [active]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (9:TIMESTAMP) <- [2026-07-15T17:41:33.386194100]
+2026-07-15 17:41:33.393 TRACE [http-nio-0.0.0.0-8082-exec-4] org.hibernate.orm.jdbc.bind - binding parameter (10:VARCHAR) <- [y]
+2026-07-15 17:41:33.399 INFO  [http-nio-0.0.0.0-8082-exec-4] c.e.a.logging.AdminRequestLoggingFilter - API POST /api/admin/ads/admin-users -> 200 (133 ms) adminId=4
+2026-07-15 17:41:33.416 DEBUG [http-nio-0.0.0.0-8082-exec-10] org.hibernate.SQL - 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        aau1_0.id=?
+Hibernate: 
+    select
+        aau1_0.id,
+        aau1_0.avatar,
+        aau1_0.created_at,
+        aau1_0.email,
+        aau1_0.full_name,
+        aau1_0.last_login,
+        aau1_0.password,
+        aau1_0.role,
+        aau1_0.status,
+        aau1_0.updated_at,
+        aau1_0.username 
+    from
+        ads_admin_users aau1_0 
+    where
+        aau1_0.id=?
+2026-07-15 17:41:33.420 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (1:INTEGER) <- [13]
+2026-07-15 17:41:33.424 DEBUG [http-nio-0.0.0.0-8082-exec-10] org.hibernate.SQL - 
+    delete 
+    from
+        ads_admin_users 
+    where
+        id=?
+Hibernate: 
+    delete 
+    from
+        ads_admin_users 
+    where
+        id=?
+2026-07-15 17:41:33.424 TRACE [http-nio-0.0.0.0-8082-exec-10] org.hibernate.orm.jdbc.bind - binding parameter (1:INTEGER) <- [13]
+2026-07-15 17:41:33.432 INFO  [http-nio-0.0.0.0-8082-exec-10] c.e.a.logging.AdminRequestLoggingFilter - API DELETE /api/admin/ads/admin-users/13 -> 200 (33 ms) adminId=4
+[ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.5.14:run (default-cli) on project admin-service: Process terminated with exit code: -1 -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException
