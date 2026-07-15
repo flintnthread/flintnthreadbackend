@@ -37,7 +37,7 @@ public class ShiprocketServiceImpl implements ShiprocketService {
             .connectTimeout(Duration.ofSeconds(15))
             .build();
 
-    @Value("${shiprocket.api.base-url:https://apiv2.shiprocket.in}")
+    @Value("${shiprocket.api.base-url:https://apiv2.shiprocket.in/v1/external}")
     private String baseUrl;
 
     @Value("${shiprocket.email:}")
@@ -216,7 +216,7 @@ public class ShiprocketServiceImpl implements ShiprocketService {
                 "password", password
         ));
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/v1/external/auth/login"))
+                .uri(URI.create(baseUrl + "/auth/login"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .timeout(Duration.ofSeconds(20))
@@ -237,7 +237,7 @@ public class ShiprocketServiceImpl implements ShiprocketService {
 
     private JsonNode fetchTracking(String token, String awb) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/v1/external/courier/track/awb/" + awb))
+                .uri(URI.create(baseUrl + "/courier/track/awb/" + awb))
                 .header("Authorization", "Bearer " + token)
                 .GET()
                 .timeout(Duration.ofSeconds(20))

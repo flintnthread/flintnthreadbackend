@@ -74,7 +74,7 @@ import java.util.*;
                     );
                 }
 
-                String url = apiBaseUrl + "/v1/external/auth/login";
+                String url = apiBaseUrl + "/auth/login";
 
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
@@ -224,7 +224,7 @@ import java.util.*;
                 Map<String, Object> payload
         ) {
             String token = getToken();
-            String url = apiBaseUrl + "/v1/external/orders/create/adhoc";
+            String url = apiBaseUrl + "/orders/create/adhoc";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
@@ -674,7 +674,7 @@ import java.util.*;
 
                 String url =
                         apiBaseUrl +
-                                "/v1/external/courier/track/awb/"
+                                "/courier/track/awb/"
                                 + awb;
 
                 HttpHeaders headers =
@@ -789,7 +789,7 @@ import java.util.*;
 
                 String url =
                         apiBaseUrl
-                                + "/v1/external/courier/track/awb/"
+                                + "/courier/track/awb/"
                                 + awb;
 
                 HttpHeaders headers =
@@ -996,7 +996,7 @@ import java.util.*;
                 ResponseEntity<String> response =
                         restTemplate.exchange(
                                 apiBaseUrl
-                                        + "/v1/external/orders/cancel",
+                                        + "/orders/cancel",
                                 HttpMethod.POST,
                                 entity,
                                 String.class
