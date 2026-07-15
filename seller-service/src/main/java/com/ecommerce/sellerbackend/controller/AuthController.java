@@ -91,27 +91,88 @@ public class AuthController {
     }
 
     /**
-     * Step 2 of email verification (web + mobile browser).
-     * User clicks the link in the signup email; backend sends the 6-digit OTP and redirects to the OTP page.
+     * One-click email verification from the signup mail.
+     * Verifies on seller-service (no Expo/frontend required) and shows a success page.
      */
     @GetMapping("/verify-email")
     public void verifyEmailFromLink(
             @RequestParam("token") String token,
             HttpServletResponse response) throws IOException {
-        String redirectUrl;
+        response.setCharacterEncoding("UTF-8");
         try {
-            StartEmailVerificationRequest request = new StartEmailVerificationRequest();
-            request.setToken(token);
-            StartEmailVerificationResponse result = emailVerificationService.confirmEmailLink(request);
-            redirectUrl = emailVerificationUrlHelper.buildOtpPageRedirect(
-                    result.getEmail(),
-                    result.isOtpSent(),
-                    result.isAlreadyVerified()
+            EmailVerificationResponse result = emailVerificationService.verifyEmailFromLinkToken(token);
+            String loginUrl = emailVerificationUrlHelper.buildLoginPageUrl(result.getEmail());
+            writeVerificationHtml(
+                    response,
+                    HttpServletResponse.SC_OK,
+                    "Email verified",
+                    escapeHtml(result.getMessage()),
+                    loginUrl,
+                    true
             );
         } catch (IllegalArgumentException ex) {
-            redirectUrl = emailVerificationUrlHelper.buildOtpPageRedirectError(ex.getMessage());
+            writeVerificationHtml(
+                    response,
+                    HttpServletResponse.SC_BAD_REQUEST,
+                    "Verification failed",
+                    escapeHtml(ex.getMessage()),
+                    emailVerificationUrlHelper.buildLoginPageUrl(null),
+                    false
+            );
         }
-        response.sendRedirect(redirectUrl);
+    }
+
+    private static void writeVerificationHtml(
+            HttpServletResponse response,
+            int status,
+            String title,
+            String message,
+            String loginUrl,
+            boolean success) throws IOException {
+        response.setStatus(status);
+        response.setContentType("text/html;charset=UTF-8");
+        String accent = success ? "#16a34a" : "#dc2626";
+        String buttonLabel = success ? "Go to Login" : "Back to Login";
+        String html = """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                  <meta charset="UTF-8"/>
+                  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                  <title>%s — Flint &amp; Thread</title>
+                  <style>
+                    body{margin:0;font-family:Segoe UI,system-ui,sans-serif;background:#f8fafc;color:#0f172a;
+                      display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+                    .card{max-width:440px;width:100%%;background:#fff;border-radius:16px;padding:32px 28px;
+                      box-shadow:0 10px 40px rgba(15,23,42,.08);text-align:center}
+                    h1{margin:0 0 12px;font-size:1.35rem;color:%s}
+                    p{margin:0 0 24px;line-height:1.5;color:#475569}
+                    a{display:inline-block;background:#F97316;color:#fff;text-decoration:none;
+                      padding:12px 22px;border-radius:10px;font-weight:600}
+                    a:hover{background:#ea580c}
+                  </style>
+                </head>
+                <body>
+                  <div class="card">
+                    <h1>%s</h1>
+                    <p>%s</p>
+                    <a href="%s">%s</a>
+                  </div>
+                </body>
+                </html>
+                """.formatted(title, accent, title, message, loginUrl, buttonLabel);
+        response.getWriter().write(html);
+    }
+
+    private static String escapeHtml(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
 
     /** Same as GET /verify-email; used by mobile app / SPA when the link opens the app with a token. */
