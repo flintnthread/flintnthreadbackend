@@ -5,6 +5,7 @@ import com.ecommerce.authdemo.dto.OrderResponseDTO;
 import com.ecommerce.authdemo.dto.PlaceOrderRequestDTO;
 import com.ecommerce.authdemo.dto.RetryPaymentResponseDTO;
 import com.ecommerce.authdemo.dto.ShiprocketShipmentResult;
+import com.ecommerce.authdemo.dto.UpdateOrderAddressRequestDTO;
 import com.ecommerce.authdemo.dto.VerifyPaymentRequestDTO;
 import com.ecommerce.authdemo.entity.Order;
 
@@ -29,6 +30,8 @@ public interface OrderService {
     );
 
     CancelOrderResponseDTO cancelOrder(Long orderId, String cancelReason, boolean refundToWallet);
+
+    OrderResponseDTO updateOrderAddress(Long orderId, UpdateOrderAddressRequestDTO dto);
 
     Order markOrderAsPaid(String razorpayOrderId, String paymentId);
 
