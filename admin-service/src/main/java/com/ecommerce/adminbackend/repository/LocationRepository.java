@@ -42,7 +42,8 @@ public class LocationRepository {
     @SuppressWarnings("unchecked")
     public List<Object[]> searchStates(Integer countryId, String query, int page, int size) {
         Query q = entityManager.createNativeQuery("""
-                SELECT s.id, s.state_name, s.country_id, c.country_name, s.status
+                SELECT s.id, s.state_name, s.country_id, c.country_name, s.status,
+                       (SELECT COUNT(*) FROM cities ci WHERE ci.state_id = s.id) AS city_count
                 FROM states s
                 JOIN countries c ON c.id = s.country_id
                 WHERE (:countryId IS NULL OR s.country_id = :countryId)
@@ -70,7 +71,8 @@ public class LocationRepository {
     @SuppressWarnings("unchecked")
     public List<Object[]> searchCities(Integer stateId, String query, int page, int size) {
         Query q = entityManager.createNativeQuery("""
-                SELECT c.id, c.city_name, c.state_id, s.state_name, c.status
+                SELECT c.id, c.city_name, c.state_id, s.state_name, c.status,
+                       (SELECT COUNT(*) FROM areas ar WHERE ar.city_id = c.id) AS area_count
                 FROM cities c
                 JOIN states s ON s.id = c.state_id
                 WHERE (:stateId IS NULL OR c.state_id = :stateId)
@@ -140,7 +142,8 @@ public class LocationRepository {
     @SuppressWarnings("unchecked")
     public List<Object[]> searchAreas(Integer cityId, String query, int page, int size) {
         Query q = entityManager.createNativeQuery("""
-                SELECT a.id, a.area_name, a.city_id, c.city_name, a.status
+                SELECT a.id, a.area_name, a.city_id, c.city_name, a.status,
+                       (SELECT COUNT(*) FROM pincodes p WHERE p.area_id = a.id) AS pincode_count
                 FROM areas a
                 JOIN cities c ON c.id = a.city_id
                 WHERE (:cityId IS NULL OR a.city_id = :cityId)
