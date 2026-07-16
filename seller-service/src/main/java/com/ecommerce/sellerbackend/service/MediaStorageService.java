@@ -12,7 +12,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class MediaStorageService {
@@ -20,12 +20,22 @@ public class MediaStorageService {
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp", "pdf");
     private static final long MAX_BYTES = 10L * 1024 * 1024;
 
+    /**
+     * KYC / profile files on CDN live under {@code /uploads/seller_documents/}, e.g.
+     * {@code https://flintnthread.in/uploads/seller_documents/12_aadhar_front_1759064059.png}
+     */
+    private static final Pattern SELLER_DOCUMENT_FILE = Pattern.compile(
+            "^\\d+_(profile_pic|aadhar_front|aadhar_back|pan_card|business_proof|bank_proof|"
+                    + "cancelled_cheque|live_selfie|company_pan_doc|incorporation_certificate|"
+                    + "partnership_deed|msme_certificate|iec_certificate)(_|\\.)",
+            Pattern.CASE_INSENSITIVE);
+
     private final Path uploadRoot;
     private final String publicBaseUrl;
 
     public MediaStorageService(
             @Value("${app.upload.directory:uploads/sellers}") String uploadDirectory,
-            @Value("${app.media.public-base-url:}") String publicBaseUrl) {
+            @Value("${app.media.public-base-url:https://flintnthread.in}") String publicBaseUrl) {
         this.uploadRoot = Paths.get(uploadDirectory).toAbsolutePath().normalize();
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
         try {
@@ -107,16 +117,84 @@ public class MediaStorageService {
         return sellerId + "_" + type.getFileToken() + "_" + timestamp + "." + extension;
     }
 
+    /**
+     * Public URL for seller profile / KYC documents.
+     * Production CDN path: {@code https://flintnthread.in/uploads/seller_documents/...}
+     */
     public String toPublicUrl(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return null;
         }
-        if (fileName.startsWith("http://") || fileName.startsWith("https://")) {
-            return fileName;
+        String trimmed = fileName.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+                return trimmed;
+            }
+            int idx = trimmed.indexOf("/uploads/");
+            if (idx >= 0) {
+                String path = normalizePublicPath(trimmed.substring(idx));
+                return publicBaseUrl.isBlank() ? path : publicBaseUrl + path;
+            }
+            return trimmed;
         }
-        // Always return a relative URL served by this backend.
-        // The frontend will resolve it against the API base URL.
-        return "/uploads/sellers/" + fileName;
+        String path = normalizePublicPath(trimmed);
+        if (publicBaseUrl.isBlank()) {
+            return path;
+        }
+        return publicBaseUrl + path;
+    }
+
+    /** Normalize DB/filename values to {@code /uploads/seller_documents/...} when applicable. */
+    public String normalizePublicPath(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.replace('\\', '/').trim();
+        if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+            int idx = normalized.indexOf("/uploads/");
+            if (idx >= 0) {
+                normalized = normalized.substring(idx);
+            }
+        }
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.startsWith("uploads/sellers/")) {
+            String base = normalized.substring("uploads/sellers/".length());
+            if (isSellerDocumentFileName(base)) {
+                return "/uploads/seller_documents/" + base;
+            }
+            return "/" + normalized;
+        }
+        if (normalized.startsWith("uploads/seller_documents/")) {
+            return "/" + normalized;
+        }
+        if (normalized.startsWith("uploads/")) {
+            return "/" + normalized;
+        }
+        String base = normalized.contains("/")
+                ? normalized.substring(normalized.lastIndexOf('/') + 1)
+                : normalized;
+        if (isSellerDocumentFileName(base)) {
+            return "/uploads/seller_documents/" + base;
+        }
+        if (!normalized.contains("/")) {
+            return "/uploads/sellers/" + normalized;
+        }
+        return "/" + normalized;
+    }
+
+    private boolean isSellerDocumentFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return false;
+        }
+        String base = fileName.replace('\\', '/');
+        int slash = base.lastIndexOf('/');
+        if (slash >= 0) {
+            base = base.substring(slash + 1);
+        }
+        return SELLER_DOCUMENT_FILE.matcher(base).find();
     }
 
     public Path getUploadRoot() {

@@ -21,6 +21,7 @@ import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SizeRepository;
 import com.ecommerce.adminbackend.repository.SubcategoryRepository;
 import com.ecommerce.adminbackend.service.ProductMediaStorageService;
+import com.ecommerce.adminbackend.service.support.ProductCatalogResolver;
 import com.ecommerce.adminbackend.service.support.ProductVariantPricingCalculator;
 import com.ecommerce.adminbackend.service.support.ProductVariantPricingCalculator.VariantPricing;
 import lombok.RequiredArgsConstructor;
@@ -52,11 +53,11 @@ public class ProductAdminMutationService {
     private final SizeRepository sizeRepository;
     private final DeliveryChargeRepository deliveryChargeRepository;
     private final ProductMediaStorageService productMediaStorageService;
+    private final ProductCatalogResolver productCatalogResolver;
 
     @Transactional
     public Map<String, Object> create(CreateProductRequest request) {
-        ResolvedCatalog catalog = resolveCatalog(request.getCategoryId(), request.getCategoryName(),
-                request.getSubcategoryId(), request.getSubcategoryName());
+        ResolvedCatalog catalog = resolveCatalog(request);
         BigDecimal gstPercent = resolveGst(request.getGstPercentage(), catalog.subcategory());
         LocalDateTime now = LocalDateTime.now();
         DeliveryCharges charges = resolveDeliveryCharges(request.getProductWeight());
@@ -115,8 +116,7 @@ public class ProductAdminMutationService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found."));
 
-        ResolvedCatalog catalog = resolveCatalog(request.getCategoryId(), request.getCategoryName(),
-                request.getSubcategoryId(), request.getSubcategoryName());
+        ResolvedCatalog catalog = resolveCatalog(request);
         BigDecimal gstPercent = resolveGst(request.getGstPercentage(), catalog.subcategory());
         LocalDateTime now = LocalDateTime.now();
         DeliveryCharges charges = resolveDeliveryCharges(request.getProductWeight());
@@ -385,46 +385,26 @@ public class ProductAdminMutationService {
         productImageRepository.save(image);
     }
 
-    private ResolvedCatalog resolveCatalog(
-            Integer categoryId,
-            String categoryName,
-            Integer subcategoryId,
-            String subcategoryName) {
-        Integer resolvedCategoryId = categoryId;
-        if (resolvedCategoryId == null && categoryName != null && !categoryName.isBlank()) {
-            resolvedCategoryId = categoryRepository.findAll().stream()
-                    .filter(c -> categoryName.trim().equalsIgnoreCase(c.getCategoryName()))
-                    .map(c -> c.getId())
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("Category not found: " + categoryName));
-        }
-        if (resolvedCategoryId == null) {
-            throw new IllegalArgumentException("Category is required.");
-        }
-        categoryRepository.findById(resolvedCategoryId)
-                .orElseThrow(() -> new IllegalArgumentException("Category not found."));
+    private ResolvedCatalog resolveCatalog(CreateProductRequest request) {
+        ProductCatalogResolver.CategorySubcategoryIds ids = productCatalogResolver.resolve(
+                request.getCategoryId(),
+                request.getCategoryName(),
+                request.getSubcategoryId(),
+                request.getSubcategoryName(),
+                request.getChildCategoryId(),
+                request.getMiddleCategoryName());
+        return new ResolvedCatalog(ids.categoryId(), ids.subcategoryId(), ids.subcategory());
+    }
 
-        Integer resolvedSubcategoryId = subcategoryId;
-        if (resolvedSubcategoryId == null && subcategoryName != null && !subcategoryName.isBlank()) {
-            final Integer catId = resolvedCategoryId;
-            resolvedSubcategoryId = subcategoryRepository
-                    .findByCategoryIdOrderBySubcategoryNameAsc(catId)
-                    .stream()
-                    .filter(s -> subcategoryName.trim().equalsIgnoreCase(s.getSubcategoryName()))
-                    .map(Subcategory::getId)
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Subcategory not found: " + subcategoryName));
-        }
-        if (resolvedSubcategoryId == null) {
-            throw new IllegalArgumentException("Subcategory is required.");
-        }
-        Subcategory subcategory = subcategoryRepository.findById(resolvedSubcategoryId)
-                .orElseThrow(() -> new IllegalArgumentException("Subcategory not found."));
-        if (!resolvedCategoryId.equals(subcategory.getCategoryId())) {
-            throw new IllegalArgumentException("Subcategory does not belong to the selected category.");
-        }
-        return new ResolvedCatalog(resolvedCategoryId, resolvedSubcategoryId, subcategory);
+    private ResolvedCatalog resolveCatalog(UpdateProductRequest request) {
+        ProductCatalogResolver.CategorySubcategoryIds ids = productCatalogResolver.resolve(
+                request.getCategoryId(),
+                request.getCategoryName(),
+                request.getSubcategoryId(),
+                request.getSubcategoryName(),
+                request.getChildCategoryId(),
+                request.getMiddleCategoryName());
+        return new ResolvedCatalog(ids.categoryId(), ids.subcategoryId(), ids.subcategory());
     }
 
     private BigDecimal resolveGst(BigDecimal requestGst, Subcategory subcategory) {
