@@ -104,6 +104,24 @@ public class ProductMediaStorageService {
         }
     }
 
+    /** Seller profile photo — stored as absolute Cloudinary secure_url in {@code sellers.profile_pic}. */
+    public String uploadSellerProfilePhoto(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Profile photo is required.");
+        }
+        String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
+        if (contentType.contains("pdf")) {
+            throw new IllegalArgumentException("Profile photo must be an image (JPG, PNG, or WEBP).");
+        }
+        try {
+            return uploadBytes(file.getBytes(), buildFolder("sellers/profile"));
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Failed to upload profile photo: " + ex.getMessage());
+        }
+    }
+
     /** Absolute URL for clients — Cloudinary URLs are already absolute. */
     public String toPublicUrl(String storedPath) {
         if (storedPath == null || storedPath.isBlank()) {

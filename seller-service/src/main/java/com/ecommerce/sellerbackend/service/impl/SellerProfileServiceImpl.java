@@ -28,6 +28,7 @@ import com.ecommerce.sellerbackend.service.GstVerificationService;
 import com.ecommerce.sellerbackend.service.IfscLookupService;
 import com.ecommerce.sellerbackend.service.MailService;
 import com.ecommerce.sellerbackend.service.MediaStorageService;
+import com.ecommerce.sellerbackend.service.ProductMediaStorageService;
 import com.ecommerce.sellerbackend.service.RegistrationInvoicePdfService;
 import com.ecommerce.sellerbackend.service.SellerGstDetailsService;
 import com.ecommerce.sellerbackend.service.SellerProfileService;
@@ -48,6 +49,8 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -61,6 +64,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     private final SellerRepository sellerRepository;
     private final SellerKycImageRepository sellerKycImageRepository;
     private final MediaStorageService mediaStorageService;
+    private final ProductMediaStorageService productMediaStorageService;
     private final GstVerificationService gstVerificationService;
     private final IfscLookupService ifscLookupService;
     private final SellerGstDetailsService sellerGstDetailsService;
@@ -97,12 +101,38 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     @Transactional
     public SellerProfileResponse uploadProfilePhoto(Long sellerId, MultipartFile file) throws IOException {
         Seller seller = requireSeller(sellerId);
-        MediaStorageService.StoredFile stored =
-                mediaStorageService.storeSellerDocument(sellerId, SellerDocumentType.PROFILE_PIC, file);
-        seller.setProfilePic(stored.fileName());
+        String previous = seller.getProfilePic();
+        String cloudUrl = productMediaStorageService.uploadSellerProfilePhoto(file);
+        seller.setProfilePic(cloudUrl);
         touchProfile(seller);
         sellerRepository.save(seller);
+        deleteLegacyLocalProfilePicIfPresent(previous);
         return SellerProfileResponse.from(seller, mediaStorageService);
+    }
+
+    /** Best-effort cleanup when a legacy disk filename is replaced by Cloudinary URL. */
+    private void deleteLegacyLocalProfilePicIfPresent(String stored) {
+        if (stored == null || stored.isBlank()) {
+            return;
+        }
+        String lower = stored.toLowerCase(Locale.ROOT);
+        if (lower.contains("res.cloudinary.com") || lower.contains("cloudinary.com")) {
+            return;
+        }
+        String fileName = stored;
+        int slash = stored.lastIndexOf('/');
+        if (slash >= 0 && slash < stored.length() - 1) {
+            fileName = stored.substring(slash + 1);
+        }
+        if (fileName.isBlank() || fileName.contains("://")) {
+            return;
+        }
+        try {
+            Path target = mediaStorageService.getUploadRoot().resolve(fileName);
+            Files.deleteIfExists(target);
+        } catch (IOException ex) {
+            log.debug("Could not delete legacy profile photo {}: {}", fileName, ex.getMessage());
+        }
     }
 
     @Override

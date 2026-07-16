@@ -1,6 +1,7 @@
 package com.ecommerce.sellerbackend.service;
 
 import com.ecommerce.sellerbackend.profile.SellerDocumentType;
+import com.ecommerce.sellerbackend.util.SellerMediaUrlHelper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,7 +25,7 @@ public class MediaStorageService {
     private final String publicBaseUrl;
 
     public MediaStorageService(
-            @Value("${app.upload.directory:uploads/sellers}") String uploadDirectory,
+            @Value("${app.upload.directory:uploads/seller_documents}") String uploadDirectory,
             @Value("${app.media.public-base-url:}") String publicBaseUrl) {
         this.uploadRoot = Paths.get(uploadDirectory).toAbsolutePath().normalize();
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
@@ -48,7 +49,11 @@ public class MediaStorageService {
             Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
         }
 
-        return new StoredFile(fileName, toPublicUrl(fileName));
+        String publicUrl = toAbsolutePublicUrl(fileName);
+        if (publicUrl == null || publicUrl.isBlank()) {
+            publicUrl = toPublicUrl(fileName);
+        }
+        return new StoredFile(fileName, publicUrl);
     }
 
     private int nextSequence(Long sellerId, SellerDocumentType type) {
@@ -108,15 +113,12 @@ public class MediaStorageService {
     }
 
     public String toPublicUrl(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
-            return null;
-        }
-        if (fileName.startsWith("http://") || fileName.startsWith("https://")) {
-            return fileName;
-        }
-        // Always return a relative URL served by this backend.
-        // The frontend will resolve it against the API base URL.
-        return "/uploads/sellers/" + fileName;
+        return SellerMediaUrlHelper.toPublicPath(fileName);
+    }
+
+    /** Full CDN URL when {@code app.media.public-base-url} is set (e.g. https://flintnthread.in). */
+    public String toAbsolutePublicUrl(String fileName) {
+        return SellerMediaUrlHelper.toAbsoluteUrl(fileName, publicBaseUrl);
     }
 
     public Path getUploadRoot() {
