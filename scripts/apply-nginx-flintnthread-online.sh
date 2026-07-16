@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Apply user + seller + admin API routing on flintnthread.online (Ubuntu VPS).
+# Apply user + seller + admin API routing on flintnthread.online and flintnthread.in (Ubuntu VPS).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOC_SRC="$SCRIPT_DIR/nginx-flintnthread-online.conf"
+MAP_SRC="$SCRIPT_DIR/nginx-flintnthread-cors-map.conf"
 SNIP_DST="/etc/nginx/snippets/flintnthread-api.conf"
+MAP_DST="/etc/nginx/conf.d/flintnthread-cors-map.conf"
 OLD_MAP="/etc/nginx/conf.d/flintnthread-http-map.conf"
+
+echo "==> Installing CORS map (http context)..."
+sudo cp "$MAP_SRC" "$MAP_DST"
 
 echo "==> Installing API location snippets..."
 sudo mkdir -p /etc/nginx/snippets
@@ -17,24 +22,22 @@ if [[ -f "$OLD_MAP" ]]; then
 fi
 
 echo ""
-echo "Add this line INSIDE server { } for flintnthread.online,"
-echo "BEFORE your catch-all proxy_pass to :8080:"
+echo "Add this line INSIDE server { } for BOTH:"
+echo "  - flintnthread.online (and www / admin / seller subdomains)"
+echo "  - flintnthread.in     (and www / admin / seller subdomains)"
+echo "BEFORE your catch-all location / :"
 echo ""
 echo "    include snippets/flintnthread-api.conf;"
-echo ""
-echo "Ensure you also have (after the include, LAST among /api/ blocks):"
-echo ""
-echo "    location ^~ /api/ {"
-echo "        proxy_pass http://127.0.0.1:8080;"
-echo "        ..."
-echo "    }"
 echo ""
 echo "Then run:"
 echo "    sudo nginx -t && sudo systemctl reload nginx"
 echo ""
-echo "Verify services:"
-echo "    curl -s http://127.0.0.1:8080/api/categories/main | head -c 60"
-echo "    curl -s http://127.0.0.1:8082/api/admin/health"
-echo "    curl -s http://127.0.0.1:8083/api/public/marketplace-stats"
-echo "    curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8083/api/seller/dashboard"
+echo "Verify services (JSON, not HTML):"
 echo "    curl -s https://flintnthread.online/api/public/marketplace-stats"
+echo "    curl -s https://flintnthread.in/api/public/marketplace-stats"
+echo "    curl -s https://flintnthread.online/api/admin/health"
+echo "    curl -s https://flintnthread.in/api/admin/health"
+echo "    curl -s -H 'Origin: https://flintnthread.in' -o /dev/null -w '%{http_code}\\n' https://flintnthread.in/api/categories/main"
+echo "    # expect 200 (not 403 Invalid CORS request)"
+echo ""
+echo "Also redeploy user/admin/seller JARs so Java CORS allows *.flintnthread.in."
