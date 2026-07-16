@@ -13,7 +13,6 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 public class MediaStorageService {
@@ -26,7 +25,7 @@ public class MediaStorageService {
 
     public MediaStorageService(
             @Value("${app.upload.directory:uploads/seller_documents}") String uploadDirectory,
-            @Value("${app.media.public-base-url:}") String publicBaseUrl) {
+            @Value("${app.media.public-base-url:https://flintnthread.in}") String publicBaseUrl) {
         this.uploadRoot = Paths.get(uploadDirectory).toAbsolutePath().normalize();
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
         try {
@@ -112,6 +111,10 @@ public class MediaStorageService {
         return sellerId + "_" + type.getFileToken() + "_" + timestamp + "." + extension;
     }
 
+    /**
+     * Relative public path for seller profile / KYC documents.
+     * Production CDN path: {@code /uploads/seller_documents/...}
+     */
     public String toPublicUrl(String fileName) {
         return SellerMediaUrlHelper.toPublicPath(fileName);
     }

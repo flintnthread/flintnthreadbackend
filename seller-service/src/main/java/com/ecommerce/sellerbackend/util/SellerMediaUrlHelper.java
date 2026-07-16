@@ -31,7 +31,8 @@ public final class SellerMediaUrlHelper {
 
     /**
      * Relative public path for seller profile pics / KYC docs stored on disk.
-     * Cloudinary and other absolute https URLs are returned unchanged.
+     * Absolute upload URLs are rewritten onto {@code /uploads/seller_documents/...} when needed.
+     * Cloudinary URLs are returned unchanged.
      */
     public static String toPublicPath(String stored) {
         if (stored == null || stored.isBlank()) {
@@ -39,6 +40,14 @@ public final class SellerMediaUrlHelper {
         }
         String trimmed = stored.trim();
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            String lower = trimmed.toLowerCase();
+            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+                return trimmed;
+            }
+            int idx = trimmed.indexOf("/uploads/");
+            if (idx >= 0) {
+                return toPublicPath(trimmed.substring(idx));
+            }
             return trimmed;
         }
 

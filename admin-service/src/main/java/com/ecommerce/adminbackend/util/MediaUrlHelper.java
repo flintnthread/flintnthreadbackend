@@ -52,8 +52,13 @@ public class MediaUrlHelper {
                 return trimmed;
             }
             int idx = trimmed.indexOf("/uploads/");
-            if (idx >= 0 && !publicBaseUrl.isBlank()) {
-                return publicBaseUrl + trimmed.substring(idx);
+            if (idx >= 0) {
+                // Re-normalize so legacy /uploads/sellers/12_aadhar_front_... maps to seller_documents.
+                String normalized = normalizeMediaPath(trimmed.substring(idx), folder);
+                if (publicBaseUrl.isBlank()) {
+                    return normalized;
+                }
+                return publicBaseUrl + normalized;
             }
             return trimmed;
         }

@@ -23,6 +23,12 @@ public class CreateProductRequest {
 
     private String subcategoryName;
 
+    /** Normal category row in {@code categories} where {@code parent_id} points to main. */
+    private Integer childCategoryId;
+
+    /** Normal category name (middle level) — used when {@code subcategoryId} is not yet resolved. */
+    private String middleCategoryName;
+
     @NotBlank
     private String name;
 
