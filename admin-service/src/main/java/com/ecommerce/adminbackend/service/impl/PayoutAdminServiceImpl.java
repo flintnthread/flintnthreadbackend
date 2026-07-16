@@ -15,9 +15,12 @@ import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SellerPayoutRequestRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
+import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.PayoutAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +30,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -40,6 +44,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAdminService {
 
+    private static final Logger log = LoggerFactory.getLogger(PayoutAdminServiceImpl.class);
+
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final SellerRepository sellerRepository;
@@ -47,11 +53,13 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
     private final AdminSettingRepository adminSettingRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final MailService mailService;
 
     private static final String KEY_B2C = "commission_b2c";
     private static final String KEY_B2B = "commission_b2b";
     private static final String DEFAULT_B2C = "15";
     private static final String DEFAULT_B2B = "7";
+    private static final int OVERDUE_DAYS = 7;
 
     @Override
     @Transactional(readOnly = true)
@@ -454,5 +462,153 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
     private boolean isDelivered(Order order) {
         return order.getOrderStatus() != null
                 && "delivered".equalsIgnoreCase(order.getOrderStatus().trim());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<Map<String, Object>> listPayoutRequests(String status, int page, int size) {
+        var result = payoutRequestRepository.findByStatusOptional(blankToNull(status), PageRequest.of(page, size));
+        List<SellerPayoutRequest> rows = result.getContent();
+        Set<Long> orderIds = rows.stream().map(SellerPayoutRequest::getOrderId).collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Long> sellerIds = rows.stream().map(SellerPayoutRequest::getSellerId).collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Map<Long, Order> ordersById = orderIds.isEmpty()
+                ? Map.of()
+                : orderRepository.findAllById(orderIds).stream().collect(Collectors.toMap(Order::getId, o -> o, (a, b) -> a));
+        Map<Long, Seller> sellersById = sellerIds.isEmpty()
+                ? Map.of()
+                : sellerRepository.findAllById(sellerIds).stream().collect(Collectors.toMap(Seller::getId, s -> s, (a, b) -> a));
+
+        return PageResponse.from(result.map(req -> toRequestRow(req, ordersById.get(req.getOrderId()), sellersById.get(req.getSellerId()))));
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> closePayoutRequest(Long requestId, String paymentStatusText, Long adminId) {
+        if (paymentStatusText == null || paymentStatusText.isBlank()) {
+            throw new IllegalArgumentException("Payment status text is required to close the request.");
+        }
+        SellerPayoutRequest request = requireFound(payoutRequestRepository.findById(requestId), "Payout request not found.");
+        if (!"pending".equalsIgnoreCase(request.getStatus())) {
+            throw new IllegalArgumentException("Only pending payout requests can be closed.");
+        }
+
+        String statusText = paymentStatusText.trim();
+        request.setStatus("closed");
+        request.setAdminNote(statusText);
+        request.setReviewedAt(LocalDateTime.now());
+        request.setReviewedByAdminId(adminId);
+        request.setUpdatedAt(LocalDateTime.now());
+        payoutRequestRepository.save(request);
+
+        Order order = orderRepository.findById(request.getOrderId()).orElse(null);
+        Seller seller = sellerRepository.findById(request.getSellerId()).orElse(null);
+        String orderNumber = order != null && order.getOrderNumber() != null ? order.getOrderNumber() : String.valueOf(request.getOrderId());
+        String sellerName = seller != null ? seller.getFullName() : "Seller";
+        String sellerEmail = seller != null ? seller.getEmail() : null;
+        String amountLabel = request.getRequestedAmount() != null
+                ? "₹" + request.getRequestedAmount().setScale(2, RoundingMode.HALF_UP)
+                : "-";
+
+        if (sellerEmail != null && !sellerEmail.isBlank()) {
+            try {
+                mailService.sendPayoutRequestClosedEmail(sellerEmail, sellerName, orderNumber, statusText, amountLabel);
+            } catch (Exception ex) {
+                log.warn("Failed to email seller about closed payout request {}: {}", requestId, ex.getMessage());
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", request.getId());
+        result.put("status", "closed");
+        result.put("paymentStatus", statusText);
+        result.put("adminNote", statusText);
+        result.put("message", "Payout request closed and seller notified.");
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> payoutAlerts() {
+        long pendingRequests = payoutRequestRepository.countByStatusIgnoreCase("pending");
+        long newRequests = payoutRequestRepository.countByStatusIgnoreCaseAndRequestedAtAfter(
+                "pending", LocalDateTime.now().minusHours(24));
+        long overdueCount = orderRepository.countOverdueSellerPayoutsAfterCustomerPaid(OVERDUE_DAYS);
+
+        List<Map<String, Object>> recentRequests = new ArrayList<>();
+        for (SellerPayoutRequest req : payoutRequestRepository.findTop20ByStatusIgnoreCaseOrderByRequestedAtDesc("pending")) {
+            Order order = orderRepository.findById(req.getOrderId()).orElse(null);
+            Seller seller = sellerRepository.findById(req.getSellerId()).orElse(null);
+            recentRequests.add(toRequestRow(req, order, seller));
+            if (recentRequests.size() >= 5) {
+                break;
+            }
+        }
+
+        List<Map<String, Object>> overduePayments = new ArrayList<>();
+        for (Order order : orderRepository.findOverdueSellerPayoutsAfterCustomerPaid(OVERDUE_DAYS, PageRequest.of(0, 10))) {
+            overduePayments.add(toOverdueRow(order));
+        }
+
+        Map<String, Object> alerts = new LinkedHashMap<>();
+        alerts.put("pendingRequestCount", pendingRequests);
+        alerts.put("newRequestCount", newRequests);
+        alerts.put("overduePaymentCount", overdueCount);
+        alerts.put("overdueDays", OVERDUE_DAYS);
+        alerts.put("recentRequests", recentRequests);
+        alerts.put("overduePayments", overduePayments);
+        return alerts;
+    }
+
+    private Map<String, Object> toRequestRow(SellerPayoutRequest req, Order order, Seller seller) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", req.getId());
+        row.put("sellerId", req.getSellerId());
+        row.put("orderId", req.getOrderId());
+        row.put("orderNumber", order != null ? order.getOrderNumber() : String.valueOf(req.getOrderId()));
+        row.put("orderStatus", order != null ? order.getOrderStatus() : null);
+        row.put("sellerName", seller != null ? seller.getFullName() : null);
+        row.put("sellerEmail", seller != null ? seller.getEmail() : null);
+        row.put("sellerPhone", seller != null ? seller.getMobile() : null);
+        row.put("requestedAmount", req.getRequestedAmount());
+        row.put("status", req.getStatus());
+        row.put("sellerNote", req.getSellerNote());
+        row.put("adminNote", req.getAdminNote());
+        row.put("paymentStatus", req.getAdminNote());
+        row.put("transactionRef", req.getTransactionRef());
+        row.put("requestedAt", req.getRequestedAt());
+        row.put("reviewedAt", req.getReviewedAt());
+        row.put("paidAt", req.getPaidAt());
+        row.put("customerPaidAmount", order != null ? order.getTotalAmount() : null);
+        return row;
+    }
+
+    private Map<String, Object> toOverdueRow(Order order) {
+        List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+        OrderItem primaryItem = items.stream()
+                .filter(item -> item.getSellerId() != null && item.getSellerId() > 0)
+                .findFirst()
+                .orElse(items.isEmpty() ? null : items.get(0));
+        Long sellerId = primaryItem != null ? primaryItem.getSellerId() : null;
+        Seller seller = sellerId != null ? sellerRepository.findById(sellerId).orElse(null) : null;
+        String sellerName = primaryItem != null && primaryItem.getSellerName() != null && !primaryItem.getSellerName().isBlank()
+                ? primaryItem.getSellerName()
+                : seller != null ? seller.getFullName() : null;
+
+        LocalDateTime reference = order.getCreatedAt() != null ? order.getCreatedAt() : order.getUpdatedAt();
+        int days = reference == null ? 0
+                : (int) ChronoUnit.DAYS.between(reference.toLocalDate(), LocalDateTime.now().toLocalDate());
+
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("orderId", order.getId());
+        row.put("orderNumber", order.getOrderNumber());
+        row.put("sellerId", sellerId);
+        row.put("sellerName", sellerName);
+        row.put("sellerEmail", seller != null ? seller.getEmail() : null);
+        row.put("customerPaidAmount", order.getTotalAmount());
+        row.put("daysSincePayment", days);
+        row.put("paymentReceivedAt", reference);
+        row.put("sellerPaymentStatus", order.getSellerPaymentStatus());
+        return row;
     }
 }
