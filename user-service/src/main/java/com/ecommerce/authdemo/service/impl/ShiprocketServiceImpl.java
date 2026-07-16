@@ -8,6 +8,7 @@ import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.ProductVariantRepository;
+import com.ecommerce.authdemo.service.PlatformIntegrationSettings;
 import com.ecommerce.authdemo.service.ShiprocketService;
 
 import lombok.RequiredArgsConstructor;
@@ -47,17 +48,10 @@ import java.util.*;
 
         private final ProductVariantRepository productVariantRepository;
 
-        @Value("${shiprocket.email}")
-        private String email;
-
-        @Value("${shiprocket.password}")
-        private String password;
+        private final PlatformIntegrationSettings integrationSettings;
 
         @Value("${shiprocket.api.base-url}")
         private String apiBaseUrl;
-
-        @Value("${shiprocket.pickup-location:work}")
-        private String pickupLocation;
 
         /** Optional map: sellerId:PickupNickname,sellerId:AnotherNickname */
         @Value("${shiprocket.pickup-location-by-seller:}")
@@ -67,14 +61,16 @@ import java.util.*;
         public String getToken() {
 
             try {
+                String email = integrationSettings.getShiprocketEmail();
+                String password = integrationSettings.getShiprocketPassword();
                 if (email == null || email.isBlank()
                         || password == null || password.isBlank()) {
                     throw new RuntimeException(
-                            "Shiprocket credentials missing (shiprocket.email / shiprocket.password)"
+                            "Shiprocket credentials missing. Set them in Admin → Platform Settings."
                     );
                 }
 
-                String url = apiBaseUrl + "/v1/external/auth/login";
+                String url = apiBaseUrl + "/auth/login";
 
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
@@ -185,9 +181,7 @@ import java.util.*;
             try {
                 return postCreateAdhoc(order, payload);
             } catch (RuntimeException first) {
-                String configured = pickupLocation != null && !pickupLocation.isBlank()
-                        ? pickupLocation.trim()
-                        : "work";
+                String configured = defaultPickupLocation();
                 Object usedPickup = payload.get("pickup_location");
                 String used = usedPickup != null ? String.valueOf(usedPickup) : "";
                 String detail = first.getMessage() != null ? first.getMessage() : "";
@@ -224,7 +218,7 @@ import java.util.*;
                 Map<String, Object> payload
         ) {
             String token = getToken();
-            String url = apiBaseUrl + "/v1/external/orders/create/adhoc";
+            String url = apiBaseUrl + "/orders/create/adhoc";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
@@ -544,15 +538,18 @@ import java.util.*;
 
         /**
          * Shiprocket pickup_location must match a nickname registered in Shiprocket
-         * (Settings → Pickup Addresses), e.g. "work".
-         * Prefer: per-seller map → configured default (work).
-         * Seller business names are only used when they appear in the map; inventing them
-         * caused 422s when the warehouse nickname differed.
+         * (Settings → Pickup Addresses), e.g. "ASVI HOME FOODS".
+         * Prefer: per-seller map → configured default from Admin Platform Settings.
          */
+        private String defaultPickupLocation() {
+            String configured = integrationSettings.getShiprocketPickupLocation();
+            return configured != null && !configured.isBlank()
+                    ? configured.trim()
+                    : "ASVI HOME FOODS";
+        }
+
         private String resolvePickupLocation(Long sellerId) {
-            String configured = pickupLocation != null && !pickupLocation.isBlank()
-                    ? pickupLocation.trim()
-                    : "work";
+            String configured = defaultPickupLocation();
 
             if (sellerId == null || pickupLocationBySeller == null || pickupLocationBySeller.isBlank()) {
                 return configured;
@@ -674,7 +671,7 @@ import java.util.*;
 
                 String url =
                         apiBaseUrl +
-                                "/v1/external/courier/track/awb/"
+                                "/courier/track/awb/"
                                 + awb;
 
                 HttpHeaders headers =
@@ -789,7 +786,7 @@ import java.util.*;
 
                 String url =
                         apiBaseUrl
-                                + "/v1/external/courier/track/awb/"
+                                + "/courier/track/awb/"
                                 + awb;
 
                 HttpHeaders headers =
@@ -996,7 +993,7 @@ import java.util.*;
                 ResponseEntity<String> response =
                         restTemplate.exchange(
                                 apiBaseUrl
-                                        + "/v1/external/orders/cancel",
+                                        + "/orders/cancel",
                                 HttpMethod.POST,
                                 entity,
                                 String.class

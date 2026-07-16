@@ -2,6 +2,7 @@ package com.ecommerce.adminbackend.repository;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,84 +15,154 @@ public class LocationRepository {
     private EntityManager entityManager;
 
     @SuppressWarnings("unchecked")
-    public List<Object[]> searchCountries(String query) {
-        return entityManager.createNativeQuery("""
+    public List<Object[]> searchCountries(String query, int page, int size) {
+        Query q = entityManager.createNativeQuery("""
                 SELECT id, country_name, country_code, status
                 FROM countries
                 WHERE (:q IS NULL OR :q = '' OR LOWER(country_name) LIKE LOWER(CONCAT('%', :q, '%'))
                     OR LOWER(country_code) LIKE LOWER(CONCAT('%', :q, '%')))
                 ORDER BY country_name
-                LIMIT 500
+                """)
+                .setParameter("q", query);
+        applyPaging(q, page, size);
+        return q.getResultList();
+    }
+
+    public long countCountriesSearch(String query) {
+        return ((Number) entityManager.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM countries
+                WHERE (:q IS NULL OR :q = '' OR LOWER(country_name) LIKE LOWER(CONCAT('%', :q, '%'))
+                    OR LOWER(country_code) LIKE LOWER(CONCAT('%', :q, '%')))
                 """)
                 .setParameter("q", query)
-                .getResultList();
+                .getSingleResult()).longValue();
     }
 
     @SuppressWarnings("unchecked")
-    public List<Object[]> searchStates(Integer countryId, String query) {
-        return entityManager.createNativeQuery("""
+    public List<Object[]> searchStates(Integer countryId, String query, int page, int size) {
+        Query q = entityManager.createNativeQuery("""
                 SELECT s.id, s.state_name, s.country_id, c.country_name, s.status
                 FROM states s
                 JOIN countries c ON c.id = s.country_id
                 WHERE (:countryId IS NULL OR s.country_id = :countryId)
                   AND (:q IS NULL OR :q = '' OR LOWER(s.state_name) LIKE LOWER(CONCAT('%', :q, '%')))
                 ORDER BY s.state_name
-                LIMIT 500
+                """)
+                .setParameter("countryId", countryId)
+                .setParameter("q", query);
+        applyPaging(q, page, size);
+        return q.getResultList();
+    }
+
+    public long countStatesSearch(Integer countryId, String query) {
+        return ((Number) entityManager.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM states s
+                WHERE (:countryId IS NULL OR s.country_id = :countryId)
+                  AND (:q IS NULL OR :q = '' OR LOWER(s.state_name) LIKE LOWER(CONCAT('%', :q, '%')))
                 """)
                 .setParameter("countryId", countryId)
                 .setParameter("q", query)
-                .getResultList();
+                .getSingleResult()).longValue();
     }
 
     @SuppressWarnings("unchecked")
-    public List<Object[]> searchCities(Integer stateId, String query) {
-        return entityManager.createNativeQuery("""
+    public List<Object[]> searchCities(Integer stateId, String query, int page, int size) {
+        Query q = entityManager.createNativeQuery("""
                 SELECT c.id, c.city_name, c.state_id, s.state_name, c.status
                 FROM cities c
                 JOIN states s ON s.id = c.state_id
                 WHERE (:stateId IS NULL OR c.state_id = :stateId)
                   AND (:q IS NULL OR :q = '' OR LOWER(c.city_name) LIKE LOWER(CONCAT('%', :q, '%')))
                 ORDER BY c.city_name
-                LIMIT 500
+                """)
+                .setParameter("stateId", stateId)
+                .setParameter("q", query);
+        applyPaging(q, page, size);
+        return q.getResultList();
+    }
+
+    public long countCitiesSearch(Integer stateId, String query) {
+        return ((Number) entityManager.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM cities c
+                WHERE (:stateId IS NULL OR c.state_id = :stateId)
+                  AND (:q IS NULL OR :q = '' OR LOWER(c.city_name) LIKE LOWER(CONCAT('%', :q, '%')))
                 """)
                 .setParameter("stateId", stateId)
                 .setParameter("q", query)
-                .getResultList();
+                .getSingleResult()).longValue();
     }
 
     @SuppressWarnings("unchecked")
-    public List<Object[]> searchPincodes(String query) {
-        return entityManager.createNativeQuery("""
-                SELECT p.id, p.pincode, a.area_name, c.city_name, s.state_name, co.country_name
+    public List<Object[]> searchPincodes(Integer cityId, Integer areaId, String query, int page, int size) {
+        Query q = entityManager.createNativeQuery("""
+                SELECT p.id, p.pincode, a.area_name, c.city_name, s.state_name, co.country_name,
+                       p.city_id, p.area_id
                 FROM pincodes p
                 JOIN areas a ON a.id = p.area_id
                 JOIN cities c ON c.id = a.city_id
                 JOIN states s ON s.id = c.state_id
                 JOIN countries co ON co.id = s.country_id
-                WHERE (:q IS NULL OR :q = '' OR p.pincode LIKE CONCAT('%', :q, '%')
+                WHERE (:cityId IS NULL OR p.city_id = :cityId OR a.city_id = :cityId)
+                  AND (:areaId IS NULL OR p.area_id = :areaId)
+                  AND (:q IS NULL OR :q = '' OR p.pincode LIKE CONCAT('%', :q, '%')
                     OR LOWER(a.area_name) LIKE LOWER(CONCAT('%', :q, '%'))
                     OR LOWER(c.city_name) LIKE LOWER(CONCAT('%', :q, '%')))
                 ORDER BY p.pincode, a.area_name
-                LIMIT 500
                 """)
+                .setParameter("cityId", cityId)
+                .setParameter("areaId", areaId)
+                .setParameter("q", query);
+        applyPaging(q, page, size);
+        return q.getResultList();
+    }
+
+    public long countPincodesSearch(Integer cityId, Integer areaId, String query) {
+        return ((Number) entityManager.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM pincodes p
+                JOIN areas a ON a.id = p.area_id
+                JOIN cities c ON c.id = a.city_id
+                WHERE (:cityId IS NULL OR p.city_id = :cityId OR a.city_id = :cityId)
+                  AND (:areaId IS NULL OR p.area_id = :areaId)
+                  AND (:q IS NULL OR :q = '' OR p.pincode LIKE CONCAT('%', :q, '%')
+                    OR LOWER(a.area_name) LIKE LOWER(CONCAT('%', :q, '%'))
+                    OR LOWER(c.city_name) LIKE LOWER(CONCAT('%', :q, '%')))
+                """)
+                .setParameter("cityId", cityId)
+                .setParameter("areaId", areaId)
                 .setParameter("q", query)
-                .getResultList();
+                .getSingleResult()).longValue();
     }
 
     @SuppressWarnings("unchecked")
-    public List<Object[]> searchAreas(Integer cityId, String query) {
-        return entityManager.createNativeQuery("""
+    public List<Object[]> searchAreas(Integer cityId, String query, int page, int size) {
+        Query q = entityManager.createNativeQuery("""
                 SELECT a.id, a.area_name, a.city_id, c.city_name, a.status
                 FROM areas a
                 JOIN cities c ON c.id = a.city_id
                 WHERE (:cityId IS NULL OR a.city_id = :cityId)
                   AND (:q IS NULL OR :q = '' OR LOWER(a.area_name) LIKE LOWER(CONCAT('%', :q, '%')))
                 ORDER BY a.area_name
-                LIMIT 500
+                """)
+                .setParameter("cityId", cityId)
+                .setParameter("q", query);
+        applyPaging(q, page, size);
+        return q.getResultList();
+    }
+
+    public long countAreasSearch(Integer cityId, String query) {
+        return ((Number) entityManager.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM areas a
+                WHERE (:cityId IS NULL OR a.city_id = :cityId)
+                  AND (:q IS NULL OR :q = '' OR LOWER(a.area_name) LIKE LOWER(CONCAT('%', :q, '%')))
                 """)
                 .setParameter("cityId", cityId)
                 .setParameter("q", query)
-                .getResultList();
+                .getSingleResult()).longValue();
     }
 
     public Long countCountries() {
@@ -326,6 +397,13 @@ public class LocationRepository {
                 .setParameter("status", active ? 1 : 0)
                 .setParameter("id", id)
                 .executeUpdate();
+    }
+
+    private void applyPaging(Query query, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 5000);
+        query.setFirstResult(safePage * safeSize);
+        query.setMaxResults(safeSize);
     }
 
     private Integer nextId(String table) {

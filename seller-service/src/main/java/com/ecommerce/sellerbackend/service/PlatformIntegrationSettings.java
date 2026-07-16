@@ -20,6 +20,9 @@ public class PlatformIntegrationSettings {
     public static final String KEY_TWILIO_ACCOUNT_SID = "twilio_account_sid";
     public static final String KEY_TWILIO_AUTH_TOKEN = "twilio_auth_token";
     public static final String KEY_TWILIO_PHONE_NUMBER = "twilio_phone_number";
+    public static final String KEY_SHIPROCKET_EMAIL = "shiprocket_email";
+    public static final String KEY_SHIPROCKET_PASSWORD = "shiprocket_password";
+    public static final String KEY_SHIPROCKET_PICKUP_LOCATION = "shiprocket_pickup_location";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -35,6 +38,15 @@ public class PlatformIntegrationSettings {
     @Value("${twilio.phone.number:}")
     private String defaultTwilioPhoneNumber;
 
+    @Value("${shiprocket.email:}")
+    private String defaultShiprocketEmail;
+
+    @Value("${shiprocket.password:}")
+    private String defaultShiprocketPassword;
+
+    @Value("${shiprocket.pickup-location:ASVI HOME FOODS}")
+    private String defaultShiprocketPickupLocation;
+
     public String getSendGridApiKey() {
         return readSetting(KEY_SENDGRID_API_KEY).orElse(trimToEmpty(defaultSendGridApiKey));
     }
@@ -49,6 +61,18 @@ public class PlatformIntegrationSettings {
 
     public String getTwilioPhoneNumber() {
         return readSetting(KEY_TWILIO_PHONE_NUMBER).orElse(trimToEmpty(defaultTwilioPhoneNumber));
+    }
+
+    public String getShiprocketEmail() {
+        return readSetting(KEY_SHIPROCKET_EMAIL).orElse(trimToEmpty(defaultShiprocketEmail));
+    }
+
+    public String getShiprocketPassword() {
+        return readSetting(KEY_SHIPROCKET_PASSWORD).orElse(trimToEmpty(defaultShiprocketPassword));
+    }
+
+    public String getShiprocketPickupLocation() {
+        return readSetting(KEY_SHIPROCKET_PICKUP_LOCATION).orElse(trimToEmpty(defaultShiprocketPickupLocation));
     }
 
     public Optional<String> readSetting(String key) {

@@ -18,7 +18,8 @@ public class DeliveryPincode {
 
     private String pincode;
 
-    private Integer status;
+    /** Matches `pincodes.status` (boolean) used by location APIs. */
+    private Boolean status;
 
     @Column(name = "area_id")
     private Integer areaId;

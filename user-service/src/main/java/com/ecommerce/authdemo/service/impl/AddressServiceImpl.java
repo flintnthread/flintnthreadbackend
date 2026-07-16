@@ -78,7 +78,7 @@ public class AddressServiceImpl implements AddressService {
             throw new IllegalArgumentException("Please enter a valid 6-digit pincode.");
         }
 
-        boolean deliveryAvailable = deliveryPincodeRepository.existsByPincodeAndStatus(pincode, 1);
+        boolean deliveryAvailable = deliveryPincodeRepository.existsServiceablePincode(pincode);
 
         if (!deliveryAvailable) {
             throw new IllegalArgumentException("Delivery not available for this pincode.");
@@ -333,7 +333,7 @@ address.setPhone(phone);
             throw new IllegalArgumentException("Please enter a valid 6-digit pincode.");
         }
 
-        boolean deliveryAvailable = deliveryPincodeRepository.existsByPincodeAndStatus(pincode, 1);
+        boolean deliveryAvailable = deliveryPincodeRepository.existsServiceablePincode(pincode);
 
         if (!deliveryAvailable) {
             throw new IllegalArgumentException("Delivery not available for this pincode.");

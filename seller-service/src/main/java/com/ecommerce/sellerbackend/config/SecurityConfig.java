@@ -59,34 +59,32 @@ public class SecurityConfig {
         return http.build();
     }
 
-   @Bean
-public CorsConfigurationSource corsConfigurationSource() {
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        List<String> origins = new java.util.ArrayList<>(
+                java.util.Arrays.stream(allowedOrigins.split(","))
+                        .map(String::trim)
+                        .filter(origin -> !origin.isBlank())
+                        .toList()
+        );
+        // Always allow both production domains (apex + subdomains) + local web.
+        origins.addAll(List.of(
+                "http://localhost:*",
+                "http://127.0.0.1:*",
+                "https://flintnthread.online",
+                "https://*.flintnthread.online",
+                "https://flintnthread.in",
+                "https://*.flintnthread.in"
+        ));
+        config.setAllowedOriginPatterns(origins.stream().distinct().toList());
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+        config.setExposedHeaders(List.of("*"));
 
-    CorsConfiguration config = new CorsConfiguration();
-
-   config.setAllowedOrigins(List.of(
-    "http://localhost:8081",
-    "http://127.0.0.1:8081",
-    "http://localhost:19006",
-    "https://seller.flintnthread.online",
-    "https://admin.flintnthread.online",
-    "https://flintnthread.online"
-));
-
-    config.setAllowedMethods(List.of(
-            "GET","POST","PUT","PATCH","DELETE","OPTIONS"
-    ));
-
-    config.setAllowedHeaders(List.of("*"));
-
-    config.setAllowCredentials(true);
-
-    config.setExposedHeaders(List.of("*"));
-
-    UrlBasedCorsConfigurationSource source =
-            new UrlBasedCorsConfigurationSource();
-
-    source.registerCorsConfiguration("/**", config);
-
-    return source;
-}}
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+}

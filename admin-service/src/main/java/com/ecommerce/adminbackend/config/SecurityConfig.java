@@ -55,13 +55,13 @@ public class SecurityConfig {
                 .map(String::trim)
                 .filter(origin -> !origin.isBlank())
                 .toList());
-        // Expo web / LAN dev + production admin UI
+        // Expo web / LAN dev + production admin UI (.online and .in)
         patterns.add("http://localhost:*");
         patterns.add("http://127.0.0.1:*");
         patterns.add("https://flintnthread.online");
-        patterns.add("https://www.flintnthread.online");
-        patterns.add("https://admin.flintnthread.online");
-        patterns.add("https://seller.flintnthread.online");
+        patterns.add("https://*.flintnthread.online");
+        patterns.add("https://flintnthread.in");
+        patterns.add("https://*.flintnthread.in");
         config.setAllowedOriginPatterns(patterns);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

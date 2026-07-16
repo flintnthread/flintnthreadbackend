@@ -44,7 +44,7 @@ class AddressServiceAddDuplicateTest {
     @BeforeEach
     void setUp() {
         when(securityUtil.getCurrentUserId()).thenReturn(USER_ID);
-        when(deliveryPincodeRepository.existsByPincodeAndStatus("502319", 1)).thenReturn(true);
+        when(deliveryPincodeRepository.existsServiceablePincode("502319")).thenReturn(true);
     }
 
     @Test

@@ -1,19 +1,20 @@
 package com.ecommerce.adminbackend.service;
 
-import java.util.List;
+import com.ecommerce.adminbackend.common.PageResponse;
+
 import java.util.Map;
 
 public interface LocationAdminService {
 
-    List<Map<String, Object>> listCountries(String search);
+    PageResponse<Map<String, Object>> listCountries(String search, int page, int size);
 
-    List<Map<String, Object>> listStates(Integer countryId, String search);
+    PageResponse<Map<String, Object>> listStates(Integer countryId, String search, int page, int size);
 
-    List<Map<String, Object>> listCities(Integer stateId, String search);
+    PageResponse<Map<String, Object>> listCities(Integer stateId, String search, int page, int size);
 
-    List<Map<String, Object>> listAreas(Integer cityId, String search);
+    PageResponse<Map<String, Object>> listAreas(Integer cityId, String search, int page, int size);
 
-    List<Map<String, Object>> listPincodes(String search);
+    PageResponse<Map<String, Object>> listPincodes(Integer cityId, Integer areaId, String search, int page, int size);
 
     Map<String, Long> getCounts();
 

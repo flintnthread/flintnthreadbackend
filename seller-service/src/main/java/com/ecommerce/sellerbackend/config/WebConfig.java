@@ -23,19 +23,34 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        String[] origins = allowedOrigins.split(",");
+        String[] fromProps = java.util.Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toArray(String[]::new);
+        String[] patterns = java.util.stream.Stream.concat(
+                        java.util.Arrays.stream(fromProps),
+                        java.util.stream.Stream.of(
+                                "http://localhost:*",
+                                "http://127.0.0.1:*",
+                                "https://flintnthread.online",
+                                "https://*.flintnthread.online",
+                                "https://flintnthread.in",
+                                "https://*.flintnthread.in"
+                        ))
+                .distinct()
+                .toArray(String[]::new);
         registry.addMapping("/api/**")
-                .allowedOrigins(origins)
+                .allowedOriginPatterns(patterns)
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("*")
-                .allowCredentials(false);
+                .allowCredentials(true);
         registry.addMapping("/uploads/**")
-                .allowedOrigins(origins)
+                .allowedOriginPatterns(patterns)
                 .allowedMethods("GET", "HEAD", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("*")
-                .allowCredentials(false);
+                .allowCredentials(true);
     }
 
     @Override

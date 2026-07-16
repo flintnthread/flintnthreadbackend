@@ -13,8 +13,11 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+/**
+ * Maps to existing {@code career_jobs} (legacy careers schema).
+ */
 @Entity
-@Table(name = "admin_job_openings")
+@Table(name = "career_jobs")
 @Getter
 @Setter
 public class AdminJobOpening {
@@ -23,23 +26,27 @@ public class AdminJobOpening {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "department_id")
+    @Column(name = "department_id", nullable = false)
     private Long departmentId;
 
-    @Column(nullable = false, length = 200)
+    @Column(nullable = false, length = 255)
     private String title;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
-
-    @Column(length = 150)
-    private String location;
-
-    @Column(name = "employment_type", length = 50)
-    private String employmentType;
 
     @Column(columnDefinition = "TEXT")
     private String requirements;
+
+    @Column(columnDefinition = "TEXT")
+    private String responsibilities;
+
+    @Column(length = 255)
+    private String location;
+
+    /** DB enum: full-time | part-time | contract | internship */
+    @Column(name = "employment_type", length = 50)
+    private String employmentType = "full-time";
 
     @Column(name = "experience_required", length = 100)
     private String experienceRequired;
@@ -49,8 +56,9 @@ public class AdminJobOpening {
 
     private Integer vacancies = 1;
 
+    /** DB enum: active | inactive | closed */
     @Column(nullable = false, length = 30)
-    private String status = "open";
+    private String status = "active";
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -65,6 +73,18 @@ public class AdminJobOpening {
             createdAt = now;
         }
         updatedAt = now;
+        if (description == null) {
+            description = "";
+        }
+        if (vacancies == null || vacancies < 1) {
+            vacancies = 1;
+        }
+        if (employmentType == null || employmentType.isBlank()) {
+            employmentType = "full-time";
+        }
+        if (status == null || status.isBlank()) {
+            status = "active";
+        }
     }
 
     @PreUpdate
