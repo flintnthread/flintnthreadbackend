@@ -350,3 +350,4 @@ Hibernate:
 2026-07-16 04:04:35.267 WARN  [http-nio-0.0.0.0-8082-exec-6] c.e.a.s.AdminJwtAuthenticationFilter - Missing or invalid Authorization header for /api/admin/departments
 2026-07-16 04:04:36.067 WARN  [http-nio-0.0.0.0-8082-exec-6] c.e.a.logging.AdminRequestLoggingFilter - API GET /api/admin/departments -> 401 (866 ms)
 2026-07-16 11:22:47.514 WARN  [HikariPool-1:housekeeper] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=6h42m33s914ms271µs700ns).
+2026-07-16 12:14:40.685 WARN  [HikariPool-1:housekeeper] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=4m18s660ms971µs100ns).
