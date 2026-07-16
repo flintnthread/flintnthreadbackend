@@ -17,4 +17,10 @@ public interface PayoutAdminService {
     String exportPayoutsCsv(String status, Integer minReminderDays);
 
     Map<String, Object> markPaid(Long id, String transactionRef, String adminNote, String status);
+
+    PageResponse<Map<String, Object>> listPayoutRequests(String status, int page, int size);
+
+    Map<String, Object> closePayoutRequest(Long requestId, String paymentStatusText, Long adminId);
+
+    Map<String, Object> payoutAlerts();
 }
