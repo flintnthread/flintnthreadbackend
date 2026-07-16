@@ -1,5 +1,6 @@
 package com.ecommerce.adminbackend.controller;
 
+import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.logging.LogFactory;
 import com.ecommerce.adminbackend.service.LocationAdminService;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -28,34 +28,48 @@ public class LocationAdminController {
     private final LocationAdminService locationAdminService;
 
     @GetMapping("/countries")
-    public List<Map<String, Object>> countries(@RequestParam(required = false) String search) {
-        return locationAdminService.listCountries(search);
+    public PageResponse<Map<String, Object>> countries(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return locationAdminService.listCountries(search, page, size);
     }
 
     @GetMapping("/states")
-    public List<Map<String, Object>> states(
+    public PageResponse<Map<String, Object>> states(
             @RequestParam(required = false) Integer countryId,
-            @RequestParam(required = false) String search) {
-        return locationAdminService.listStates(countryId, search);
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return locationAdminService.listStates(countryId, search, page, size);
     }
 
     @GetMapping("/cities")
-    public List<Map<String, Object>> cities(
+    public PageResponse<Map<String, Object>> cities(
             @RequestParam(required = false) Integer stateId,
-            @RequestParam(required = false) String search) {
-        return locationAdminService.listCities(stateId, search);
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return locationAdminService.listCities(stateId, search, page, size);
     }
 
     @GetMapping("/areas")
-    public List<Map<String, Object>> areas(
+    public PageResponse<Map<String, Object>> areas(
             @RequestParam(required = false) Integer cityId,
-            @RequestParam(required = false) String search) {
-        return locationAdminService.listAreas(cityId, search);
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return locationAdminService.listAreas(cityId, search, page, size);
     }
 
     @GetMapping("/pincodes")
-    public List<Map<String, Object>> pincodes(@RequestParam(required = false) String search) {
-        return locationAdminService.listPincodes(search);
+    public PageResponse<Map<String, Object>> pincodes(
+            @RequestParam(required = false) Integer cityId,
+            @RequestParam(required = false) Integer areaId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return locationAdminService.listPincodes(cityId, areaId, search, page, size);
     }
 
     @GetMapping("/counts")
