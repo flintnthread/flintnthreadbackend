@@ -10,10 +10,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -21,14 +26,18 @@ public class SizeAdminServiceImpl extends BaseAdminService implements SizeAdminS
 
     private static final DateTimeFormatter CREATED_FMT =
             DateTimeFormatter.ofPattern("dd MMM, yyyy", Locale.ENGLISH);
+    private static final String UNASSIGNED = "Unassigned";
 
     private final SizeRepository sizeRepository;
 
     @Override
     @Transactional(readOnly = true)
     public List<Map<String, Object>> list() {
-        return sizeRepository.findAllByOrderBySizeNameAsc().stream()
-                .map(this::toRow)
+        List<Size> sizes = sizeRepository.findAllByOrderBySizeNameAsc();
+        Map<Long, LinkedHashSet<String>> categoriesBySizeId = loadCategoriesBySizeId();
+
+        return sizes.stream()
+                .map(size -> toRow(size, categoriesBySizeId.getOrDefault(size.getId(), new LinkedHashSet<>())))
                 .toList();
     }
 
@@ -41,7 +50,7 @@ public class SizeAdminServiceImpl extends BaseAdminService implements SizeAdminS
         size.setStatus(parseStatus(request.get("status"), true));
         size.setSellerId(null);
         size.setCreatedAt(LocalDateTime.now());
-        return toRow(sizeRepository.save(size));
+        return toRow(sizeRepository.save(size), new LinkedHashSet<>());
     }
 
     @Override
@@ -57,7 +66,9 @@ public class SizeAdminServiceImpl extends BaseAdminService implements SizeAdminS
         if (request.containsKey("status")) {
             size.setStatus(parseStatus(request.get("status"), size.getStatus()));
         }
-        return toRow(sizeRepository.save(size));
+        Size saved = sizeRepository.save(size);
+        Map<Long, LinkedHashSet<String>> categoriesBySizeId = loadCategoriesBySizeId();
+        return toRow(saved, categoriesBySizeId.getOrDefault(saved.getId(), new LinkedHashSet<>()));
     }
 
     @Override
@@ -69,6 +80,22 @@ public class SizeAdminServiceImpl extends BaseAdminService implements SizeAdminS
 
     private Size requireSize(Long id) {
         return requireFound(sizeRepository.findById(id), "Size not found.");
+    }
+
+    private Map<Long, LinkedHashSet<String>> loadCategoriesBySizeId() {
+        Map<Long, LinkedHashSet<String>> map = new LinkedHashMap<>();
+        for (Object[] row : sizeRepository.findSizeMainCategoryPairs()) {
+            if (row == null || row.length < 2 || row[0] == null || row[1] == null) {
+                continue;
+            }
+            Long sizeId = ((Number) row[0]).longValue();
+            String categoryName = String.valueOf(row[1]).trim();
+            if (categoryName.isEmpty()) {
+                continue;
+            }
+            map.computeIfAbsent(sizeId, ignored -> new LinkedHashSet<>()).add(categoryName);
+        }
+        return map;
     }
 
     private boolean parseStatus(Object value, boolean defaultValue) {
@@ -85,7 +112,15 @@ public class SizeAdminServiceImpl extends BaseAdminService implements SizeAdminS
         return !"inactive".equalsIgnoreCase(text) && !"false".equalsIgnoreCase(text);
     }
 
-    private Map<String, Object> toRow(Size size) {
+    private Map<String, Object> toRow(Size size, Set<String> categoryNames) {
+        List<String> categories = categoryNames == null || categoryNames.isEmpty()
+                ? List.of()
+                : categoryNames.stream()
+                        .sorted(Comparator.comparing(String::toLowerCase))
+                        .collect(Collectors.toCollection(ArrayList::new));
+
+        String primaryCategory = categories.isEmpty() ? UNASSIGNED : categories.get(0);
+
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", size.getId());
         row.put("name", size.getSizeName());
@@ -94,6 +129,8 @@ public class SizeAdminServiceImpl extends BaseAdminService implements SizeAdminS
         if (size.getCreatedAt() != null) {
             row.put("createdDate", size.getCreatedAt().format(CREATED_FMT));
         }
+        row.put("categories", categories);
+        row.put("primaryCategory", primaryCategory);
         return row;
     }
 }

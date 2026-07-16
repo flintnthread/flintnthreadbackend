@@ -6,7 +6,9 @@ import com.ecommerce.adminbackend.service.CategoryAdminService;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -44,13 +46,13 @@ public class CategoryAdminController {
     @PostMapping("/main")
     public Map<String, Object> createMainCategory(@RequestBody Map<String, Object> request) {
         Category category = categoryAdminService.createMainCategory(
-                (String) request.get("categoryName"),
-                (String) request.get("hsnCode"),
-                request.get("gstPercentage") != null ? new BigDecimal(request.get("gstPercentage").toString()) : null,
-                (String) request.get("categoryImage"),
-                (String) request.get("mobileImage"),
-                (String) request.get("bannerImage"),
-                request.get("status") != null ? Boolean.valueOf(request.get("status").toString()) : true
+                toStringValue(request.get("categoryName")),
+                toStringValue(request.get("hsnCode")),
+                toBigDecimal(request.get("gstPercentage")),
+                toStringValue(request.get("categoryImage")),
+                toStringValue(request.get("mobileImage")),
+                toStringValue(request.get("bannerImage")),
+                toBoolean(request.get("status"), true)
         );
         return toCategoryMap(category);
     }
@@ -58,14 +60,14 @@ public class CategoryAdminController {
     @PostMapping("/subcategories")
     public Map<String, Object> createSubcategory(@RequestBody Map<String, Object> request) {
         Category category = categoryAdminService.createSubcategory(
-                (Integer) request.get("parentId"),
-                (String) request.get("categoryName"),
-                (String) request.get("hsnCode"),
-                request.get("gstPercentage") != null ? new BigDecimal(request.get("gstPercentage").toString()) : null,
-                (String) request.get("categoryImage"),
-                (String) request.get("mobileImage"),
-                (String) request.get("bannerImage"),
-                request.get("status") != null ? Boolean.valueOf(request.get("status").toString()) : true
+                toInteger(request.get("parentId")),
+                toStringValue(request.get("categoryName")),
+                toStringValue(request.get("hsnCode")),
+                toBigDecimal(request.get("gstPercentage")),
+                toStringValue(request.get("categoryImage")),
+                toStringValue(request.get("mobileImage")),
+                toStringValue(request.get("bannerImage")),
+                toBoolean(request.get("status"), true)
         );
         return toCategoryMap(category);
     }
@@ -74,25 +76,24 @@ public class CategoryAdminController {
     public Map<String, Object> updateCategory(@PathVariable Integer id, @RequestBody Map<String, Object> request) {
         categoryAdminService.updateCategory(
                 id,
-                (String) request.get("categoryName"),
-                (String) request.get("hsnCode"),
-                request.get("gstPercentage") != null ? new BigDecimal(request.get("gstPercentage").toString()) : null,
-                (String) request.get("categoryImage"),
-                (String) request.get("mobileImage"),
-                (String) request.get("bannerImage"),
-                request.get("status") != null ? Boolean.valueOf(request.get("status").toString()) : true
+                toStringValue(request.get("categoryName")),
+                toStringValue(request.get("hsnCode")),
+                toBigDecimal(request.get("gstPercentage")),
+                toStringValue(request.get("categoryImage")),
+                toStringValue(request.get("mobileImage")),
+                toStringValue(request.get("bannerImage")),
+                request.containsKey("status") ? toBoolean(request.get("status"), true) : null
         );
-        Category category = categoryAdminService.listMainCategories(null).stream()
-                .filter(c -> c.getId().equals(id))
-                .findFirst()
-                .orElse(null);
-        if (category == null) {
-            category = categoryAdminService.listSubcategories(null, null).stream()
-                    .filter(c -> c.getId().equals(id))
-                    .findFirst()
-                    .orElse(null);
-        }
-        return category != null ? toCategoryMap(category) : Map.of("id", id);
+        return toCategoryMap(categoryAdminService.getCategory(id));
+    }
+
+    @PostMapping(value = "/{id}/upload-images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> uploadImages(
+            @PathVariable Integer id,
+            @RequestParam(value = "image", required = false) MultipartFile image,
+            @RequestParam(value = "mobileImage", required = false) MultipartFile mobileImage,
+            @RequestParam(value = "bannerImage", required = false) MultipartFile bannerImage) {
+        return toCategoryMap(categoryAdminService.uploadImages(id, image, mobileImage, bannerImage));
     }
 
     @DeleteMapping("/{id}")
@@ -113,5 +114,42 @@ public class CategoryAdminController {
         map.put("status", category.getStatus());
         map.put("createdAt", category.getCreatedAt());
         return map;
+    }
+
+    private static Integer toInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        String text = value.toString().trim();
+        return text.isEmpty() ? null : Integer.valueOf(text);
+    }
+
+    private static BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim().replace("%", "");
+        return text.isEmpty() ? null : new BigDecimal(text);
+    }
+
+    private static Boolean toBoolean(Object value, boolean defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.valueOf(value.toString());
+    }
+
+    private static String toStringValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = value.toString().trim();
+        return text.isEmpty() ? null : text;
     }
 }
