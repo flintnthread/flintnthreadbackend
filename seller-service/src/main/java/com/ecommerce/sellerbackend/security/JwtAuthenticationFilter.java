@@ -67,6 +67,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (HttpMethod.POST.matches(request.getMethod()) && "/api/seller/locations/pincodes".equals(path)) {
             return true;
         }
+        if (HttpMethod.GET.matches(request.getMethod()) && path.startsWith("/api/seller/support/contact")) {
+            return true;
+        }
+        if (HttpMethod.GET.matches(request.getMethod()) && path.startsWith("/api/seller/support/faqs")) {
+            return true;
+        }
         return PUBLIC_PREFIXES.stream().anyMatch(path::startsWith);
     }
 

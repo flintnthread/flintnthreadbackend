@@ -7,12 +7,14 @@ import com.ecommerce.adminbackend.entity.OrderItem;
 import com.ecommerce.adminbackend.entity.OrderStatusHistory;
 import com.ecommerce.adminbackend.entity.Product;
 import com.ecommerce.adminbackend.entity.ProductImage;
+import com.ecommerce.adminbackend.entity.ProductVariant;
 import com.ecommerce.adminbackend.entity.Seller;
 import com.ecommerce.adminbackend.repository.OrderItemRepository;
 import com.ecommerce.adminbackend.repository.OrderRepository;
 import com.ecommerce.adminbackend.repository.OrderStatusHistoryRepository;
 import com.ecommerce.adminbackend.repository.ProductImageRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
+import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.OrderAdminService;
@@ -60,6 +62,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private final OrderItemRepository orderItemRepository;
     private final ProductImageRepository productImageRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
     private final SellerRepository sellerRepository;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final MediaUrlHelper mediaUrlHelper;
@@ -92,19 +95,23 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         List<Long> orderIds = orders.stream().map(Order::getId).toList();
         Map<Long, List<OrderItem>> itemsByOrder = orderItemRepository.findByOrderIdIn(orderIds).stream()
                 .collect(Collectors.groupingBy(OrderItem::getOrderId));
+        Map<Long, Long> productIdByVariantId = resolveProductIdsByVariantId(
+                itemsByOrder.values().stream().flatMap(List::stream).toList());
         Map<Long, String> productImageById = resolveProductImages(itemsByOrder);
         List<OrderItem> allItems = itemsByOrder.values().stream().flatMap(List::stream).toList();
         Map<Long, Seller> sellersById = resolveSellers(allItems);
-        Map<Long, String> productNameById = resolveProductNames(allItems);
-        Map<Long, Product> productsById = resolveProducts(allItems);
+        Map<Long, String> productNameById = resolveProductNames(allItems, productIdByVariantId);
+        Map<Long, Product> productsById = resolveProducts(allItems, productIdByVariantId);
+        Map<Long, ProductVariant> variantsById = resolveVariants(allItems);
 
         return PageResponse.from(result.map(order -> {
             Map<String, Object> summary = toOrderSummary(order);
             List<OrderItem> items = itemsByOrder.getOrDefault(order.getId(), List.of());
-            summary.put("products", buildProductPreviews(items, productImageById, productNameById));
+            summary.put("products", buildProductPreviews(
+                    items, productImageById, productNameById, productIdByVariantId, productsById, sellersById, variantsById));
             summary.put("sellers", buildSellerPreviews(items, sellersById));
             List<Map<String, Object>> sellerGroups = buildInvoiceSellerGroups(
-                    items, productsById, sellersById, productImageById, productNameById);
+                    items, productsById, sellersById, productImageById, productNameById, productIdByVariantId, variantsById);
             enrichOrderDocumentFlags(summary, order, items, sellerGroups);
             appendListShippingMeta(summary, order, items);
             return summary;
@@ -198,18 +205,22 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     public Map<String, Object> getOrder(Long id) {
         Order order = requireOrder(id);
         List<OrderItem> items = orderItemRepository.findByOrderId(id);
+        Map<Long, Long> productIdByVariantId = resolveProductIdsByVariantId(items);
         Map<Long, String> productImageById = resolveProductImages(Map.of(id, items));
-        Map<Long, String> productNameById = resolveProductNames(items);
+        Map<Long, String> productNameById = resolveProductNames(items, productIdByVariantId);
+        Map<Long, Product> productsById = resolveProducts(items, productIdByVariantId);
         Map<Long, Seller> sellersById = resolveSellers(items);
+        Map<Long, ProductVariant> variantsById = resolveVariants(items);
         List<OrderStatusHistory> statusHistory = orderStatusHistoryRepository.findByOrderIdOrderByCreatedAtAsc(id);
 
         Map<String, Object> detail = toOrderDetail(order);
         detail.put("customerId", resolveCustomerAnchorId(order));
-        detail.put("items", items.stream().map(item -> toItem(item, productImageById, productNameById)).toList());
+        detail.put("items", items.stream().map(item ->
+                toItem(item, productImageById, productNameById, productIdByVariantId, productsById, sellersById, variantsById)).toList());
         detail.put("statusHistory", statusHistory.stream().map(this::toStatusHistoryRow).toList());
         detail.put("sellers", buildSellerPreviews(items, sellersById));
         List<Map<String, Object>> sellerGroups = buildInvoiceSellerGroups(
-                items, resolveProducts(items), sellersById, productImageById, productNameById);
+                items, productsById, sellersById, productImageById, productNameById, productIdByVariantId, variantsById);
         enrichOrderDocumentFlags(detail, order, items, sellerGroups);
         appendListShippingMeta(detail, order, items);
         return detail;
@@ -266,13 +277,15 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     public Map<String, Object> generateInvoice(Long id) {
         Order order = requireOrder(id);
         List<OrderItem> items = orderItemRepository.findByOrderId(id);
+        Map<Long, Long> productIdByVariantId = resolveProductIdsByVariantId(items);
         Map<Long, String> productImageById = resolveProductImages(Map.of(id, items));
-        Map<Long, String> productNameById = resolveProductNames(items);
-        Map<Long, Product> productsById = resolveProducts(items);
+        Map<Long, String> productNameById = resolveProductNames(items, productIdByVariantId);
+        Map<Long, Product> productsById = resolveProducts(items, productIdByVariantId);
         Map<Long, Seller> sellersById = resolveSellers(items);
+        Map<Long, ProductVariant> variantsById = resolveVariants(items);
 
         List<Map<String, Object>> sellerGroups = buildInvoiceSellerGroups(
-                items, productsById, sellersById, productImageById, productNameById);
+                items, productsById, sellersById, productImageById, productNameById, productIdByVariantId, variantsById);
         Map<String, Object> totals = buildInvoiceTotals(order, sellerGroups);
         boolean isIntraState = resolveIntraState(order, items, sellersById);
         String orderDetailsUrl = buildOrderDetailsUrl(id);
@@ -550,12 +563,21 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private Map<String, Object> toItem(
             OrderItem item,
             Map<Long, String> productImageById,
-            Map<Long, String> productNameById) {
+            Map<Long, String> productNameById,
+            Map<Long, Long> productIdByVariantId,
+            Map<Long, Product> productsById,
+            Map<Long, Seller> sellersById,
+            Map<Long, ProductVariant> variantsById) {
+        Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
+        Product product = resolvedProductId != null ? productsById.get(resolvedProductId) : null;
+        Seller seller = item.getSellerId() != null ? sellersById.get(item.getSellerId()) : null;
+        ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", item.getId());
-        row.put("productId", item.getProductId());
-        row.put("productName", resolveItemProductName(item, productNameById));
-        row.put("sku", item.getSku());
+        row.put("productId", resolvedProductId);
+        row.put("variantId", item.getVariantId());
+        row.put("productName", resolveItemProductName(item, productNameById, productIdByVariantId));
+        row.put("sku", resolveItemSku(item, product, variant));
         row.put("color", item.getColor());
         row.put("size", item.getSize());
         row.put("quantity", item.getQuantity());
@@ -563,15 +585,16 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         row.put("total", item.getTotal());
         row.put("status", item.getStatus());
         row.put("sellerId", item.getSellerId());
-        row.put("sellerName", item.getSellerName());
-        row.put("imageUrl", resolveItemImageUrl(item, productImageById));
+        row.put("sellerName", resolveItemSellerName(item, seller));
+        row.put("imageUrl", resolveItemImageUrl(item, productImageById, productIdByVariantId));
         return row;
     }
 
-    private Map<Long, String> resolveProductNames(List<OrderItem> items) {
+    private Map<Long, String> resolveProductNames(List<OrderItem> items, Map<Long, Long> productIdByVariantId) {
         Set<Long> productIds = items.stream()
-                .filter(item -> item.getProductId() != null && isBlank(item.getProductName()))
-                .map(OrderItem::getProductId)
+                .filter(item -> isBlank(item.getProductName()))
+                .map(item -> resolveEffectiveProductId(item, productIdByVariantId))
+                .filter(id -> id != null)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         if (productIds.isEmpty()) {
             return Map.of();
@@ -586,25 +609,59 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         return names;
     }
 
-    private String resolveItemProductName(OrderItem item, Map<Long, String> productNameById) {
+    private Map<Long, Long> resolveProductIdsByVariantId(List<OrderItem> items) {
+        Set<Long> variantIds = items.stream()
+                .map(OrderItem::getVariantId)
+                .filter(id -> id != null)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (variantIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Long> productIdByVariantId = new HashMap<>();
+        for (ProductVariant variant : productVariantRepository.findAllById(variantIds)) {
+            if (variant.getId() != null && variant.getProductId() != null) {
+                productIdByVariantId.put(variant.getId(), variant.getProductId());
+            }
+        }
+        return productIdByVariantId;
+    }
+
+    private Long resolveEffectiveProductId(OrderItem item, Map<Long, Long> productIdByVariantId) {
+        if (item.getProductId() != null) {
+            return item.getProductId();
+        }
+        if (item.getVariantId() != null) {
+            return productIdByVariantId.get(item.getVariantId());
+        }
+        return null;
+    }
+
+    private String resolveItemProductName(
+            OrderItem item,
+            Map<Long, String> productNameById,
+            Map<Long, Long> productIdByVariantId) {
         if (!isBlank(item.getProductName())) {
             return item.getProductName().trim();
         }
-        if (item.getProductId() != null) {
-            String fromCatalog = productNameById.get(item.getProductId());
+        Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
+        if (resolvedProductId != null) {
+            String fromCatalog = productNameById.get(resolvedProductId);
             if (!isBlank(fromCatalog)) {
                 return fromCatalog.trim();
             }
         }
-        return item.getProductId() != null ? "Product #" + item.getProductId() : "Product";
+        return resolvedProductId != null ? "Product #" + resolvedProductId : "Product";
     }
 
     private Map<Long, String> resolveProductImages(Map<Long, List<OrderItem>> itemsByOrder) {
+        Map<Long, Long> productIdByVariantId = resolveProductIdsByVariantId(
+                itemsByOrder.values().stream().flatMap(List::stream).toList());
         Set<Long> productIds = new LinkedHashSet<>();
         for (List<OrderItem> items : itemsByOrder.values()) {
             for (OrderItem item : items) {
-                if (item.getProductId() != null && isBlank(item.getProductImagePath())) {
-                    productIds.add(item.getProductId());
+                Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
+                if (resolvedProductId != null && isBlank(item.getProductImagePath())) {
+                    productIds.add(resolvedProductId);
                 }
             }
         }
@@ -635,16 +692,25 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private List<Map<String, Object>> buildProductPreviews(
             List<OrderItem> items,
             Map<Long, String> productImageById,
-            Map<Long, String> productNameById) {
+            Map<Long, String> productNameById,
+            Map<Long, Long> productIdByVariantId,
+            Map<Long, Product> productsById,
+            Map<Long, Seller> sellersById,
+            Map<Long, ProductVariant> variantsById) {
         List<Map<String, Object>> products = new ArrayList<>();
         for (OrderItem item : items) {
+            Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
+            Product product = resolvedProductId != null ? productsById.get(resolvedProductId) : null;
+            Seller seller = item.getSellerId() != null ? sellersById.get(item.getSellerId()) : null;
+            ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", item.getId());
-            row.put("productId", item.getProductId());
-            row.put("name", resolveItemProductName(item, productNameById));
-            row.put("productName", resolveItemProductName(item, productNameById));
-            row.put("imageUrl", resolveItemImageUrl(item, productImageById));
-            row.put("sellerName", item.getSellerName());
+            row.put("productId", resolvedProductId);
+            row.put("variantId", item.getVariantId());
+            row.put("name", resolveItemProductName(item, productNameById, productIdByVariantId));
+            row.put("productName", resolveItemProductName(item, productNameById, productIdByVariantId));
+            row.put("imageUrl", resolveItemImageUrl(item, productImageById, productIdByVariantId));
+            row.put("sellerName", resolveItemSellerName(item, seller));
             row.put("sellerId", item.getSellerId());
             row.put("price", item.getPrice());
             row.put("quantity", item.getQuantity());
@@ -652,7 +718,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             row.put("hsnCode", item.getHsnCode());
             row.put("color", item.getColor());
             row.put("size", item.getSize());
-            row.put("sku", item.getSku());
+            row.put("sku", resolveItemSku(item, product, variant));
             products.add(row);
         }
         return products;
@@ -684,12 +750,16 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         return new ArrayList<>(sellers.values());
     }
 
-    private String resolveItemImageUrl(OrderItem item, Map<Long, String> productImageById) {
+    private String resolveItemImageUrl(
+            OrderItem item,
+            Map<Long, String> productImageById,
+            Map<Long, Long> productIdByVariantId) {
         if (!isBlank(item.getProductImagePath())) {
-            return mediaUrlHelper.toPublicUrl(item.getProductImagePath());
+            return mediaUrlHelper.toPublicUrl(item.getProductImagePath(), "products");
         }
-        if (item.getProductId() != null) {
-            String fallback = productImageById.get(item.getProductId());
+        Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
+        if (resolvedProductId != null) {
+            String fallback = productImageById.get(resolvedProductId);
             if (fallback != null && !fallback.isBlank()) {
                 return fallback;
             }
@@ -748,9 +818,9 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         };
     }
 
-    private Map<Long, Product> resolveProducts(List<OrderItem> items) {
+    private Map<Long, Product> resolveProducts(List<OrderItem> items, Map<Long, Long> productIdByVariantId) {
         Set<Long> productIds = items.stream()
-                .map(OrderItem::getProductId)
+                .map(item -> resolveEffectiveProductId(item, productIdByVariantId))
                 .filter(id -> id != null)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         if (productIds.isEmpty()) {
@@ -761,6 +831,21 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             productsById.put(product.getId(), product);
         }
         return productsById;
+    }
+
+    private Map<Long, ProductVariant> resolveVariants(List<OrderItem> items) {
+        Set<Long> variantIds = items.stream()
+                .map(OrderItem::getVariantId)
+                .filter(id -> id != null)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (variantIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, ProductVariant> variantsById = new HashMap<>();
+        for (ProductVariant variant : productVariantRepository.findAllById(variantIds)) {
+            variantsById.put(variant.getId(), variant);
+        }
+        return variantsById;
     }
 
     private Map<Long, Seller> resolveSellers(List<OrderItem> items) {
@@ -778,12 +863,47 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         return sellersById;
     }
 
+    private String resolveItemSku(OrderItem item, Product product, ProductVariant variant) {
+        if (!isBlank(item.getSku())) {
+            return item.getSku().trim();
+        }
+        if (variant != null && !isBlank(variant.getSku())) {
+            return variant.getSku().trim();
+        }
+        if (product != null && !isBlank(product.getSku())) {
+            return product.getSku().trim();
+        }
+        return "";
+    }
+
+    private String resolveItemSellerName(OrderItem item, Seller seller) {
+        if (seller != null) {
+            String businessName = seller.getBusinessName();
+            if (!isBlank(businessName)) {
+                return businessName.trim();
+            }
+            String fullName = ((nullSafe(seller.getFirstName()) + " " + nullSafe(seller.getLastName())).trim());
+            if (!isBlank(fullName)) {
+                return fullName;
+            }
+            if (!isBlank(seller.getEmail())) {
+                return seller.getEmail().trim();
+            }
+        }
+        if (!isBlank(item.getSellerName())) {
+            return item.getSellerName().trim();
+        }
+        return "Seller";
+    }
+
     private List<Map<String, Object>> buildInvoiceSellerGroups(
             List<OrderItem> items,
             Map<Long, Product> productsById,
             Map<Long, Seller> sellersById,
             Map<Long, String> productImageById,
-            Map<Long, String> productNameById) {
+            Map<Long, String> productNameById,
+            Map<Long, Long> productIdByVariantId,
+            Map<Long, ProductVariant> variantsById) {
         Map<String, Map<String, Object>> groups = new LinkedHashMap<>();
 
         for (OrderItem item : items) {
@@ -801,7 +921,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> products =
                     (List<Map<String, Object>>) groups.get(sellerKey).get("products");
-            products.add(buildInvoiceLineItem(item, productsById, productImageById, productNameById));
+            products.add(buildInvoiceLineItem(
+                    item, productsById, productImageById, productNameById, productIdByVariantId, variantsById));
         }
 
         return new ArrayList<>(groups.values());
@@ -841,8 +962,12 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             OrderItem item,
             Map<Long, Product> productsById,
             Map<Long, String> productImageById,
-            Map<Long, String> productNameById) {
-        Product product = item.getProductId() != null ? productsById.get(item.getProductId()) : null;
+            Map<Long, String> productNameById,
+            Map<Long, Long> productIdByVariantId,
+            Map<Long, ProductVariant> variantsById) {
+        Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
+        Product product = resolvedProductId != null ? productsById.get(resolvedProductId) : null;
+        ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
         int qty = item.getQuantity() != null ? item.getQuantity() : 0;
         BigDecimal unitPrice = item.getPrice() != null ? item.getPrice() : BigDecimal.ZERO;
         BigDecimal lineSubtotal = unitPrice.multiply(BigDecimal.valueOf(qty));
@@ -854,10 +979,11 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", item.getId());
-        row.put("productId", item.getProductId());
-        row.put("name", resolveItemProductName(item, productNameById));
-        row.put("imageUrl", resolveItemImageUrl(item, productImageById));
-        row.put("sku", nullSafe(item.getSku()));
+        row.put("productId", resolvedProductId);
+        row.put("variantId", item.getVariantId());
+        row.put("name", resolveItemProductName(item, productNameById, productIdByVariantId));
+        row.put("imageUrl", resolveItemImageUrl(item, productImageById, productIdByVariantId));
+        row.put("sku", resolveItemSku(item, product, variant));
         row.put("hsnCode", !isBlank(item.getHsnCode())
                 ? item.getHsnCode()
                 : (product != null ? nullSafe(product.getHsnCode()) : ""));
