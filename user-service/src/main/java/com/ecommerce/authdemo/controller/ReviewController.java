@@ -12,7 +12,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/reviews")
@@ -48,6 +50,21 @@ public class ReviewController {
     public ResponseEntity<List<ReviewResponseDTO>> getMyReviews() {
         Long userId = securityUtil.getCurrentUserId();
         return ResponseEntity.ok(reviewService.getReviewsByUser(userId));
+    }
+
+    @GetMapping("/eligibility/{productId}")
+    public ResponseEntity<Map<String, Object>> reviewEligibility(@PathVariable Long productId) {
+        boolean canReview = reviewService.canCurrentUserReviewProduct(productId);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("productId", productId);
+        body.put("canReview", canReview);
+        if (!canReview) {
+            body.put(
+                    "message",
+                    "You can review this product only after placing an order."
+            );
+        }
+        return ResponseEntity.ok(body);
     }
 
     @GetMapping("/product/{productId}")

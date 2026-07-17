@@ -44,11 +44,25 @@ import org.springframework.web.multipart.MultipartFile;
             return ProfileResponseDTO.builder()
                     .id(user.getId())
                     .name(user.getUsername())
-                    .email(user.getEmail())
+                    .email(toPublicEmail(user.getEmail()))
                     .contactNumber(user.getContactNumber())
                     .profileImage(user.getProfileImage())
                     .activeShopper(shopperDTO)
                     .build();
+        }
+
+        private static String toPublicEmail(String email) {
+            if (email == null || email.isBlank()) {
+                return null;
+            }
+            String trimmed = email.trim();
+            String lower = trimmed.toLowerCase();
+            if (lower.endsWith("@mobile.flintnthread.in")
+                    || lower.endsWith("@mobile.flintnthread.online")
+                    || lower.matches("^\\d{10}@.*")) {
+                return null;
+            }
+            return trimmed;
         }
 
         @Override

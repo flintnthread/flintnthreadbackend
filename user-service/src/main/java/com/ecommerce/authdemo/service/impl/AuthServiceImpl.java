@@ -397,9 +397,24 @@ public class AuthServiceImpl implements AuthService {
         } else {
             user.setContactNumber(identifier);
             user.setUsername(identifier);
-            user.setEmail(identifier + "@mobile.flintnthread.in");
+            // Keep an existing real email if this mobile was already linked.
+            // Only set a storage placeholder when no email is present (DB uniqueness).
+            String existingEmail = user.getEmail();
+            if (existingEmail == null || existingEmail.isBlank() || isSyntheticMobileEmail(existingEmail)) {
+                user.setEmail(identifier + "@mobile.flintnthread.in");
+            }
         }
         user.setPassword(OTP_AUTH_PASSWORD_PLACEHOLDER);
+    }
+
+    private static boolean isSyntheticMobileEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return true;
+        }
+        String lower = email.trim().toLowerCase();
+        return lower.endsWith("@mobile.flintnthread.in")
+                || lower.endsWith("@mobile.flintnthread.online")
+                || lower.matches("^\\d{10}@.*");
     }
 
     private void processExistingUserReferralLogin(User existingUser, String referralCode) {
