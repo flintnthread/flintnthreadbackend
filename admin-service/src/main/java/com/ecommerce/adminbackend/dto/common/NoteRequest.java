@@ -12,6 +12,7 @@ public class NoteRequest {
     private String reply;
     private String status;
     private String transactionRef;
+    private String paymentStatus;
     private String gstStatus;
     private Boolean active;
     private Boolean notifyCustomer;
