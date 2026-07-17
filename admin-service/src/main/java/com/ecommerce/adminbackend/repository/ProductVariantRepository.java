@@ -9,6 +9,8 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     List<ProductVariant> findByProductIdOrderByIdAsc(Long productId);
 
+    List<ProductVariant> findBySizeIsNotNull();
+
     @org.springframework.data.jpa.repository.Query(value = """
             SELECT COUNT(DISTINCT p.id)
             FROM products p
