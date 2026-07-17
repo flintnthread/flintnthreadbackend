@@ -43,6 +43,12 @@ class ProductImageUrlResolutionTest {
     }
 
     @Test
+    void resolveImageUrl_sellerDocumentsNotRewrittenByProductMapper() {
+        String doc = "https://flintnthread.com/uploads/seller_documents/1_aadhar_back_1757919264.jpg";
+        assertEquals(doc, mapper.resolveImageUrl(doc));
+    }
+
+    @Test
     void resolveImageUrl_blankReturnsNull() {
         assertNull(mapper.resolveImageUrl(null));
         assertNull(mapper.resolveImageUrl("  "));
