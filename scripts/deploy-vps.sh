@@ -2,7 +2,7 @@
 # Deploy user, seller, admin on Ubuntu VPS
 set -euo pipefail
 
-APP_ROOT="${APP_ROOT:-/opt/flintnthread}"
+APP_ROOT="${APP_ROOT:-/var/www/flintnthread-backend}"
 CONFIG_DIR="${CONFIG_DIR:-/etc/flintnthread}"
 PROFILE="${SPRING_PROFILES_ACTIVE:-prod}"
 
@@ -86,6 +86,13 @@ else
 fi
 
 echo ""
-echo "==> Nginx (one domain for all 3 apps)"
-echo "Run on VPS: bash scripts/apply-nginx-flintnthread-online.sh"
-echo "Then add 'include snippets/flintnthread-api.conf;' in server { } before user catch-all."
+echo "==> Nginx (API + product image uploads)"
+echo "Run on VPS from this repo:"
+echo "  bash scripts/apply-nginx-flintnthread-online.sh"
+echo "  bash scripts/patch-nginx-flintnthread-site.sh"
+echo "Or manually add BEFORE location / in each flintnthread.in server { }:"
+echo "  include snippets/flintnthread-api.conf;"
+echo ""
+echo "==> Verify product images after deploy"
+echo "Run: bash scripts/verify-product-images.sh"
+echo "     (API on flintnthread.in, images on flintnthread.com)"

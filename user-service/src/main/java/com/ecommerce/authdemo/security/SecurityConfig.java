@@ -119,6 +119,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/sellers/**")
                         .permitAll()
 
+                        .requestMatchers("/api/shop/sellers/**")
+                        .permitAll()
+
                         // --------------------------------
                         // PUBLIC SEARCH APIs  ⭐ ADDED
                         // --------------------------------
