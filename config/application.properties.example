@@ -7,7 +7,8 @@
 #   sudo nano /etc/flintnthread/application.properties
 #   sudo chmod 600 /etc/flintnthread/application.properties
 #
-# deploy-vps.sh sets: FLINT_CONFIG_DIR=/etc/flintnthread
+# Backend code path on VPS is often: /var/www/flintnthread-backend
+# JAR install path (deploy-vps.sh): /var/www/flintnthread-backend/{user,seller,admin}/app.jar
 # Never commit this file with real secrets — only the .example stays in git.
 # =============================================================================
 
@@ -47,7 +48,7 @@ ADMIN_JWT_SECRET=your-admin-jwt-secret-min-32-chars
 # --- Other ---
 # AppyFlow key_secret — get from https://appyflow.in/verify-gst/
 GST_LOOKUP_API_KEY=IPgE6ihOQuaMYxsmVgst1xGGA4K2
-MEDIA_PUBLIC_BASE_URL=https://flintnthread.in
+MEDIA_PUBLIC_BASE_URL=https://flintnthread.com
 # Public URLs in emails and redirects (use your live shop domain)
 APP_BACKEND_PUBLIC_URL=https://flintnthread.in
 APP_FRONTEND_BASE_URL=https://flintnthread.in/Seller

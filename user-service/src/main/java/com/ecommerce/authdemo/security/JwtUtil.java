@@ -123,6 +123,34 @@ public class JwtUtil {
         return extractClaims(token).get("role", String.class);
     }
 
+    /**
+     * Numeric account id from JWT {@code userId} claim (set at login).
+     * Prefer this over email/phone lookup when multiple users share a contact number.
+     */
+    public Long extractUserId(String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        try {
+            Object raw = extractClaims(token).get("userId");
+            if (raw == null) {
+                return null;
+            }
+            if (raw instanceof Number n) {
+                long id = n.longValue();
+                return id > 0 ? id : null;
+            }
+            String text = String.valueOf(raw).trim();
+            if (text.isEmpty()) {
+                return null;
+            }
+            long id = Long.parseLong(text);
+            return id > 0 ? id : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
 
 
     /*

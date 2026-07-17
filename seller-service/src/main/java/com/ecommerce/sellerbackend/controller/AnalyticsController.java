@@ -29,8 +29,14 @@ public class AnalyticsController {
     @GetMapping("/sales")
     public AnalyticsSalesResponse sales(
             @RequestHeader(SELLER_ID_HEADER) Long sellerId,
-            @RequestParam(defaultValue = "month") String period) {
-        return analyticsService.getSales(requireSellerId(sellerId), period);
+            @RequestParam(defaultValue = "month") String period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        Long id = requireSellerId(sellerId);
+        if (from != null && to != null) {
+            return analyticsService.getSales(id, from, to);
+        }
+        return analyticsService.getSales(id, period);
     }
 
     @GetMapping("/top-products")

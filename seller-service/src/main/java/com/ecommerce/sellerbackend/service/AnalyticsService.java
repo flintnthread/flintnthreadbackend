@@ -12,6 +12,8 @@ import java.util.List;
 public interface AnalyticsService {
     AnalyticsSalesResponse getSales(Long sellerId, String period);
 
+    AnalyticsSalesResponse getSales(Long sellerId, LocalDate from, LocalDate to);
+
     List<TopSellingProductResponse> getTopProducts(Long sellerId, int limit);
 
     List<SalesTrendPointDto> getSalesTrend(Long sellerId, String period);

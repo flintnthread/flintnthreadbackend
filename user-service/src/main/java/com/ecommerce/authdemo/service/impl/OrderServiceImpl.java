@@ -308,12 +308,18 @@ public class OrderServiceImpl implements OrderService {
 
     }
 
+    /**
+     * Order history for Switch Account: all accounts that share the same registered mobile
+     * see every order owned by those accounts, plus orders whose shipping phone matches
+     * that registered mobile (email A + email B, one phone → combined history).
+     */
     @Override
     @Transactional(readOnly = true)
     public List<OrderResponseDTO> getUserOrders(String status) {
-        Long userId = securityUtil.getCurrentUserId();
+        User current = securityUtil.getCurrentUser();
+        LinkedPhoneScope scope = resolveLinkedPhoneScope(current);
 
-        List<Order> orders = loadOrdersForUserList(userId, status);
+        List<Order> orders = loadOrdersForLinkedPhoneScope(scope, status);
 
         return orders.stream()
                 .map(order -> {
@@ -330,6 +336,108 @@ public class OrderServiceImpl implements OrderService {
                 })
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    private record LinkedPhoneScope(Set<Long> userIds, Set<String> phoneVariants) {}
+
+    /**
+     * Users who share the logged-in account's registered contact number (Switch Account),
+     * plus normalized phone variants for shipping_phone matching.
+     */
+    private LinkedPhoneScope resolveLinkedPhoneScope(User current) {
+        Set<Long> userIds = new LinkedHashSet<>();
+        if (current.getId() != null) {
+            userIds.add(current.getId());
+        }
+
+        Set<String> phoneVariants = phoneLookupVariants(current.getContactNumber());
+        if (!phoneVariants.isEmpty()) {
+            for (User sibling : userRepository.findAllByContactNumberIn(phoneVariants)) {
+                if (sibling.getId() != null) {
+                    userIds.add(sibling.getId());
+                }
+                phoneVariants.addAll(phoneLookupVariants(sibling.getContactNumber()));
+            }
+        }
+
+        if (userIds.isEmpty()) {
+            throw new OrderException("User not authenticated");
+        }
+        return new LinkedPhoneScope(userIds, phoneVariants);
+    }
+
+    private static Set<String> phoneLookupVariants(String phone) {
+        Set<String> variants = new LinkedHashSet<>();
+        if (phone == null || phone.isBlank()) {
+            return variants;
+        }
+        String trimmed = phone.trim();
+        variants.add(trimmed);
+        String digits = trimmed.replaceAll("\\D", "");
+        if (!digits.isEmpty()) {
+            variants.add(digits);
+        }
+        if (digits.length() >= 10) {
+            String last10 = digits.substring(digits.length() - 10);
+            variants.add(last10);
+            variants.add("91" + last10);
+            variants.add("+91" + last10);
+            variants.add("0" + last10);
+        }
+        return variants;
+    }
+
+    private boolean canAccessOrder(Order order, LinkedPhoneScope scope) {
+        if (order == null || scope == null) {
+            return false;
+        }
+        if (order.getUserId() != null && scope.userIds().contains(order.getUserId())) {
+            return true;
+        }
+        if (order.getShippingPhone() != null && !scope.phoneVariants().isEmpty()) {
+            Set<String> shippingVariants = phoneLookupVariants(order.getShippingPhone());
+            for (String v : shippingVariants) {
+                if (scope.phoneVariants().contains(v)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void assertCanAccessOrder(Order order) {
+        User current = securityUtil.getCurrentUser();
+        LinkedPhoneScope scope = resolveLinkedPhoneScope(current);
+        if (!canAccessOrder(order, scope)) {
+            throw new OrderException("Access denied");
+        }
+    }
+
+    private List<Order> loadOrdersForLinkedPhoneScope(LinkedPhoneScope scope, String status) {
+        try {
+            if (scope.phoneVariants().isEmpty()) {
+                if (status == null || status.equalsIgnoreCase("all")) {
+                    return orderRepository.findByUserIdInOrderByCreatedAtDesc(scope.userIds());
+                }
+                return orderRepository.findByUserIdInAndOrderStatusOrderByCreatedAtDesc(
+                        scope.userIds(), status);
+            }
+            if (status == null || status.equalsIgnoreCase("all")) {
+                return orderRepository.findVisibleForLinkedPhoneAccounts(
+                        scope.userIds(), scope.phoneVariants());
+            }
+            return orderRepository.findVisibleForLinkedPhoneAccountsAndStatus(
+                    scope.userIds(), scope.phoneVariants(), status);
+        } catch (Exception jpaError) {
+            log.warn(
+                    "JPA linked-phone order list failed for userIds={}, status={}: {} — falling back",
+                    scope.userIds(),
+                    status,
+                    jpaError.getMessage()
+            );
+            Long primaryId = scope.userIds().iterator().next();
+            return loadOrdersForUserList(primaryId, status);
+        }
     }
 
     private List<Order> loadOrdersForUserList(Long userId, String status) {
@@ -397,18 +505,7 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        Long currentUserId =
-                securityUtil.getCurrentUserId();
-
-        if (!Objects.equals(
-                order.getUserId(),
-                currentUserId
-        )) {
-
-            throw new OrderException(
-                    "Access denied"
-            );
-        }
+        assertCanAccessOrder(order);
 
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
         List<OrderItemDTO> itemDTOList = items.stream().map(this::buildOrderItemDTO).toList();
@@ -535,11 +632,7 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Order not found"));
 
-        Long currentUserId = securityUtil.getCurrentUserId();
-
-        if (!Objects.equals(order.getUserId(), currentUserId)) {
-            throw new OrderException("Access denied");
-        }
+        assertCanAccessOrder(order);
 
         String status =
                 order.getOrderStatus() != null
@@ -2544,8 +2637,6 @@ public class OrderServiceImpl implements OrderService {
             Long orderId
     ) {
 
-        Long currentUserId = securityUtil.getCurrentUserId();
-
         Order order =
                 orderRepository
                         .findById(orderId)
@@ -2554,9 +2645,7 @@ public class OrderServiceImpl implements OrderService {
                                         "Order not found"
                                 ));
 
-        if (!Objects.equals(order.getUserId(), currentUserId)) {
-            throw new RuntimeException("Access denied");
-        }
+        assertCanAccessOrder(order);
 
         if (
                 "paid".equalsIgnoreCase(
@@ -2605,8 +2694,6 @@ public class OrderServiceImpl implements OrderService {
             VerifyPaymentRequestDTO dto
     ) {
 
-        Long currentUserId = securityUtil.getCurrentUserId();
-
         boolean verified =
                 razorpayService.verifyPayment(
                         dto.getRazorpayOrderId(),
@@ -2629,9 +2716,7 @@ public class OrderServiceImpl implements OrderService {
                                         "Order not found"
                                 ));
 
-        if (!Objects.equals(order.getUserId(), currentUserId)) {
-            throw new RuntimeException("Access denied");
-        }
+        assertCanAccessOrder(order);
 
         boolean shouldSendConfirmationEmail = isPendingOnlinePayment(order);
 
@@ -2661,10 +2746,7 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        Long currentUserId = securityUtil.getCurrentUserId();
-        if (!Objects.equals(order.getUserId(), currentUserId)) {
-            throw new OrderException("Access denied");
-        }
+        assertCanAccessOrder(order);
 
         String status = order.getOrderStatus() != null
                 ? order.getOrderStatus().toLowerCase(Locale.ROOT).trim()

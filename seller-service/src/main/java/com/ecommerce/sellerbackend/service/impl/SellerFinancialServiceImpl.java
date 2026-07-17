@@ -448,6 +448,22 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
             throw new IllegalArgumentException("No eligible payout amount for this order.");
         }
 
+        Optional<SellerPayoutRequest> existing =
+                payoutRequestRepository.findFirstBySellerIdAndOrderIdOrderByRequestedAtDesc(sellerId, resolvedOrderId);
+        if (existing.isPresent()) {
+            SellerPayoutRequest row = existing.get();
+            if ("closed".equalsIgnoreCase(row.getStatus())) {
+                throw new IllegalArgumentException("A payout request for this order was already closed by admin.");
+            }
+            if ("pending".equalsIgnoreCase(row.getStatus())) {
+                row.setRequestedAmount(BigDecimal.valueOf(amount).setScale(2, RoundingMode.HALF_UP));
+                row.setSellerNote(sellerNote);
+                row.setRequestedAt(LocalDateTime.now());
+                row.setUpdatedAt(LocalDateTime.now());
+                return payoutRequestRepository.save(row);
+            }
+        }
+
         SellerPayoutRequest row = new SellerPayoutRequest();
         row.setSellerId(sellerId);
         row.setOrderId(resolvedOrderId);
@@ -455,6 +471,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
         row.setStatus("pending");
         row.setSellerNote(sellerNote);
         row.setRequestedAt(LocalDateTime.now());
+        row.setUpdatedAt(LocalDateTime.now());
         return payoutRequestRepository.save(row);
     }
 

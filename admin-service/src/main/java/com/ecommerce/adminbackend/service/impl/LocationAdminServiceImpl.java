@@ -319,8 +319,9 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             return number.longValue();
         }
         try {
-            return Long.parseLong(value.toString().trim());
-        } catch (NumberFormatException ex) {
+            Long parsed = toLong(value);
+            return parsed == null ? 0L : parsed;
+        } catch (Exception ex) {
             return 0L;
         }
     }
