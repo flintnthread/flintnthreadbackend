@@ -2,14 +2,16 @@
 # Post-deploy check: API image URLs must return image/* (not SPA HTML).
 set -euo pipefail
 
-DOMAIN="${1:-https://flintnthread.in}"
-DOMAIN="${DOMAIN%/}"
+API_DOMAIN="${API_DOMAIN:-https://flintnthread.in}"
+API_DOMAIN="${API_DOMAIN%/}"
+MEDIA_CDN="${MEDIA_CDN:-https://flintnthread.com}"
+MEDIA_CDN="${MEDIA_CDN%/}"
 
-echo "==> Product image deploy check for $DOMAIN"
+echo "==> Product image deploy check (API: $API_DOMAIN, CDN: $MEDIA_CDN)"
 
-API_JSON="$(curl -sf "${DOMAIN}/api/products?page=0&size=3" || true)"
+API_JSON="$(curl -sf "${API_DOMAIN}/api/products?page=0&size=3" || true)"
 if [[ -z "$API_JSON" ]]; then
-  echo "FAIL: Cannot reach ${DOMAIN}/api/products"
+  echo "FAIL: Cannot reach ${API_DOMAIN}/api/products"
   exit 1
 fi
 
@@ -70,7 +72,7 @@ if [[ "$FAIL" -ne 0 ]]; then
   echo ""
   echo "On VPS run:"
   echo "  bash scripts/apply-nginx-flintnthread-online.sh"
-  echo "  # add inside server { } for flintnthread.in:"
+  echo "  # add inside server { } for flintnthread.com / flintnthread.in:"
   echo "  include snippets/flintnthread-api.conf;"
   echo "  sudo nginx -t && sudo systemctl reload nginx"
   echo ""

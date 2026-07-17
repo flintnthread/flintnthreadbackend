@@ -23,8 +23,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProductMapper {
 
-    @Value("${app.media.public-base-url:}")
+    @Value("${app.media.public-base-url:https://flintnthread.com}")
     private String mediaPublicBaseUrl;
+
+    /** Hard-coded product image CDN — only host for /uploads/products/. */
+    private static final String PRODUCT_IMAGE_CDN = "https://flintnthread.com";
     
     private final SizeColorMapper sizeColorMapper;
     private final SizeChartRepository sizeChartRepository;
@@ -37,20 +40,22 @@ public class ProductMapper {
         if (storedPath.startsWith("http://") || storedPath.startsWith("https://")) {
             String lower = storedPath.toLowerCase();
             // Cloudinary absolute URLs — never rewrite onto media host
-            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+            if (lower.contains("res.cloudinary.com/")) {
                 return storedPath;
             }
             int idx = storedPath.indexOf("/uploads/");
-            if (idx >= 0 && !mediaPublicBaseUrl.isEmpty()) {
-                String base = mediaPublicBaseUrl.endsWith("/")
-                        ? mediaPublicBaseUrl.substring(0, mediaPublicBaseUrl.length() - 1)
-                        : mediaPublicBaseUrl;
-                return base + storedPath.substring(idx);
+            if (idx >= 0) {
+                // Product images always use flintnthread.com
+                return PRODUCT_IMAGE_CDN + storedPath.substring(idx);
             }
             return storedPath;
         }
         String path = storedPath.startsWith("/") ? storedPath : "/" + storedPath;
-        if (mediaPublicBaseUrl.isEmpty()) {
+        // Product /uploads paths always use flintnthread.com CDN
+        if (path.contains("/uploads/")) {
+            return PRODUCT_IMAGE_CDN + path;
+        }
+        if (mediaPublicBaseUrl == null || mediaPublicBaseUrl.isBlank()) {
             return path;
         }
         String base = mediaPublicBaseUrl.endsWith("/")

@@ -21,7 +21,7 @@ public class MediaUrlHelper {
     private final String publicBaseUrl;
 
     public MediaUrlHelper(
-            @Value("${app.media.public-base-url:https://flintnthread.in}") String publicBaseUrl) {
+            @Value("${app.media.public-base-url:https://flintnthread.com}") String publicBaseUrl) {
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
     }
 
