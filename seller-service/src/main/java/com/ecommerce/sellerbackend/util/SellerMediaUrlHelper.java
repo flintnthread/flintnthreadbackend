@@ -4,9 +4,11 @@ import java.util.regex.Pattern;
 
 /**
  * Maps DB file names / legacy paths to public {@code /uploads/seller_documents/...} URLs.
- * Matches production CDN layout (e.g. flintnthread.in/uploads/seller_documents/12_aadhar_front_*.png).
+ * Absolute URLs always use {@code https://flintnthread.com} (files are not on .in).
  */
 public final class SellerMediaUrlHelper {
+
+    private static final String MEDIA_CDN = "https://flintnthread.com";
 
     private static final Pattern SELLER_DOCUMENT_FILE = Pattern.compile(
             "^\\d+_(profile_pic|aadhar_front|aadhar_back|pan_card|business_proof|bank_proof|"
@@ -93,11 +95,25 @@ public final class SellerMediaUrlHelper {
             return null;
         }
         if (path.startsWith("http://") || path.startsWith("https://")) {
+            String lower = path.toLowerCase();
+            if (lower.contains("res.cloudinary.com/")) {
+                return path;
+            }
+            int idx = path.indexOf("/uploads/");
+            if (idx >= 0) {
+                return MEDIA_CDN + path.substring(idx);
+            }
             return path;
         }
+        // Seller documents / uploads always on flintnthread.com
+        if (path.contains("/uploads/")) {
+            return MEDIA_CDN + (path.startsWith("/") ? path : "/" + path);
+        }
         String base = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
-        if (base.isBlank()) {
-            return path;
+        if (base.isBlank()
+                || base.contains("flintnthread.in")
+                || base.contains("flintnthread.online")) {
+            base = MEDIA_CDN;
         }
         return base + path;
     }
