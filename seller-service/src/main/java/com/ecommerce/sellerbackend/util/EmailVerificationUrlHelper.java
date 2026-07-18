@@ -8,15 +8,15 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Builds public links for seller email verification.
- * Production defaults point at {@code https://flintnthread.online} so links work on any device.
+ * Production defaults use {@code https://flintnthread.in} (matches live TLS certificate SANs).
  */
 @Component
 public class EmailVerificationUrlHelper {
 
-    @Value("${app.backend.public-url:https://flintnthread.online}")
+    @Value("${app.backend.public-url:https://flintnthread.in}")
     private String backendPublicUrl;
 
-    @Value("${app.frontend.base-url:https://flintnthread.online/Seller}")
+    @Value("${app.frontend.base-url:https://flintnthread.in/Seller}")
     private String frontendBaseUrl;
 
     @Value("${app.frontend.email-verify-redirect-url:}")
@@ -27,7 +27,7 @@ public class EmailVerificationUrlHelper {
      * so verification works on any phone/PC without needing Expo local server.
      */
     public String buildEmailLinkClickUrl(String emailVerificationToken) {
-        return trimTrailingSlash(backendPublicUrl)
+        return trimTrailingSlash(backendPublicUrl())
                 + "/api/auth/verify-email?token="
                 + URLEncoder.encode(emailVerificationToken, StandardCharsets.UTF_8);
     }
@@ -41,7 +41,7 @@ public class EmailVerificationUrlHelper {
     }
 
     public String buildLoginPageUrl(String email) {
-        String base = trimTrailingSlash(frontendBaseUrl) + "/login";
+        String base = trimTrailingSlash(frontendBaseUrl()) + "/login";
         if (email == null || email.isBlank()) {
             return base + "?verified=1";
         }
@@ -67,18 +67,26 @@ public class EmailVerificationUrlHelper {
     }
 
     public String getBackendPublicUrl() {
-        return trimTrailingSlash(backendPublicUrl);
+        return trimTrailingSlash(backendPublicUrl());
     }
 
     public String getFrontendBaseUrl() {
-        return trimTrailingSlash(frontendBaseUrl);
+        return trimTrailingSlash(frontendBaseUrl());
     }
 
     private String resolveOtpPageBaseUrl() {
         if (emailVerifyRedirectUrl != null && !emailVerifyRedirectUrl.isBlank()) {
-            return emailVerifyRedirectUrl.trim();
+            return SslSafePublicUrl.normalize(emailVerifyRedirectUrl.trim());
         }
-        return trimTrailingSlash(frontendBaseUrl) + "/verify-email";
+        return trimTrailingSlash(frontendBaseUrl()) + "/verify-email";
+    }
+
+    private String backendPublicUrl() {
+        return SslSafePublicUrl.normalize(backendPublicUrl);
+    }
+
+    private String frontendBaseUrl() {
+        return SslSafePublicUrl.normalize(frontendBaseUrl);
     }
 
     private String trimTrailingSlash(String url) {
