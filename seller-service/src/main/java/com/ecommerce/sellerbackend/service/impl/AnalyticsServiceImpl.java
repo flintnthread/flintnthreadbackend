@@ -436,6 +436,30 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             java.util.Map<LocalDate, BigDecimal> byDay) {
         LocalDate start = range[0].toLocalDate();
         LocalDate end = range[1].toLocalDate().minusDays(1);
+        if (end.isBefore(start)) {
+            return List.of();
+        }
+        long daySpan = java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
+        boolean monthBucket = "custom".equalsIgnoreCase(period) && daySpan > 45;
+        if (monthBucket) {
+            java.util.Map<String, BigDecimal> byMonth = new java.util.LinkedHashMap<>();
+            java.util.Map<String, LocalDate> monthStart = new java.util.LinkedHashMap<>();
+            for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
+                String key = d.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
+                byMonth.merge(key, byDay.getOrDefault(d, BigDecimal.ZERO), BigDecimal::add);
+                monthStart.putIfAbsent(key, d.withDayOfMonth(1));
+            }
+            List<SalesTrendPointDto> points = new ArrayList<>();
+            for (var entry : byMonth.entrySet()) {
+                LocalDate labelDate = monthStart.get(entry.getKey());
+                String label = labelDate.format(java.time.format.DateTimeFormatter.ofPattern("MMM yyyy", Locale.ENGLISH));
+                points.add(SalesTrendPointDto.builder()
+                        .label(label)
+                        .value(entry.getValue().doubleValue())
+                        .build());
+            }
+            return points;
+        }
         List<SalesTrendPointDto> points = new ArrayList<>();
         for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
             BigDecimal amt = byDay.getOrDefault(d, BigDecimal.ZERO);
@@ -470,7 +494,10 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         if ("day".equalsIgnoreCase(period)) {
             return date.format(java.time.format.DateTimeFormatter.ofPattern("ha", Locale.ENGLISH)).toLowerCase();
         }
-        // week / custom — keep short so mobile charts stay readable
+        if ("custom".equalsIgnoreCase(period)) {
+            return date.format(java.time.format.DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH));
+        }
+        // week — keep short so mobile charts stay readable
         return date.format(java.time.format.DateTimeFormatter.ofPattern("d", Locale.ENGLISH));
     }
 
