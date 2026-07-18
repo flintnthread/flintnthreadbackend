@@ -37,8 +37,14 @@ public class SupportTicketService {
 
         ticket = ticketRepository.save(ticket);
 
-        if (request.getDescription() != null && !request.getDescription().isBlank()) {
-            saveSellerMessage(ticket.getId(), request.getSellerId(), request.getDescription(), null);
+        String attachment = request.getAttachment() != null && !request.getAttachment().isBlank()
+                ? request.getAttachment().trim()
+                : null;
+        String description = request.getDescription() != null ? request.getDescription().trim() : "";
+
+        if (!description.isBlank() || attachment != null) {
+            String text = !description.isBlank() ? description : "Attachment";
+            saveSellerMessage(ticket.getId(), request.getSellerId(), text, attachment);
         }
 
         return toTicketResponse(ticket, true);
