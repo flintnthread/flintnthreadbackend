@@ -14,5 +14,7 @@ public class UserActivityReviewDTO {
     private String productImageUrl;
     private Integer rating;
     private String comment;
+    private String imagePath;
+    private Boolean status;
     private LocalDateTime createdAt;
 }

@@ -66,4 +66,14 @@ public class OrderResponseDTO {
     private String shiprocketStatus;
 
     private Double totalWeight;
+
+    /** ISO / display timestamps from order_status_history (and order.createdAt). */
+    private String placedAt;
+    private String confirmedAt;
+    private String shippedAt;
+    private String outForDeliveryAt;
+    private String deliveredAt;
+    private String cancelledAt;
+
+    private List<OrderStatusHistoryDTO> statusHistory;
 }

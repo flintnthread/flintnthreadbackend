@@ -74,6 +74,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemCustomDetailService orderItemCustomDetailService;
     private final SellerRepository sellerRepository;
     private final AdminUserRepository adminUserRepository;
+    private final OrderStatusHistoryRepository orderStatusHistoryRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -1597,10 +1598,28 @@ public class OrderServiceImpl implements OrderService {
 
                 .mrpPrice(item.getMrpPrice())
 
-                .total(item.getTotal());
+                .total(item.getTotal())
+
+                .returnPolicy(resolveProductReturnPolicy(item.getProductId()));
 
         orderItemCustomDetailService.enrichOrderItemDto(item, builder);
         return builder.build();
+    }
+
+    private String resolveProductReturnPolicy(Long productId) {
+        if (productId == null || productId <= 0) {
+            return null;
+        }
+        try {
+            return productRepository.findById(productId)
+                    .map(Product::getReturnPolicy)
+                    .map(policy -> policy != null ? policy.trim() : null)
+                    .filter(policy -> !policy.isEmpty())
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("Could not resolve return policy for productId={}: {}", productId, e.getMessage());
+            return null;
+        }
     }
 
     private OrderResponseDTO buildOrderResponse(
@@ -1842,9 +1861,118 @@ public class OrderServiceImpl implements OrderService {
     ) {
         applyWalletAmountFields(order, builder);
         applyShippingContactFields(order, builder);
+        applyStatusTimelineFields(order, builder);
         builder
                 .taxAmount(order.getTaxAmount())
                 .razorpayPaymentId(order.getRazorpayPaymentId());
+    }
+
+    private void applyStatusTimelineFields(
+            Order order,
+            OrderResponseDTO.OrderResponseDTOBuilder builder
+    ) {
+        if (order == null || order.getId() == null) {
+            return;
+        }
+
+        String placedAt = formatOrderCreatedDate(order.getCreatedAt());
+        String confirmedAt = null;
+        String shippedAt = null;
+        String outForDeliveryAt = null;
+        String deliveredAt = null;
+        String cancelledAt = null;
+
+        List<OrderStatusHistoryDTO> historyDtos = new ArrayList<>();
+        try {
+            List<OrderStatusHistory> historyRows =
+                    orderStatusHistoryRepository.findByOrder_IdOrderByCreatedAtAsc(order.getId());
+            for (OrderStatusHistory row : historyRows) {
+                if (row == null || row.getStatus() == null) {
+                    continue;
+                }
+                String statusName = row.getStatus().name();
+                String at = formatOrderCreatedDate(row.getCreatedAt());
+                historyDtos.add(OrderStatusHistoryDTO.builder()
+                        .status(statusName)
+                        .comment(row.getComment())
+                        .createdAt(at)
+                        .build());
+
+                switch (row.getStatus()) {
+                    case CREATED, PLACED -> {
+                        if (placedAt == null) {
+                            placedAt = at;
+                        }
+                    }
+                    case CONFIRMED, PACKED -> {
+                        if (confirmedAt == null) {
+                            confirmedAt = at;
+                        }
+                    }
+                    case SHIPPED -> {
+                        if (shippedAt == null) {
+                            shippedAt = at;
+                        }
+                    }
+                    case OUT_FOR_DELIVERY -> {
+                        if (outForDeliveryAt == null) {
+                            outForDeliveryAt = at;
+                        }
+                    }
+                    case DELIVERED -> {
+                        if (deliveredAt == null) {
+                            deliveredAt = at;
+                        }
+                    }
+                    case CANCELLED -> {
+                        if (cancelledAt == null) {
+                            cancelledAt = at;
+                        }
+                    }
+                    default -> {
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn(
+                    "Could not load order_status_history for orderId={}: {}",
+                    order.getId(),
+                    e.getMessage()
+            );
+        }
+
+        String orderStatus = order.getOrderStatus() != null
+                ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                : "";
+        // Fallback: if marked delivered/cancelled but history has no stamp, use updatedAt
+        // only when it differs from createdAt (avoids fake "delivered = placed" labels).
+        if (deliveredAt == null && orderStatus.contains("deliver")) {
+            String updated = formatOrderCreatedDate(order.getUpdatedAt());
+            if (updated != null && !updated.equals(placedAt)) {
+                deliveredAt = updated;
+            }
+        }
+        if (cancelledAt == null && orderStatus.contains("cancel")) {
+            String updated = formatOrderCreatedDate(order.getUpdatedAt());
+            if (updated != null && !updated.equals(placedAt)) {
+                cancelledAt = updated;
+            }
+        }
+        if (shippedAt == null && (orderStatus.contains("ship") || orderStatus.contains("transit"))) {
+            String updated = formatOrderCreatedDate(order.getUpdatedAt());
+            if (updated != null && !updated.equals(placedAt)) {
+                shippedAt = updated;
+            }
+        }
+
+        builder
+                .placedAt(placedAt)
+                .confirmedAt(confirmedAt)
+                .shippedAt(shippedAt)
+                .outForDeliveryAt(outForDeliveryAt)
+                .deliveredAt(deliveredAt)
+                .cancelledAt(cancelledAt)
+                .statusHistory(historyDtos);
     }
 
     private void applyShippingContactFields(

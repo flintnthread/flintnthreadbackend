@@ -155,7 +155,7 @@ public class AccountServiceImpl implements AccountService {
                 .id(user.getId())
                 .fullName(user.getUsername())
                 .username(user.getUsername())
-                .email(user.getEmail())
+                .email(toPublicEmail(user.getEmail()))
                 .contactNumber(user.getContactNumber())
                 .dateOfBirth(user.getDateOfBirth())
                 .gender(user.getGender())
@@ -163,6 +163,24 @@ public class AccountServiceImpl implements AccountService {
                 .currentLocation(location)
                 .verified(user.isVerified())
                 .build();
+    }
+
+    /**
+     * Hide OTP placeholder emails ({@code 10digits@mobile.flintnthread.in}) from clients.
+     * Real linked emails are returned as stored.
+     */
+    private static String toPublicEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        String trimmed = email.trim();
+        String lower = trimmed.toLowerCase();
+        if (lower.endsWith("@mobile.flintnthread.in")
+                || lower.endsWith("@mobile.flintnthread.online")
+                || lower.matches("^\\d{10}@.*")) {
+            return null;
+        }
+        return trimmed;
     }
 
     private String resolveCurrentLocation(Long userId) {
