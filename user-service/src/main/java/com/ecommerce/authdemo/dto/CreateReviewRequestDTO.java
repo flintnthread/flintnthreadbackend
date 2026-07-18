@@ -1,5 +1,6 @@
 package com.ecommerce.authdemo.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -10,6 +11,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class CreateReviewRequestDTO {
     @NotNull(message = "productId is required")
     private Long productId;

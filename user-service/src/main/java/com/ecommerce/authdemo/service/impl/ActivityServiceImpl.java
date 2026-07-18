@@ -194,6 +194,8 @@ public class ActivityServiceImpl implements ActivityService {
                 .productImageUrl(imageUrl)
                 .rating(review.getRating())
                 .comment(review.getComment())
+                .imagePath(review.getImagePath())
+                .status(review.getStatus())
                 .createdAt(review.getCreatedAt())
                 .build();
     }
