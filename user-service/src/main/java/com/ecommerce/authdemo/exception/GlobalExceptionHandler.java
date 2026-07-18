@@ -102,8 +102,13 @@ public class GlobalExceptionHandler {
 
         ex.printStackTrace(); // 🔥 VERY IMPORTANT (logs full error)
 
+        String message = ex.getMessage();
+        if (message != null && message.matches("(?s).*(bad SQL grammar|PreparedStatementCallback|SQLSyntaxErrorException).*")) {
+            message = "Account operation failed due to a database cleanup issue. Please try again or contact support.";
+        }
+
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                new ApiResponse<>(false, ex.getMessage(), null) // ✅ show real error
+                new ApiResponse<>(false, message, null)
         );
     }
 }
