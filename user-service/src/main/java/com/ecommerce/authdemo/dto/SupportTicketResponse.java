@@ -15,6 +15,7 @@ public class SupportTicketResponse {
     private String subject;
     private String type;
     private String message;
+    private Integer orderId;
     private String attachmentPath;
     private String status;
     private LocalDateTime createdAt;

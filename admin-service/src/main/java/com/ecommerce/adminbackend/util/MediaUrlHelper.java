@@ -6,11 +6,14 @@ import org.springframework.stereotype.Component;
 import java.util.regex.Pattern;
 
 /**
- * Resolves DB file paths to public CDN URLs using {@code app.media.public-base-url}.
- * Used for seller profile pics, bank proofs, KYC docs, product images, order item images, etc.
+ * Resolves DB file paths to public CDN URLs.
+ * Seller docs and product uploads always use {@code https://flintnthread.com}
+ * (files are not served from flintnthread.in).
  */
 @Component
 public class MediaUrlHelper {
+
+    private static final String MEDIA_CDN = "https://flintnthread.com";
 
     private static final Pattern SELLER_DOCUMENT_FILE = Pattern.compile(
             "^\\d+_(profile_pic|aadhar_front|aadhar_back|pan_card|business_proof|bank_proof|"
@@ -22,7 +25,15 @@ public class MediaUrlHelper {
 
     public MediaUrlHelper(
             @Value("${app.media.public-base-url:https://flintnthread.com}") String publicBaseUrl) {
-        this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
+        String configured = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
+        // Production upload files live on flintnthread.com — never emit .in / .online for /uploads/
+        if (configured.isBlank()
+                || configured.contains("flintnthread.in")
+                || configured.contains("flintnthread.online")) {
+            this.publicBaseUrl = MEDIA_CDN;
+        } else {
+            this.publicBaseUrl = configured;
+        }
     }
 
     public String getPublicBaseUrl() {
@@ -37,8 +48,8 @@ public class MediaUrlHelper {
     }
 
     /**
-     * Build a public URL. Absolute Cloudinary (or any https) URLs are returned unchanged —
-     * never rewrite them onto the CDN host.
+     * Build a public URL. Absolute Cloudinary URLs are returned unchanged.
+     * Any /uploads/... path is forced onto {@link #MEDIA_CDN}.
      */
     public String toPublicUrl(String path, String folder) {
         if (path == null || path.isBlank()) {
@@ -47,22 +58,20 @@ public class MediaUrlHelper {
         String trimmed = path.trim();
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
             String lower = trimmed.toLowerCase();
-            // Cloudinary / other absolute CDN URLs — use exactly what is stored.
-            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+            if (lower.contains("res.cloudinary.com/")) {
                 return trimmed;
             }
             int idx = trimmed.indexOf("/uploads/");
             if (idx >= 0) {
-                // Re-normalize so legacy /uploads/sellers/12_aadhar_front_... maps to seller_documents.
                 String normalized = normalizeMediaPath(trimmed.substring(idx), folder);
-                if (publicBaseUrl.isBlank()) {
-                    return normalized;
-                }
-                return publicBaseUrl + normalized;
+                return MEDIA_CDN + normalized;
             }
             return trimmed;
         }
         String normalized = normalizeMediaPath(trimmed, folder);
+        if (normalized.contains("/uploads/")) {
+            return MEDIA_CDN + normalized;
+        }
         if (publicBaseUrl.isBlank()) {
             return normalized;
         }

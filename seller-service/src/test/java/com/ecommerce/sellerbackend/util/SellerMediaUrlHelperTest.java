@@ -30,13 +30,13 @@ class SellerMediaUrlHelperTest {
     }
 
     @Test
-    void absoluteUrl_withPublicBase() {
+    void absoluteUrl_forcesComCdn_evenWhenBaseIsIn() {
         String out = SellerMediaUrlHelper.toAbsoluteUrl(
                 "12_aadhar_front_1759064059.png",
                 "https://flintnthread.in"
         );
         assertEquals(
-                "https://flintnthread.in/uploads/seller_documents/12_aadhar_front_1759064059.png",
+                "https://flintnthread.com/uploads/seller_documents/12_aadhar_front_1759064059.png",
                 out
         );
     }

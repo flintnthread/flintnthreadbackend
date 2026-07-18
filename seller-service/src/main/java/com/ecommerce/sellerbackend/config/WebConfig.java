@@ -38,7 +38,9 @@ public class WebConfig implements WebMvcConfigurer {
                                 "https://flintnthread.online",
                                 "https://*.flintnthread.online",
                                 "https://flintnthread.in",
-                                "https://*.flintnthread.in"
+                                "https://*.flintnthread.in",
+                                "https://flintnthread.com",
+                                "https://*.flintnthread.com"
                         ))
                 .distinct()
                 .toArray(String[]::new);

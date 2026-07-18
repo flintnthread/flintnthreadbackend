@@ -71,7 +71,8 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
     }
 
     private void deleteTicketData(Long userId, int uid) {
-        jdbcTemplate.update(
+        safeUpdate(
+                "ticket_responses_read",
                 """
                 DELETE FROM ticket_responses_read
                 WHERE user_id = ?
@@ -86,7 +87,8 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
                 uid
         );
 
-        jdbcTemplate.update(
+        safeUpdate(
+                "ticket_user_replies",
                 """
                 DELETE FROM ticket_user_replies
                 WHERE user_id = ?
@@ -98,7 +100,8 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
                 uid
         );
 
-        jdbcTemplate.update(
+        safeUpdate(
+                "ticket_responses",
                 """
                 DELETE FROM ticket_responses
                 WHERE ticket_id IN (
@@ -108,7 +111,8 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
                 uid
         );
 
-        jdbcTemplate.update(
+        safeUpdate(
+                "support_tickets.order_id",
                 """
                 DELETE FROM support_tickets
                 WHERE order_id IN (
@@ -118,73 +122,60 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
                 userId
         );
 
-        jdbcTemplate.update("DELETE FROM support_tickets WHERE customer_id = ?", uid);
+        safeUpdate(
+                "support_tickets.customer_id",
+                "DELETE FROM support_tickets WHERE customer_id = ?",
+                uid
+        );
+    }
+
+    private void safeUpdate(String label, String sql, Object... args) {
+        try {
+            jdbcTemplate.update(sql, args);
+        } catch (Exception ex) {
+            log.warn("Skipping cleanup for {} while deleting account: {}", label, ex.getMessage());
+        }
     }
 
     private void deleteOrderData(Long userId) {
         jdbcTemplate.update("UPDATE orders SET address_id = NULL WHERE user_id = ?", userId);
 
-        jdbcTemplate.update(
-                """
-                DELETE FROM shiprocket_webhooks
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
+        // Optional / legacy tables — skip when missing so account delete still succeeds.
+        safeDeleteByUserOrders(
+                "shiprocket_webhooks",
+                "DELETE FROM shiprocket_webhooks WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
                 userId
         );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM shiprocket_sync_logs
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
+        safeDeleteByUserOrders(
+                "shiprocket_sync_logs",
+                "DELETE FROM shiprocket_sync_logs WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
                 userId
         );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM invoices
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
+        safeDeleteByUserOrders(
+                "invoices",
+                "DELETE FROM invoices WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
                 userId
         );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM payment_transactions
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
+        safeDeleteByUserOrders(
+                "payment_transactions",
+                "DELETE FROM payment_transactions WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
                 userId
         );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM payments
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
+        // `payments` may be absent or lack order_id on older schemas.
+        safeDeletePaymentsForUserOrders(userId);
+        safeDeleteByUserOrders(
+                "seller_payment_invoices",
+                "DELETE FROM seller_payment_invoices WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
                 userId
         );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM seller_payment_invoices
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
+        safeDeleteByUserOrders(
+                "wallet_transactions",
+                "DELETE FROM wallet_transactions WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
                 userId
         );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM wallet_transactions
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
-                userId
-        );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM order_status_history
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
+        safeDeleteByUserOrders(
+                "order_status_history",
+                "DELETE FROM order_status_history WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
                 userId
         );
 
@@ -199,10 +190,41 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
         jdbcTemplate.update("DELETE FROM orders WHERE user_id = ?", userId);
     }
 
+    private void safeDeleteByUserOrders(String tableLabel, String sql, Long userId) {
+        try {
+            jdbcTemplate.update(sql, userId);
+        } catch (Exception ex) {
+            log.warn(
+                    "Skipping cleanup for {} while deleting userId={}: {}",
+                    tableLabel,
+                    userId,
+                    ex.getMessage()
+            );
+        }
+    }
+
+    private void safeDeletePaymentsForUserOrders(Long userId) {
+        String[] candidates = {
+                "DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
+                "DELETE FROM payments WHERE orderId IN (SELECT id FROM orders WHERE user_id = ?)",
+                "DELETE FROM payment WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
+        };
+        for (String sql : candidates) {
+            try {
+                jdbcTemplate.update(sql, userId);
+                return;
+            } catch (Exception ex) {
+                log.debug("payments cleanup attempt failed for userId={}: {}", userId, ex.getMessage());
+            }
+        }
+        log.warn("No compatible payments table cleanup succeeded for userId={}", userId);
+    }
+
     private void deleteUserScopedRows(Long userId, int uid) {
-        jdbcTemplate.update("DELETE FROM user_wallet_transactions WHERE user_id = ?", uid);
-        jdbcTemplate.update("DELETE FROM user_wallet WHERE user_id = ?", uid);
-        jdbcTemplate.update(
+        safeUpdate("user_wallet_transactions", "DELETE FROM user_wallet_transactions WHERE user_id = ?", uid);
+        safeUpdate("user_wallet", "DELETE FROM user_wallet WHERE user_id = ?", uid);
+        safeUpdate(
+                "referral_transactions",
                 """
                 DELETE FROM referral_transactions
                 WHERE referrer_id = ? OR referred_user_id = ?
@@ -210,13 +232,14 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
                 uid,
                 uid
         );
-        jdbcTemplate.update("DELETE FROM email_logs WHERE user_id = ?", uid);
-        jdbcTemplate.update("DELETE FROM push_notifications WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM product_reviews WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM product_views WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM search_history WHERE user_id = ?", userId);
+        safeUpdate("email_logs", "DELETE FROM email_logs WHERE user_id = ?", uid);
+        safeUpdate("push_notifications", "DELETE FROM push_notifications WHERE user_id = ?", userId);
+        safeUpdate("product_reviews", "DELETE FROM product_reviews WHERE user_id = ?", userId);
+        safeUpdate("product_views", "DELETE FROM product_views WHERE user_id = ?", userId);
+        safeUpdate("search_history", "DELETE FROM search_history WHERE user_id = ?", userId);
 
-        jdbcTemplate.update(
+        safeUpdate(
+                "cart_items",
                 """
                 DELETE FROM cart_items
                 WHERE cart_id IN (SELECT id FROM cart WHERE user_id = ?)
@@ -224,10 +247,10 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
                 userId
         );
 
-        jdbcTemplate.update("DELETE FROM cart WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM user_wishlist WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM addresses WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM shoppers WHERE user_id = ?", userId);
-        jdbcTemplate.update("DELETE FROM user_location WHERE user_id = ?", userId);
+        safeUpdate("cart", "DELETE FROM cart WHERE user_id = ?", userId);
+        safeUpdate("user_wishlist", "DELETE FROM user_wishlist WHERE user_id = ?", userId);
+        safeUpdate("addresses", "DELETE FROM addresses WHERE user_id = ?", userId);
+        safeUpdate("shoppers", "DELETE FROM shoppers WHERE user_id = ?", userId);
+        safeUpdate("user_location", "DELETE FROM user_location WHERE user_id = ?", userId);
     }
 }

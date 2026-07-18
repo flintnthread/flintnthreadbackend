@@ -4,6 +4,7 @@ import com.ecommerce.authdemo.dto.Enum.Role;
 import com.ecommerce.authdemo.entity.User;
 import com.ecommerce.authdemo.exception.ResourceNotFoundException;
 import com.ecommerce.authdemo.repository.UserRepository;
+import com.ecommerce.authdemo.security.JwtPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,6 +16,13 @@ import org.springframework.stereotype.Component;
 import java.util.Arrays;
 import java.util.Optional;
 
+/**
+ * Resolves the authenticated shopper for cart / wishlist / orders / addresses.
+ * <p>
+ * Ownership is always by {@code users.id}. When multiple accounts share the same
+ * mobile number (Switch Account), the JWT {@code userId} claim selects the correct
+ * row — never shipping phone and never an ambiguous {@code findByContactNumber}.
+ */
 @Component
 @RequiredArgsConstructor
 public class SecurityUtil {
@@ -37,14 +45,44 @@ public class SecurityUtil {
             throw new RuntimeException("User not authenticated");
         }
 
-        String principal = String.valueOf(authentication.getName()).trim();
+        Object principalObj = authentication.getPrincipal();
+
+        // Prefer JWT userId claim (switch-account safe)
+        if (principalObj instanceof JwtPrincipal jwtPrincipal
+                && jwtPrincipal.userId() != null
+                && jwtPrincipal.userId() > 0) {
+            Optional<User> byId = userRepository.findById(jwtPrincipal.userId());
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        }
+
+        String principal = resolveIdentifier(principalObj);
         String normalized = principal.toLowerCase();
 
         return userRepository.findByEmail(principal)
                 .or(() -> userRepository.findByEmail(normalized))
-                .or(() -> userRepository.findByContactNumber(principal))
-                .or(() -> userRepository.findByContactNumber(normalized))
+                // Only use contact number when JWT did not carry a userId
+                .or(() -> {
+                    if (principalObj instanceof JwtPrincipal jp && jp.userId() != null) {
+                        return Optional.empty();
+                    }
+                    return userRepository.findByContactNumber(principal);
+                })
+                .or(() -> {
+                    if (principalObj instanceof JwtPrincipal jp && jp.userId() != null) {
+                        return Optional.empty();
+                    }
+                    return userRepository.findByContactNumber(normalized);
+                })
                 .orElseGet(() -> resolveMissingAuthenticatedUser(normalized));
+    }
+
+    private static String resolveIdentifier(Object principalObj) {
+        if (principalObj instanceof JwtPrincipal jwtPrincipal) {
+            return String.valueOf(jwtPrincipal.identifier() != null ? jwtPrincipal.identifier() : "").trim();
+        }
+        return String.valueOf(principalObj).trim();
     }
 
     private User resolveMissingAuthenticatedUser(String principal) {
@@ -103,6 +141,12 @@ public class SecurityUtil {
             return Optional.empty();
         }
         try {
+            Object principalObj = authentication.getPrincipal();
+            if (principalObj instanceof JwtPrincipal jwtPrincipal
+                    && jwtPrincipal.userId() != null
+                    && jwtPrincipal.userId() > 0) {
+                return Optional.of(jwtPrincipal.userId());
+            }
             return Optional.of(getCurrentUser().getId());
         } catch (Exception e) {
             return Optional.empty();

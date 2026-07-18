@@ -43,18 +43,28 @@ public class ProductMapper {
             if (lower.contains("res.cloudinary.com/")) {
                 return storedPath;
             }
-            int idx = storedPath.indexOf("/uploads/");
-            if (idx >= 0) {
-                // Product images always use flintnthread.com
-                return PRODUCT_IMAGE_CDN + storedPath.substring(idx);
+            int productsIdx = storedPath.indexOf("/uploads/products/");
+            if (productsIdx >= 0) {
+                // Product images ONLY → https://flintnthread.com/uploads/products/...
+                return PRODUCT_IMAGE_CDN + storedPath.substring(productsIdx);
             }
+            // Seller docs / KYC / other uploads — leave unchanged
             return storedPath;
         }
-        String path = storedPath.startsWith("/") ? storedPath : "/" + storedPath;
-        // Product /uploads paths always use flintnthread.com CDN
-        if (path.contains("/uploads/")) {
+
+        String trimmed = storedPath.trim().replace("\\", "/");
+        // uploads/products/... or /uploads/products/...
+        if (trimmed.toLowerCase().contains("uploads/products/")) {
+            int idx = trimmed.toLowerCase().indexOf("uploads/products/");
+            String path = "/" + trimmed.substring(idx).replaceAll("^/+", "");
             return PRODUCT_IMAGE_CDN + path;
         }
+        // Bare filename from product_images → products folder on .com
+        if (!trimmed.contains("/")) {
+            return PRODUCT_IMAGE_CDN + "/uploads/products/" + trimmed;
+        }
+
+        String path = trimmed.startsWith("/") ? trimmed : "/" + trimmed;
         if (mediaPublicBaseUrl == null || mediaPublicBaseUrl.isBlank()) {
             return path;
         }

@@ -9,10 +9,10 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class PasswordResetUrlHelper {
 
-    @Value("${app.backend.public-url:https://flintnthread.online}")
+    @Value("${app.backend.public-url:https://flintnthread.in}")
     private String backendPublicUrl;
 
-    @Value("${app.frontend.base-url:https://flintnthread.online/Seller}")
+    @Value("${app.frontend.base-url:https://flintnthread.in/Seller}")
     private String frontendBaseUrl;
 
     @Value("${app.frontend.password-reset-redirect-url:}")
@@ -37,9 +37,9 @@ public class PasswordResetUrlHelper {
 
     private String resolveResetPageBaseUrl() {
         if (passwordResetRedirectUrl != null && !passwordResetRedirectUrl.isBlank()) {
-            return passwordResetRedirectUrl.trim();
+            return SslSafePublicUrl.normalize(passwordResetRedirectUrl.trim());
         }
-        return trimTrailingSlash(frontendBaseUrl) + "/resetpassword";
+        return trimTrailingSlash(SslSafePublicUrl.normalize(frontendBaseUrl)) + "/resetpassword";
     }
 
     private String trimTrailingSlash(String url) {

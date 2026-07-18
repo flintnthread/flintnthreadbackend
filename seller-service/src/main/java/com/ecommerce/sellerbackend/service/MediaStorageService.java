@@ -25,7 +25,7 @@ public class MediaStorageService {
 
     public MediaStorageService(
             @Value("${app.upload.directory:uploads/seller_documents}") String uploadDirectory,
-            @Value("${app.media.public-base-url:https://flintnthread.in}") String publicBaseUrl) {
+            @Value("${app.media.public-base-url:https://flintnthread.com}") String publicBaseUrl) {
         this.uploadRoot = Paths.get(uploadDirectory).toAbsolutePath().normalize();
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
         try {
@@ -119,7 +119,7 @@ public class MediaStorageService {
         return SellerMediaUrlHelper.toPublicPath(fileName);
     }
 
-    /** Full CDN URL when {@code app.media.public-base-url} is set (e.g. https://flintnthread.in). */
+    /** Full CDN URL when {@code app.media.public-base-url} is set (e.g. https://flintnthread.com). */
     public String toAbsolutePublicUrl(String fileName) {
         return SellerMediaUrlHelper.toAbsoluteUrl(fileName, publicBaseUrl);
     }
