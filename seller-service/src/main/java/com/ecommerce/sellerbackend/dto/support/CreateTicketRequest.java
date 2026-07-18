@@ -24,4 +24,7 @@ public class CreateTicketRequest {
     private String priority;
 
     private String description;
+
+    /** Optional image URL from /upload (JSON create path). */
+    private String attachment;
 }
