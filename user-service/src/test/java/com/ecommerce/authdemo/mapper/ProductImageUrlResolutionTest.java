@@ -29,9 +29,23 @@ class ProductImageUrlResolutionTest {
     @Test
     void resolveImageUrl_legacyRelativePathPrefixedWithMediaHost() {
         assertEquals(
-                "http://localhost:8083/uploads/products/old.jpg",
+                "https://flintnthread.com/uploads/products/old.jpg",
                 mapper.resolveImageUrl("uploads/products/old.jpg")
         );
+    }
+
+    @Test
+    void resolveImageUrl_rewritesWrongHostToProductCdn() {
+        assertEquals(
+                "https://flintnthread.com/uploads/products/x.jpeg",
+                mapper.resolveImageUrl("https://flintnthread.in/uploads/products/x.jpeg")
+        );
+    }
+
+    @Test
+    void resolveImageUrl_sellerDocumentsNotRewrittenByProductMapper() {
+        String doc = "https://flintnthread.com/uploads/seller_documents/1_aadhar_back_1757919264.jpg";
+        assertEquals(doc, mapper.resolveImageUrl(doc));
     }
 
     @Test

@@ -84,4 +84,28 @@ class ProductMediaStorageServiceTest {
         );
         verify(uploader).upload(any(byte[].class), anyMap());
     }
+
+    @Test
+    void uploadSellerProfilePhoto_returnsCloudinarySecureUrl() throws Exception {
+        when(cloudinary.uploader()).thenReturn(uploader);
+        when(uploader.upload(any(byte[].class), anyMap())).thenReturn(Map.of(
+                "secure_url",
+                "https://res.cloudinary.com/dnce88bry/image/upload/v1/flintnthread/sellers/profile/abc.jpg"
+        ));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "profile.jpg",
+                "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x00, 0x01, 0x02}
+        );
+
+        String url = service.uploadSellerProfilePhoto(file);
+
+        assertTrue(url.startsWith("https://res.cloudinary.com/"));
+        assertEquals(
+                "https://res.cloudinary.com/dnce88bry/image/upload/v1/flintnthread/sellers/profile/abc.jpg",
+                url
+        );
+    }
 }

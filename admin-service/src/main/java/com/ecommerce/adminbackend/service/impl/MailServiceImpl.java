@@ -295,4 +295,40 @@ public class MailServiceImpl implements MailService {
             throw new IllegalStateException("Unable to send email. Please try again later.");
         }
     }
+
+    @Override
+    public void sendPayoutRequestClosedEmail(
+            String toEmail,
+            String sellerName,
+            String orderNumber,
+            String paymentStatusText,
+            String requestedAmount) {
+        String safeName = sellerName != null && !sellerName.isBlank() ? sellerName.trim() : "Seller";
+        String safeOrder = orderNumber != null && !orderNumber.isBlank() ? orderNumber.trim() : "-";
+        String safeStatus = paymentStatusText != null ? paymentStatusText.trim() : "";
+        String safeAmount = requestedAmount != null && !requestedAmount.isBlank() ? requestedAmount.trim() : "-";
+        String html = """
+                <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1f2937;">
+                  <h2 style="color:#151D4F;margin-bottom:8px;">Payout request update</h2>
+                  <p>Hi %s,</p>
+                  <p>Your payout request for order <strong>%s</strong> (amount %s) has been reviewed.</p>
+                  <p style="margin:20px 0;padding:14px 16px;background:#f8fafc;border-left:4px solid #ef7b1a;border-radius:4px;">
+                    <strong>Your payment status is:</strong><br/>%s
+                  </p>
+                  <p style="color:#6b7280;font-size:13px;">— Flint &amp; Thread</p>
+                </div>
+                """.formatted(escapeHtml(safeName), escapeHtml(safeOrder), escapeHtml(safeAmount), escapeHtml(safeStatus));
+        sendHtmlEmail(toEmail, "Your payment status — Order " + safeOrder, html);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
+    }
 }

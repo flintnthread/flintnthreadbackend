@@ -28,4 +28,11 @@ public interface MailService {
      * Generic HTML email used for admin marketing/broadcast messages.
      */
     void sendHtmlEmail(String toEmail, String subject, String htmlBody);
+
+    void sendPayoutRequestClosedEmail(
+            String toEmail,
+            String sellerName,
+            String orderNumber,
+            String paymentStatusText,
+            String requestedAmount);
 }

@@ -52,6 +52,7 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("countryId", row[2]);
             item.put("countryName", row[3]);
             item.put("active", toActive(row[4]));
+            item.put("cityCount", toCount(row.length > 5 ? row[5] : 0));
             return item;
         });
         return toPage(items, locationRepository.countStatesSearch(countryId, q), safePage, safeSize);
@@ -70,6 +71,7 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("stateId", row[2]);
             item.put("stateName", row[3]);
             item.put("active", toActive(row[4]));
+            item.put("areaCount", toCount(row.length > 5 ? row[5] : 0));
             return item;
         });
         return toPage(items, locationRepository.countCitiesSearch(stateId, q), safePage, safeSize);
@@ -88,6 +90,7 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
             item.put("cityId", row[2]);
             item.put("cityName", row[3]);
             item.put("active", toActive(row[4]));
+            item.put("pincodeCount", toCount(row.length > 5 ? row[5] : 0));
             return item;
         });
         return toPage(items, locationRepository.countAreasSearch(cityId, q), safePage, safeSize);
@@ -305,6 +308,22 @@ public class LocationAdminServiceImpl extends BaseAdminService implements Locati
         }
         String text = status.toString().trim().toLowerCase(Locale.ROOT);
         return !("0".equals(text) || "false".equals(text) || "inactive".equals(text));
+    }
+
+    /** Count helper — returns 0 for null (does not override BaseAdminService.toLong). */
+    private long toCount(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            Long parsed = toLong(value);
+            return parsed == null ? 0L : parsed;
+        } catch (Exception ex) {
+            return 0L;
+        }
     }
 
     private List<Map<String, Object>> mapRows(

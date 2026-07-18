@@ -53,6 +53,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/seller/locations/enrich").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/seller/locations").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/seller/locations/pincodes").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/seller/support/contact").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/seller/support/contact/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/seller/support/faqs/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

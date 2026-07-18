@@ -28,8 +28,9 @@ public class SupportTicketServiceImpl implements SupportTicketService {
         SupportTicket entity = SupportTicket.builder()
                 .customerId(customerId)
                 .subject(request.getSubject().trim())
-                .type(request.getType().trim())
+                .type(normalizeTicketType(request.getType()))
                 .message(request.getMessage().trim())
+                .orderId(request.getOrderId())
                 .attachmentPath(normalize(request.getAttachmentPath()))
                 .status("open")
                 .build();
@@ -105,6 +106,7 @@ public class SupportTicketServiceImpl implements SupportTicketService {
                 .subject(entity.getSubject())
                 .type(entity.getType())
                 .message(entity.getMessage())
+                .orderId(entity.getOrderId())
                 .attachmentPath(entity.getAttachmentPath())
                 .status(entity.getStatus())
                 .createdAt(entity.getCreatedAt())
@@ -117,5 +119,20 @@ public class SupportTicketServiceImpl implements SupportTicketService {
             return null;
         }
         return value.trim();
+    }
+
+    private String normalizeTicketType(String raw) {
+        String type = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.ROOT);
+        if (type.isEmpty()) {
+            throw new IllegalArgumentException("Type is required");
+        }
+        return switch (type) {
+            case "product", "product_issue" -> "product_issue";
+            case "delivery", "delivery_issue" -> "delivery_issue";
+            case "payment", "payment_issue" -> "payment_issue";
+            case "return", "return_refund", "return/refund" -> "return_refund";
+            case "other", "order", "order_issue" -> "other";
+            default -> type.length() <= 50 ? type : type.substring(0, 50);
+        };
     }
 }

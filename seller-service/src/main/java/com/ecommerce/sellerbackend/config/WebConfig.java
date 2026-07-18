@@ -15,8 +15,11 @@ public class WebConfig implements WebMvcConfigurer {
     @Value("${app.cors.allowed-origins:http://localhost:8081,http://localhost:19006,http://127.0.0.1:8081}")
     private String allowedOrigins;
 
-    @Value("${app.upload.directory:uploads/sellers}")
+    @Value("${app.upload.directory:uploads/seller_documents}")
     private String uploadDirectory;
+
+    @Value("${app.upload.legacy-sellers-directory:uploads/sellers}")
+    private String legacySellersDirectory;
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
@@ -35,7 +38,9 @@ public class WebConfig implements WebMvcConfigurer {
                                 "https://flintnthread.online",
                                 "https://*.flintnthread.online",
                                 "https://flintnthread.in",
-                                "https://*.flintnthread.in"
+                                "https://*.flintnthread.in",
+                                "https://flintnthread.com",
+                                "https://*.flintnthread.com"
                         ))
                 .distinct()
                 .toArray(String[]::new);
@@ -55,16 +60,23 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        Path uploadPath = Paths.get(uploadDirectory).toAbsolutePath().normalize();
-        String location = uploadPath.toUri().toString();
-        if (!location.endsWith("/")) {
-            location = location + "/";
+        Path documentsPath = Paths.get(uploadDirectory).toAbsolutePath().normalize();
+        String documentsLocation = documentsPath.toUri().toString();
+        if (!documentsLocation.endsWith("/")) {
+            documentsLocation = documentsLocation + "/";
         }
-        registry.addResourceHandler("/uploads/sellers/**")
-                .addResourceLocations(location);
+
+        Path legacySellersPath = Paths.get(legacySellersDirectory).toAbsolutePath().normalize();
+        String legacySellersLocation = legacySellersPath.toUri().toString();
+        if (!legacySellersLocation.endsWith("/")) {
+            legacySellersLocation = legacySellersLocation + "/";
+        }
 
         registry.addResourceHandler("/uploads/seller_documents/**")
-                .addResourceLocations(location);
+                .addResourceLocations(documentsLocation, legacySellersLocation);
+
+        registry.addResourceHandler("/uploads/sellers/**")
+                .addResourceLocations(legacySellersLocation, documentsLocation);
 
 
         Path kycPath = Paths.get(uploadDir, "kyc_images").toAbsolutePath().normalize();

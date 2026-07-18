@@ -49,4 +49,7 @@ public class OrderItemDTO {
 
     private Boolean customDetailsComplete;
 
+    /** From products.return_policy (e.g. "7 Days Return", "Non-returnable"). */
+    private String returnPolicy;
+
 }

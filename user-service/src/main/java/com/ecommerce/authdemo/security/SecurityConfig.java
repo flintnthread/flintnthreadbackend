@@ -119,6 +119,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/sellers/**")
                         .permitAll()
 
+                        .requestMatchers("/api/shop/sellers/**")
+                        .permitAll()
+
                         // --------------------------------
                         // PUBLIC SEARCH APIs  ⭐ ADDED
                         // --------------------------------
@@ -160,6 +163,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/reviews/product/**")
                         .permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/reviews/me")
+                        .authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/reviews/eligibility/**")
                         .authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/reviews")
                         .authenticated()

@@ -23,8 +23,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ProductMapper {
 
-    @Value("${app.media.public-base-url:}")
+    @Value("${app.media.public-base-url:https://flintnthread.com}")
     private String mediaPublicBaseUrl;
+
+    /** Hard-coded product image CDN — only host for /uploads/products/. */
+    private static final String PRODUCT_IMAGE_CDN = "https://flintnthread.com";
     
     private final SizeColorMapper sizeColorMapper;
     private final SizeChartRepository sizeChartRepository;
@@ -37,20 +40,32 @@ public class ProductMapper {
         if (storedPath.startsWith("http://") || storedPath.startsWith("https://")) {
             String lower = storedPath.toLowerCase();
             // Cloudinary absolute URLs — never rewrite onto media host
-            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
+            if (lower.contains("res.cloudinary.com/")) {
                 return storedPath;
             }
-            int idx = storedPath.indexOf("/uploads/");
-            if (idx >= 0 && !mediaPublicBaseUrl.isEmpty()) {
-                String base = mediaPublicBaseUrl.endsWith("/")
-                        ? mediaPublicBaseUrl.substring(0, mediaPublicBaseUrl.length() - 1)
-                        : mediaPublicBaseUrl;
-                return base + storedPath.substring(idx);
+            int productsIdx = storedPath.indexOf("/uploads/products/");
+            if (productsIdx >= 0) {
+                // Product images ONLY → https://flintnthread.com/uploads/products/...
+                return PRODUCT_IMAGE_CDN + storedPath.substring(productsIdx);
             }
+            // Seller docs / KYC / other uploads — leave unchanged
             return storedPath;
         }
-        String path = storedPath.startsWith("/") ? storedPath : "/" + storedPath;
-        if (mediaPublicBaseUrl.isEmpty()) {
+
+        String trimmed = storedPath.trim().replace("\\", "/");
+        // uploads/products/... or /uploads/products/...
+        if (trimmed.toLowerCase().contains("uploads/products/")) {
+            int idx = trimmed.toLowerCase().indexOf("uploads/products/");
+            String path = "/" + trimmed.substring(idx).replaceAll("^/+", "");
+            return PRODUCT_IMAGE_CDN + path;
+        }
+        // Bare filename from product_images → products folder on .com
+        if (!trimmed.contains("/")) {
+            return PRODUCT_IMAGE_CDN + "/uploads/products/" + trimmed;
+        }
+
+        String path = trimmed.startsWith("/") ? trimmed : "/" + trimmed;
+        if (mediaPublicBaseUrl == null || mediaPublicBaseUrl.isBlank()) {
             return path;
         }
         String base = mediaPublicBaseUrl.endsWith("/")

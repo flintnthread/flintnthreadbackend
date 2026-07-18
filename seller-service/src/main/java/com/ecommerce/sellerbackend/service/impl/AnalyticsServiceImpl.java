@@ -55,6 +55,17 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Transactional(readOnly = true)
     public AnalyticsSalesResponse getSales(Long sellerId, String period) {
         LocalDateTime[] range = AnalyticsPeriodUtil.resolveRange(period);
+        return buildSalesResponse(sellerId, period != null ? period : "month", range);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AnalyticsSalesResponse getSales(Long sellerId, LocalDate from, LocalDate to) {
+        LocalDateTime[] range = AnalyticsPeriodUtil.resolveRange(from, to);
+        return buildSalesResponse(sellerId, "custom", range);
+    }
+
+    private AnalyticsSalesResponse buildSalesResponse(Long sellerId, String period, LocalDateTime[] range) {
         BigDecimal totalSales = orderItemRepository.sumSalesBetween(sellerId, range[0], range[1]);
         long totalOrders = orderItemRepository.countDistinctOrdersBetween(sellerId, range[0], range[1]);
 
@@ -63,7 +74,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         );
 
         return AnalyticsSalesResponse.builder()
-                .period(period != null ? period : "month")
+                .period(period)
                 .totalSales(totalSales != null ? totalSales : BigDecimal.ZERO)
                 .totalOrders(totalOrders)
                 .salesFormatted(INR.format(totalSales != null ? totalSales : BigDecimal.ZERO))
@@ -453,13 +464,14 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         if ("year".equalsIgnoreCase(period)) {
             return date.format(java.time.format.DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH));
         }
-        if ("month".equalsIgnoreCase(period)) {
+        if ("month".equalsIgnoreCase(period) || "last_month".equalsIgnoreCase(period)) {
             return String.valueOf(date.getDayOfMonth());
         }
         if ("day".equalsIgnoreCase(period)) {
             return date.format(java.time.format.DateTimeFormatter.ofPattern("ha", Locale.ENGLISH)).toLowerCase();
         }
-        return date.format(java.time.format.DateTimeFormatter.ofPattern("dd MMM", Locale.ENGLISH));
+        // week / custom — keep short so mobile charts stay readable
+        return date.format(java.time.format.DateTimeFormatter.ofPattern("d", Locale.ENGLISH));
     }
 
     private static String formatDiscountLabel(ProductVariant variant) {

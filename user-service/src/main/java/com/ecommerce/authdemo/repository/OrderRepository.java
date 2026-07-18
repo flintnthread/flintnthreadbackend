@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,6 +26,33 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByUserIdOrderByCreatedAtDesc(Long userId);
 
     List<Order> findByUserIdAndOrderStatusOrderByCreatedAtDesc(Long userId, String status);
+
+    List<Order> findByUserIdInOrderByCreatedAtDesc(Collection<Long> userIds);
+
+    List<Order> findByUserIdInAndOrderStatusOrderByCreatedAtDesc(Collection<Long> userIds, String status);
+
+    @Query("""
+            SELECT DISTINCT o FROM Order o
+            WHERE o.userId IN :userIds
+               OR o.shippingPhone IN :phones
+            ORDER BY o.createdAt DESC
+            """)
+    List<Order> findVisibleForLinkedPhoneAccounts(
+            @Param("userIds") Collection<Long> userIds,
+            @Param("phones") Collection<String> phones
+    );
+
+    @Query("""
+            SELECT DISTINCT o FROM Order o
+            WHERE (o.userId IN :userIds OR o.shippingPhone IN :phones)
+              AND o.orderStatus = :status
+            ORDER BY o.createdAt DESC
+            """)
+    List<Order> findVisibleForLinkedPhoneAccountsAndStatus(
+            @Param("userIds") Collection<Long> userIds,
+            @Param("phones") Collection<String> phones,
+            @Param("status") String status
+    );
 
     @Query(
             value = """

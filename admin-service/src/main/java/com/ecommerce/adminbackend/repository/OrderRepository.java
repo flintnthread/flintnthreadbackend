@@ -129,6 +129,23 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """, nativeQuery = true)
     long countPendingSellerPaymentsAtLeastDays(@Param("minDays") int minDays);
 
+    @Query(value = """
+            SELECT COUNT(*) FROM orders o
+            WHERE LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
+              AND LOWER(COALESCE(o.payment_status, '')) IN ('paid', 'success', 'captured', 'completed')
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.created_at, o.updated_at))) >= :minDays
+            """, nativeQuery = true)
+    long countOverdueSellerPayoutsAfterCustomerPaid(@Param("minDays") int minDays);
+
+    @Query(value = """
+            SELECT * FROM orders o
+            WHERE LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
+              AND LOWER(COALESCE(o.payment_status, '')) IN ('paid', 'success', 'captured', 'completed')
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.created_at, o.updated_at))) >= :minDays
+            ORDER BY o.created_at ASC
+            """, nativeQuery = true)
+    List<Order> findOverdueSellerPayoutsAfterCustomerPaid(@Param("minDays") int minDays, Pageable pageable);
+
     @Query("SELECT MIN(o.id) FROM Order o WHERE LOWER(o.shippingEmail) = LOWER(:email)")
     java.util.Optional<Long> findMinIdByShippingEmailIgnoreCase(@Param("email") String email);
 }

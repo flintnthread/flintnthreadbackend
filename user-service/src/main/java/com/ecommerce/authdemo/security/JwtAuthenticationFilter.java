@@ -33,6 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = null;
         String identifier = null;
         String role = null;
+        Long userId = null;
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
 
@@ -42,6 +43,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 identifier = jwtUtil.extractIdentifier(token);
                 role = jwtUtil.extractRole(token);
+                userId = jwtUtil.extractUserId(token);
 
             } catch (Exception e) {
 
@@ -56,9 +58,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SimpleGrantedAuthority authority =
                         new SimpleGrantedAuthority("ROLE_" + role);
 
+                JwtPrincipal principal = new JwtPrincipal(identifier, userId);
+
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
-                                identifier,
+                                principal,
                                 null,
                                 Collections.singletonList(authority)
                         );

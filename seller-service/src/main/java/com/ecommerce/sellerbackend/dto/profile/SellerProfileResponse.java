@@ -144,7 +144,7 @@ public class SellerProfileResponse {
                 .kycSubmittedAt(seller.getKycSubmittedAt())
                 .accountStatus(SellerAccountStatusHelper.build(seller))
                 .personal(PersonalSection.builder()
-                        .profilePicUrl(mediaStorage.toPublicUrl(seller.getProfilePic()))
+                        .profilePicUrl(resolveMediaUrl(mediaStorage, seller.getProfilePic()))
                         .build())
                 .business(BusinessSection.builder()
                         .businessCategory(seller.getSellerCategory() != null
@@ -188,7 +188,7 @@ public class SellerProfileResponse {
                         .build())
                 .documents(DocumentsSection.builder()
                         .files(files)
-                        .liveSelfieUrl(mediaStorage.toPublicUrl(seller.getLiveSelfie()))
+                        .liveSelfieUrl(resolveMediaUrl(mediaStorage, seller.getLiveSelfie()))
                         .build())
                 .steps(ProfileSteps.builder()
                         .personal(personalDone)
@@ -202,8 +202,16 @@ public class SellerProfileResponse {
 
     private static void putFile(Map<String, String> files, String key, String fileName, MediaStorageService media) {
         if (fileName != null && !fileName.isBlank()) {
-            files.put(key, media.toPublicUrl(fileName));
+            files.put(key, resolveMediaUrl(media, fileName));
         }
+    }
+
+    private static String resolveMediaUrl(MediaStorageService media, String stored) {
+        String absolute = media.toAbsolutePublicUrl(stored);
+        if (absolute != null && !absolute.isBlank()) {
+            return absolute;
+        }
+        return media.toPublicUrl(stored);
     }
 
     private static String joinName(String first, String last) {
