@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Builds seller email-verification links from admin (resend).
- * Uses {@code https://flintnthread.in} so links match the live TLS certificate SANs.
+ * Uses {@code https://seller.flintnthread.in} for the seller app so links match the live host.
  */
 @Component
 public class SellerEmailVerificationUrlHelper {
@@ -16,7 +16,7 @@ public class SellerEmailVerificationUrlHelper {
     @Value("${app.seller.backend.public-url:${APP_BACKEND_PUBLIC_URL:https://flintnthread.in}}")
     private String sellerBackendPublicUrl;
 
-    @Value("${app.seller.frontend.base-url:${APP_FRONTEND_BASE_URL:https://flintnthread.in/Seller}}")
+    @Value("${app.seller.frontend.base-url:${APP_FRONTEND_BASE_URL:https://seller.flintnthread.in}}")
     private String sellerFrontendBaseUrl;
 
     @Value("${app.seller.frontend.email-verify-redirect-url:}")
@@ -60,6 +60,9 @@ public class SellerEmailVerificationUrlHelper {
         u = replaceHost(u, "http://seller.flintnthread.online", "https://seller.flintnthread.in");
         u = replaceHost(u, "http://admin.flintnthread.online", "https://admin.flintnthread.in");
         u = replaceHost(u, "http://flintnthread.online", "https://flintnthread.in");
+        // Legacy path-based seller app → dedicated seller subdomain.
+        u = replaceHost(u, "https://flintnthread.in/Seller", "https://seller.flintnthread.in");
+        u = replaceHost(u, "http://flintnthread.in/Seller", "https://seller.flintnthread.in");
         return u;
     }
 

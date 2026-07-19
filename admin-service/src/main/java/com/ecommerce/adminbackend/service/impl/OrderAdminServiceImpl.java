@@ -2,6 +2,7 @@ package com.ecommerce.adminbackend.service.impl;
 
 import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.config.InvoiceSettings;
+import com.ecommerce.adminbackend.entity.Color;
 import com.ecommerce.adminbackend.entity.Order;
 import com.ecommerce.adminbackend.entity.OrderItem;
 import com.ecommerce.adminbackend.entity.OrderStatusHistory;
@@ -9,6 +10,8 @@ import com.ecommerce.adminbackend.entity.Product;
 import com.ecommerce.adminbackend.entity.ProductImage;
 import com.ecommerce.adminbackend.entity.ProductVariant;
 import com.ecommerce.adminbackend.entity.Seller;
+import com.ecommerce.adminbackend.entity.Size;
+import com.ecommerce.adminbackend.repository.ColorRepository;
 import com.ecommerce.adminbackend.repository.OrderItemRepository;
 import com.ecommerce.adminbackend.repository.OrderRepository;
 import com.ecommerce.adminbackend.repository.OrderStatusHistoryRepository;
@@ -16,6 +19,7 @@ import com.ecommerce.adminbackend.repository.ProductImageRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
+import com.ecommerce.adminbackend.repository.SizeRepository;
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.OrderAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
@@ -40,11 +44,13 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -63,6 +69,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private final ProductImageRepository productImageRepository;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final ColorRepository colorRepository;
+    private final SizeRepository sizeRepository;
     private final SellerRepository sellerRepository;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final MediaUrlHelper mediaUrlHelper;
@@ -211,12 +219,23 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         Map<Long, Product> productsById = resolveProducts(items, productIdByVariantId);
         Map<Long, Seller> sellersById = resolveSellers(items);
         Map<Long, ProductVariant> variantsById = resolveVariants(items);
+        Map<Long, Color> colorById = resolveColors(items, variantsById);
+        Map<Long, Size> sizeById = resolveSizes(items, variantsById);
         List<OrderStatusHistory> statusHistory = orderStatusHistoryRepository.findByOrderIdOrderByCreatedAtAsc(id);
 
         Map<String, Object> detail = toOrderDetail(order);
         detail.put("customerId", resolveCustomerAnchorId(order));
         detail.put("items", items.stream().map(item ->
-                toItem(item, productImageById, productNameById, productIdByVariantId, productsById, sellersById, variantsById)).toList());
+                toItem(
+                        item,
+                        productImageById,
+                        productNameById,
+                        productIdByVariantId,
+                        productsById,
+                        sellersById,
+                        variantsById,
+                        colorById,
+                        sizeById)).toList());
         detail.put("statusHistory", statusHistory.stream().map(this::toStatusHistoryRow).toList());
         detail.put("sellers", buildSellerPreviews(items, sellersById));
         List<Map<String, Object>> sellerGroups = buildInvoiceSellerGroups(
@@ -567,19 +586,24 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             Map<Long, Long> productIdByVariantId,
             Map<Long, Product> productsById,
             Map<Long, Seller> sellersById,
-            Map<Long, ProductVariant> variantsById) {
+            Map<Long, ProductVariant> variantsById,
+            Map<Long, Color> colorById,
+            Map<Long, Size> sizeById) {
         Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
         Product product = resolvedProductId != null ? productsById.get(resolvedProductId) : null;
         Seller seller = item.getSellerId() != null ? sellersById.get(item.getSellerId()) : null;
         ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
+        String color = resolveItemColor(item, variant, colorById);
+        String size = resolveItemSize(item, variant, sizeById);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", item.getId());
         row.put("productId", resolvedProductId);
         row.put("variantId", item.getVariantId());
         row.put("productName", resolveItemProductName(item, productNameById, productIdByVariantId));
         row.put("sku", resolveItemSku(item, product, variant));
-        row.put("color", item.getColor());
-        row.put("size", item.getSize());
+        row.put("color", color);
+        row.put("size", size);
+        row.put("variant", buildVariantLabel(color, size));
         row.put("quantity", item.getQuantity());
         row.put("price", item.getPrice());
         row.put("total", item.getTotal());
@@ -587,6 +611,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         row.put("sellerId", item.getSellerId());
         row.put("sellerName", resolveItemSellerName(item, seller));
         row.put("imageUrl", resolveItemImageUrl(item, productImageById, productIdByVariantId));
+        row.put("hsnCode", resolveItemHsn(item, product));
         return row;
     }
 
@@ -697,12 +722,16 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             Map<Long, Product> productsById,
             Map<Long, Seller> sellersById,
             Map<Long, ProductVariant> variantsById) {
+        Map<Long, Color> colorById = resolveColors(items, variantsById);
+        Map<Long, Size> sizeById = resolveSizes(items, variantsById);
         List<Map<String, Object>> products = new ArrayList<>();
         for (OrderItem item : items) {
             Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
             Product product = resolvedProductId != null ? productsById.get(resolvedProductId) : null;
             Seller seller = item.getSellerId() != null ? sellersById.get(item.getSellerId()) : null;
             ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
+            String color = resolveItemColor(item, variant, colorById);
+            String size = resolveItemSize(item, variant, sizeById);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", item.getId());
             row.put("productId", resolvedProductId);
@@ -715,9 +744,10 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             row.put("price", item.getPrice());
             row.put("quantity", item.getQuantity());
             row.put("qty", item.getQuantity());
-            row.put("hsnCode", item.getHsnCode());
-            row.put("color", item.getColor());
-            row.put("size", item.getSize());
+            row.put("hsnCode", resolveItemHsn(item, product));
+            row.put("color", color);
+            row.put("size", size);
+            row.put("variant", buildVariantLabel(color, size));
             row.put("sku", resolveItemSku(item, product, variant));
             products.add(row);
         }
@@ -876,6 +906,122 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         return "";
     }
 
+    private String resolveItemHsn(OrderItem item, Product product) {
+        if (!isBlank(item.getHsnCode())) {
+            return item.getHsnCode().trim();
+        }
+        if (product != null && !isBlank(product.getHsnCode())) {
+            return product.getHsnCode().trim();
+        }
+        return "";
+    }
+
+    private String resolveItemColor(OrderItem item, ProductVariant variant, Map<Long, Color> colorById) {
+        String raw = firstNonBlank(item.getColor(), variant != null ? variant.getColor() : null);
+        return resolveColorName(raw, colorById);
+    }
+
+    private String resolveItemSize(OrderItem item, ProductVariant variant, Map<Long, Size> sizeById) {
+        String raw = firstNonBlank(item.getSize(), variant != null ? variant.getSize() : null);
+        return resolveSizeName(raw, sizeById);
+    }
+
+    private String resolveColorName(String raw, Map<Long, Color> colorById) {
+        return parseCatalogId(raw)
+                .map(colorById::get)
+                .map(Color::getColorName)
+                .filter(name -> !isBlank(name))
+                .orElseGet(() -> isBlank(raw) ? "" : raw.trim());
+    }
+
+    private String resolveSizeName(String raw, Map<Long, Size> sizeById) {
+        return parseCatalogId(raw)
+                .map(sizeById::get)
+                .map(Size::getSizeName)
+                .filter(name -> !isBlank(name))
+                .orElseGet(() -> isBlank(raw) ? "" : raw.trim());
+    }
+
+    private String buildVariantLabel(String color, String size) {
+        boolean hasColor = !isBlank(color);
+        boolean hasSize = !isBlank(size);
+        if (hasColor && hasSize) {
+            return color.trim() + " / " + size.trim();
+        }
+        if (hasColor) {
+            return color.trim();
+        }
+        if (hasSize) {
+            return size.trim();
+        }
+        return "";
+    }
+
+    private Map<Long, Color> resolveColors(List<OrderItem> items, Map<Long, ProductVariant> variantsById) {
+        Set<Long> ids = new HashSet<>();
+        for (OrderItem item : items) {
+            collectCatalogId(item.getColor(), ids);
+            ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
+            if (variant != null) {
+                collectCatalogId(variant.getColor(), ids);
+            }
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Color> byId = new HashMap<>();
+        for (Color color : colorRepository.findAllById(ids)) {
+            byId.put(color.getId(), color);
+        }
+        return byId;
+    }
+
+    private Map<Long, Size> resolveSizes(List<OrderItem> items, Map<Long, ProductVariant> variantsById) {
+        Set<Long> ids = new HashSet<>();
+        for (OrderItem item : items) {
+            collectCatalogId(item.getSize(), ids);
+            ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
+            if (variant != null) {
+                collectCatalogId(variant.getSize(), ids);
+            }
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Size> byId = new HashMap<>();
+        for (Size size : sizeRepository.findAllById(ids)) {
+            byId.put(size.getId(), size);
+        }
+        return byId;
+    }
+
+    private void collectCatalogId(String raw, Set<Long> ids) {
+        parseCatalogId(raw).ifPresent(ids::add);
+    }
+
+    private Optional<Long> parseCatalogId(String raw) {
+        if (isBlank(raw)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Long.parseLong(raw.trim()));
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
     private String resolveItemSellerName(OrderItem item, Seller seller) {
         if (seller != null) {
             String businessName = seller.getBusinessName();
@@ -904,6 +1050,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             Map<Long, String> productNameById,
             Map<Long, Long> productIdByVariantId,
             Map<Long, ProductVariant> variantsById) {
+        Map<Long, Color> colorById = resolveColors(items, variantsById);
+        Map<Long, Size> sizeById = resolveSizes(items, variantsById);
         Map<String, Map<String, Object>> groups = new LinkedHashMap<>();
 
         for (OrderItem item : items) {
@@ -922,7 +1070,14 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             List<Map<String, Object>> products =
                     (List<Map<String, Object>>) groups.get(sellerKey).get("products");
             products.add(buildInvoiceLineItem(
-                    item, productsById, productImageById, productNameById, productIdByVariantId, variantsById));
+                    item,
+                    productsById,
+                    productImageById,
+                    productNameById,
+                    productIdByVariantId,
+                    variantsById,
+                    colorById,
+                    sizeById));
         }
 
         return new ArrayList<>(groups.values());
@@ -964,7 +1119,9 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             Map<Long, String> productImageById,
             Map<Long, String> productNameById,
             Map<Long, Long> productIdByVariantId,
-            Map<Long, ProductVariant> variantsById) {
+            Map<Long, ProductVariant> variantsById,
+            Map<Long, Color> colorById,
+            Map<Long, Size> sizeById) {
         Long resolvedProductId = resolveEffectiveProductId(item, productIdByVariantId);
         Product product = resolvedProductId != null ? productsById.get(resolvedProductId) : null;
         ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
@@ -976,6 +1133,8 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                 .multiply(taxPercent)
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         BigDecimal lineTotal = lineSubtotal.add(taxAmount);
+        String color = resolveItemColor(item, variant, colorById);
+        String size = resolveItemSize(item, variant, sizeById);
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", item.getId());
@@ -984,11 +1143,10 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         row.put("name", resolveItemProductName(item, productNameById, productIdByVariantId));
         row.put("imageUrl", resolveItemImageUrl(item, productImageById, productIdByVariantId));
         row.put("sku", resolveItemSku(item, product, variant));
-        row.put("hsnCode", !isBlank(item.getHsnCode())
-                ? item.getHsnCode()
-                : (product != null ? nullSafe(product.getHsnCode()) : ""));
-        row.put("color", nullSafe(item.getColor()));
-        row.put("size", nullSafe(item.getSize()));
+        row.put("hsnCode", resolveItemHsn(item, product));
+        row.put("color", color);
+        row.put("size", size);
+        row.put("variant", buildVariantLabel(color, size));
         row.put("qty", qty);
         row.put("unitPrice", unitPrice);
         row.put("taxPercent", taxPercent);

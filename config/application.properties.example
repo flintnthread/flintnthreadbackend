@@ -51,7 +51,7 @@ GST_LOOKUP_API_KEY=IPgE6ihOQuaMYxsmVgst1xGGA4K2
 MEDIA_PUBLIC_BASE_URL=https://flintnthread.com
 # Public URLs in emails and redirects (use your live shop domain)
 APP_BACKEND_PUBLIC_URL=https://flintnthread.in
-APP_FRONTEND_BASE_URL=https://flintnthread.in/Seller
+APP_FRONTEND_BASE_URL=https://seller.flintnthread.in
 ADMIN_FRONTEND_URL=https://flintnthread.in
 # Legacy product uploads on disk (must match seller-service prod paths)
 UPLOAD_PRODUCTS_DIR=/var/flintnthread/uploads/products
