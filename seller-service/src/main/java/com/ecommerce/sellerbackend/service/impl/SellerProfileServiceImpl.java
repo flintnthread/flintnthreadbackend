@@ -322,7 +322,8 @@ public class SellerProfileServiceImpl implements SellerProfileService {
         }
 
         GstVerifyResponse response = gstVerificationService.verify(gst, sellerId);
-        if (!response.isVerified()) {
+        // Never persist a GSTIN that belongs to another seller, even if portal details loaded.
+        if (!response.isVerified() || response.isAlreadyExists()) {
             return response;
         }
 
