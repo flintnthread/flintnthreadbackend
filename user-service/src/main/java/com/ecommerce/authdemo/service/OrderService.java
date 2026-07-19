@@ -35,6 +35,9 @@ public interface OrderService {
 
     Order markOrderAsPaid(String razorpayOrderId, String paymentId);
 
+    /** Mark unpaid online order as payment_failed after Razorpay cancel/fail. */
+    Order markOrderPaymentFailed(String razorpayOrderId);
+
     /** Retry Shiprocket create for a paid/COD order that was not linked yet. */
     ShiprocketShipmentResult pushOrderToShiprocket(Long orderId);
 

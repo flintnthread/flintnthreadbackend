@@ -43,5 +43,12 @@ public class EmailLinkConfigLogger {
                             + "APP_FRONTEND_BASE_URL (or SPRING_PROFILES_ACTIVE=prod)."
             );
         }
+        if (lower.contains("flintnthread.online")) {
+            log.error(
+                    "Email verification links still use flintnthread.online (TLS cert is flintnthread.in only). "
+                            + "Browsers show NET::ERR_CERT_COMMON_NAME_INVALID. "
+                            + "Set APP_BACKEND_PUBLIC_URL=https://flintnthread.in"
+            );
+        }
     }
 }

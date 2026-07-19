@@ -181,6 +181,31 @@ public class PaymentController {
     }
 
     /**
+     * Mark an unpaid online order as payment failed after Razorpay cancel/dismiss/error.
+     */
+    @PostMapping("/mark-failed")
+    public ResponseEntity<?> markPaymentFailed(@RequestParam String orderId) {
+        logger.info("[PAYMENT] mark-failed START razorpayOrderId={}", orderId);
+        Map<String, Object> response = new HashMap<>();
+        try {
+            Order order = orderService.markOrderPaymentFailed(orderId);
+            response.put("success", true);
+            response.put("message", "Payment marked as failed");
+            response.put("orderId", order.getId());
+            response.put("order_number", order.getOrderNumber());
+            response.put("paymentStatus", order.getPaymentStatus());
+            response.put("orderStatus", order.getOrderStatus());
+            logger.info("[PAYMENT] mark-failed DONE orderNumber={}", order.getOrderNumber());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("[PAYMENT] mark-failed FAILED razorpayOrderId={}", orderId, e);
+            response.put("success", false);
+            response.put("message", e.getMessage() != null ? e.getMessage() : "Could not mark payment failed");
+            return ResponseEntity.ok(response);
+        }
+    }
+
+    /**
      * Confirm payment when UPI/QR succeeded on phone but browser never received Razorpay handler callback.
      * Server checks Razorpay order status directly.
      */

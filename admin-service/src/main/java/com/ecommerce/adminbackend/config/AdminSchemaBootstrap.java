@@ -19,6 +19,7 @@ public class AdminSchemaBootstrap implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         ensureSellerPayoutRequestsTable();
+        ensureSellerSupportTables();
     }
 
     private void ensureSellerPayoutRequestsTable() {
@@ -47,6 +48,46 @@ public class AdminSchemaBootstrap implements ApplicationRunner {
             log.info("seller_payout_requests table is ready");
         } catch (Exception ex) {
             log.warn("Could not ensure seller_payout_requests table: {}", ex.getMessage());
+        }
+    }
+
+    private void ensureSellerSupportTables() {
+        try {
+            jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS seller_support_tickets (
+                    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    ticket_number VARCHAR(64) NOT NULL,
+                    seller_id BIGINT NOT NULL,
+                    subject VARCHAR(500) NOT NULL,
+                    category VARCHAR(64) NOT NULL,
+                    priority VARCHAR(32) NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'open',
+                    assigned_to BIGINT NULL,
+                    last_response_by VARCHAR(32) NULL,
+                    last_response_at DATETIME NULL,
+                    closed_at DATETIME NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_seller_support_ticket_number (ticket_number),
+                    INDEX idx_seller_support_tickets_seller (seller_id),
+                    INDEX idx_seller_support_tickets_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+            jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS seller_support_messages (
+                    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    ticket_id BIGINT NOT NULL,
+                    sender_type VARCHAR(20) NOT NULL,
+                    sender_id BIGINT NULL,
+                    message TEXT NOT NULL,
+                    attachment VARCHAR(512) NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_seller_support_messages_ticket (ticket_id, created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """);
+            log.info("seller_support_tickets / seller_support_messages tables are ready");
+        } catch (Exception ex) {
+            log.warn("Could not ensure seller support ticket tables: {}", ex.getMessage());
         }
     }
 }

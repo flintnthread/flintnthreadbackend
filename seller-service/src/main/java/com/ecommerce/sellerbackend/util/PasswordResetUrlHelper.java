@@ -9,20 +9,24 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class PasswordResetUrlHelper {
 
-    @Value("${app.backend.public-url:https://flintnthread.online}")
+    @Value("${app.backend.public-url:https://flintnthread.in}")
     private String backendPublicUrl;
 
-    @Value("${app.frontend.base-url:https://flintnthread.online/Seller}")
+    @Value("${app.frontend.base-url:https://flintnthread.in/Seller}")
     private String frontendBaseUrl;
 
     @Value("${app.frontend.password-reset-redirect-url:}")
     private String passwordResetRedirectUrl;
 
     /**
-     * Link placed in the password reset email. Opens the seller app reset-password page.
+     * Link placed in the password reset email. Hits seller-service
+     * ({@code /api/auth/reset-password}) like email verification, so the hop
+     * works on any phone/PC without needing Expo local server.
      */
     public String buildEmailLinkClickUrl(String resetToken) {
-        return buildResetPageRedirect(resetToken);
+        return trimTrailingSlash(SslSafePublicUrl.normalize(backendPublicUrl))
+                + "/api/auth/reset-password?token="
+                + URLEncoder.encode(resetToken, StandardCharsets.UTF_8);
     }
 
     public String buildResetPageRedirect(String token) {
@@ -37,9 +41,9 @@ public class PasswordResetUrlHelper {
 
     private String resolveResetPageBaseUrl() {
         if (passwordResetRedirectUrl != null && !passwordResetRedirectUrl.isBlank()) {
-            return passwordResetRedirectUrl.trim();
+            return SslSafePublicUrl.normalize(passwordResetRedirectUrl.trim());
         }
-        return trimTrailingSlash(frontendBaseUrl) + "/resetpassword";
+        return trimTrailingSlash(SslSafePublicUrl.normalize(frontendBaseUrl)) + "/resetpassword";
     }
 
     private String trimTrailingSlash(String url) {
