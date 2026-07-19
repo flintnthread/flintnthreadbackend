@@ -1,9 +1,11 @@
 package com.ecommerce.authdemo.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AddressRequest {
     @Size(max = 100, message = "Name must not exceed 100 characters")
     private String name;
@@ -42,6 +44,9 @@ public class AddressRequest {
     @NotBlank(message = "Address type is required")
     @Pattern(regexp = "^(home|work|other|current)$",message = "Address type must be home, work, or other")
     private String addressType;
+
+    @Size(max = 100, message = "Label must not exceed 100 characters")
+    private String label;
 
     private Boolean isDefault;
 

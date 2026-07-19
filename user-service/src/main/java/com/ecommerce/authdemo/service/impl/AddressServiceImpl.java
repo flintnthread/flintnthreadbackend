@@ -126,6 +126,7 @@ Address address = Address.builder()
                 .country(request.getCountry() != null ? request.getCountry() : "India")
                 .pincode(request.getPincode())
                 .addressType(request.getAddressType() != null ? request.getAddressType() : "home")
+                .label(resolveLabel(request.getAddressType(), request.getLabel()))
                 .isDefault(isFirst || Boolean.TRUE.equals(request.getIsDefault()))
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
@@ -154,6 +155,11 @@ Address address = Address.builder()
         }
         if (!isBlank(request.getName()) && isBlank(existing.getName())) {
             existing.setName(request.getName().trim());
+            dirty = true;
+        }
+        String reusedLabel = resolveLabel(request.getAddressType(), request.getLabel());
+        if (reusedLabel != null && !reusedLabel.equals(existing.getLabel())) {
+            existing.setLabel(reusedLabel);
             dirty = true;
         }
 
@@ -204,6 +210,22 @@ Address address = Address.builder()
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    /** Keep a custom label only for "other" addresses; clear it for home/work. */
+    private static String resolveLabel(String addressType, String label) {
+        String type = addressType != null ? addressType.trim().toLowerCase() : "";
+        if (!"other".equals(type)) {
+            return null;
+        }
+        if (label == null) {
+            return null;
+        }
+        String trimmed = label.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
     }
 
     private static String normalizePincode(String value) {
@@ -349,6 +371,7 @@ address.setPhone(phone);
         address.setPincode(pincode);
 
         address.setAddressType(request.getAddressType());
+        address.setLabel(resolveLabel(request.getAddressType(), request.getLabel()));
 
         if (request.getIsDefault() != null) {
             address.setIsDefault(request.getIsDefault());
