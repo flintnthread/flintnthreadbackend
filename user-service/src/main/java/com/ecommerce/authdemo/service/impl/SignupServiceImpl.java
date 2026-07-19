@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,7 +50,6 @@ public class SignupServiceImpl implements SignupService {
 
     private static final Logger log = LoggerFactory.getLogger(SignupServiceImpl.class);
 
-    private static final String OTP_AUTH_PASSWORD_PLACEHOLDER = "OTP_AUTH_NOT_SET";
     private static final String MOBILE_REGEX = "^[6-9]\\d{9}$";
     private static final String EMAIL_OTP_PREFIX = "signup-email:";
     private static final String PHONE_OTP_PREFIX = "signup-phone:";
@@ -62,6 +62,7 @@ public class SignupServiceImpl implements SignupService {
     private final EmailService emailService;
     private final ReferralService referralService;
     private final WalletService walletService;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
@@ -121,7 +122,7 @@ public class SignupServiceImpl implements SignupService {
         result.put("message", "Email verified successfully");
         result.put("email", email);
         result.put("emailVerifiedToken", emailVerifiedToken);
-        result.put("nextStep", "ADD_PHONE");
+        result.put("nextStep", "VERIFY_PHONE");
         return result;
     }
 
@@ -182,18 +183,26 @@ public class SignupServiceImpl implements SignupService {
     @Override
     @Transactional
     public AuthResponseDTO completeSignup(SignupCompleteDTO dto) {
-        String username = normalizeUsername(dto.getUsername());
+        String firstName = normalizeName(dto.getFirstName());
+        String lastName = normalizeName(dto.getLastName());
         String email = normalizeEmail(dto.getEmail());
         String mobile = normalizeMobile(dto.getMobile());
+        String password = dto.getPassword() == null ? "" : dto.getPassword();
 
-        if (username == null) {
-            throw new SignupException("Username is required", "USERNAME_REQUIRED");
+        if (firstName == null) {
+            throw new SignupException("First name is required", "FIRST_NAME_REQUIRED");
+        }
+        if (lastName == null) {
+            throw new SignupException("Last name is required", "LAST_NAME_REQUIRED");
         }
         if (email == null) {
             throw new SignupException("Email is required", "EMAIL_REQUIRED");
         }
         if (mobile == null || !mobile.matches(MOBILE_REGEX)) {
             throw new InvalidMobileException("Invalid mobile number");
+        }
+        if (password.length() < 6) {
+            throw new SignupException("Password must be at least 6 characters", "WEAK_PASSWORD");
         }
         if (!jwtUtil.isValidSignupEmailToken(dto.getEmailVerifiedToken(), email)) {
             throw new SignupException(
@@ -213,11 +222,13 @@ public class SignupServiceImpl implements SignupService {
                     "This mobile number is already linked to another account.",
                     "PHONE_EXISTS");
         }
+
+        String displayName = (firstName + " " + lastName).trim();
+        String username = displayName;
+        // Ensure username uniqueness for DB constraint
         if (userRepository.existsByUsername(username)
                 || userRepository.findByUsername(username).isPresent()) {
-            throw new SignupException(
-                    "This username is already taken. Please choose another.",
-                    "USERNAME_EXISTS");
+            username = displayName + " " + mobile.substring(mobile.length() - 4);
         }
 
         otpRepository.deleteByIdentifier(PHONE_OTP_PREFIX + mobile);
@@ -228,7 +239,7 @@ public class SignupServiceImpl implements SignupService {
         user.setUsername(username);
         user.setEmail(email);
         user.setContactNumber(mobile);
-        user.setPassword(OTP_AUTH_PASSWORD_PLACEHOLDER);
+        user.setPassword(passwordEncoder.encode(password));
         user.setVerified(true);
         user.setRole(Role.USER);
 
@@ -257,7 +268,7 @@ public class SignupServiceImpl implements SignupService {
         }
 
         try {
-            emailService.sendWelcomeEmail(email, username, username,
+            emailService.sendWelcomeEmail(email, displayName, username,
                     saved.getReferralCode() != null ? saved.getReferralCode() : "");
         } catch (Exception e) {
             log.warn("Welcome email failed for {}: {}", email, e.getMessage());
@@ -271,7 +282,7 @@ public class SignupServiceImpl implements SignupService {
                 .userId(saved.getId())
                 .email(email)
                 .contactNumber(mobile)
-                .displayName(username)
+                .displayName(displayName)
                 .build();
     }
 
@@ -319,6 +330,13 @@ public class SignupServiceImpl implements SignupService {
         }
     }
 
+    private static String normalizeName(String name) {
+        if (name == null) return null;
+        String trimmed = name.trim().replaceAll("\\s+", " ");
+        if (trimmed.isEmpty()) return null;
+        return trimmed;
+    }
+
     private static String normalizeEmail(String email) {
         if (email == null || email.trim().isEmpty()) return null;
         return email.trim().toLowerCase();
@@ -327,13 +345,6 @@ public class SignupServiceImpl implements SignupService {
     private static String normalizeMobile(String mobile) {
         if (mobile == null || mobile.trim().isEmpty()) return null;
         return mobile.trim();
-    }
-
-    private static String normalizeUsername(String username) {
-        if (username == null) return null;
-        String trimmed = username.trim().replaceAll("\\s+", " ");
-        if (trimmed.length() < 2) return null;
-        return trimmed;
     }
 
     private static String maskPhone(String phone) {

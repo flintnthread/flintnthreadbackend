@@ -9,9 +9,13 @@ import lombok.Data;
 @Data
 public class SignupCompleteDTO {
 
-    @NotBlank(message = "Username is required")
-    @Size(min = 2, max = 40, message = "Username must be 2–40 characters")
-    private String username;
+    @NotBlank(message = "First name is required")
+    @Size(min = 1, max = 40, message = "First name must be 1–40 characters")
+    private String firstName;
+
+    @NotBlank(message = "Last name is required")
+    @Size(min = 1, max = 40, message = "Last name must be 1–40 characters")
+    private String lastName;
 
     @NotBlank(message = "Email is required")
     @Email(message = "Invalid email format")
@@ -21,8 +25,15 @@ public class SignupCompleteDTO {
     @Pattern(regexp = "^[6-9]\\d{9}$", message = "Mobile number must be a valid 10-digit Indian number")
     private String mobile;
 
+    @NotBlank(message = "Password is required")
+    @Size(min = 6, max = 72, message = "Password must be at least 6 characters")
+    private String password;
+
     @NotBlank(message = "Email verification token is required")
     private String emailVerifiedToken;
+
+    /** Optional when phone was verified with a separate phoneVerifiedToken. */
+    private String phoneVerifiedToken;
 
     @NotBlank(message = "OTP is required")
     @Pattern(regexp = "^\\d{6}$", message = "OTP must be 6 digits")
