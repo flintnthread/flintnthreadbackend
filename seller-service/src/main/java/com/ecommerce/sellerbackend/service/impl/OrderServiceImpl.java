@@ -19,6 +19,10 @@ import com.ecommerce.sellerbackend.dto.order.SellerPaymentDto;
 import com.ecommerce.sellerbackend.dto.order.SellerPricingDto;
 import com.ecommerce.sellerbackend.entity.Order;
 import com.ecommerce.sellerbackend.entity.Product;
+import com.ecommerce.sellerbackend.entity.ProductImage;
+import com.ecommerce.sellerbackend.entity.ProductVariant;
+import com.ecommerce.sellerbackend.entity.Color;
+import com.ecommerce.sellerbackend.entity.Size;
 import com.ecommerce.sellerbackend.entity.OrderEmailLog;
 import com.ecommerce.sellerbackend.entity.OrderExchange;
 import com.ecommerce.sellerbackend.entity.OrderGst;
@@ -29,7 +33,11 @@ import com.ecommerce.sellerbackend.entity.OrderReplacement;
 import com.ecommerce.sellerbackend.entity.OrderReturn;
 import com.ecommerce.sellerbackend.entity.OrderStatusHistory;
 import com.ecommerce.sellerbackend.exception.ResourceNotFoundException;
+import com.ecommerce.sellerbackend.repository.ColorRepository;
 import com.ecommerce.sellerbackend.repository.ProductRepository;
+import com.ecommerce.sellerbackend.repository.ProductImageRepository;
+import com.ecommerce.sellerbackend.repository.ProductVariantRepository;
+import com.ecommerce.sellerbackend.repository.SizeRepository;
 import com.ecommerce.sellerbackend.repository.OrderEmailLogRepository;
 import com.ecommerce.sellerbackend.repository.OrderExchangeRepository;
 import com.ecommerce.sellerbackend.repository.OrderGstRepository;
@@ -56,11 +64,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,6 +88,10 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
+    private final ProductImageRepository productImageRepository;
+    private final ColorRepository colorRepository;
+    private final SizeRepository sizeRepository;
     private final OrderRepository orderRepository;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final OrderEmailLogRepository orderEmailLogRepository;
@@ -91,14 +107,22 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public List<SellerOrderSummaryDto> listForSeller(Long sellerId) {
-        Map<Long, List<OrderItem>> grouped = groupItemsByOrder(orderItemRepository.findBySellerIdOrderByCreatedAtDesc(sellerId));
+        List<OrderItem> allItems = orderItemRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
+        LineCatalog catalog = loadLineCatalog(allItems);
+        Map<Integer, String> resolvedNamesByItemId = loadResolvedNamesByItemIds(allItems);
+        Map<Long, List<OrderItem>> grouped = groupItemsByOrder(allItems);
         Map<Long, Order> orders = loadOrders(grouped.keySet());
 
         return grouped.entrySet().stream()
                 .sorted(Comparator.comparing(
                         (Map.Entry<Long, List<OrderItem>> e) -> latestItemTime(e.getValue()),
                         Comparator.reverseOrder()))
-                .map(entry -> toSummary(entry.getKey(), entry.getValue(), orders.get(entry.getKey())))
+                .map(entry -> toSummary(
+                        entry.getKey(),
+                        entry.getValue(),
+                        orders.get(entry.getKey()),
+                        catalog,
+                        resolvedNamesByItemId))
                 .toList();
     }
 
@@ -106,6 +130,7 @@ public class OrderServiceImpl implements OrderService {
     public List<SellerOrderDetailDto> listDetailsForSeller(Long sellerId) {
         List<OrderItem> allItems = orderItemRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
         Map<Integer, String> resolvedNamesByItemId = loadResolvedNamesByItemIds(allItems);
+        LineCatalog catalog = loadLineCatalog(allItems);
         Map<Long, List<OrderItem>> grouped = groupItemsByOrder(allItems);
         Map<Long, Order> orders = loadOrders(grouped.keySet());
 
@@ -116,7 +141,8 @@ public class OrderServiceImpl implements OrderService {
                 .map(entry -> toDetail(
                         resolveOrder(entry.getKey(), entry.getValue()),
                         entry.getValue(),
-                        resolvedNamesByItemId))
+                        resolvedNamesByItemId,
+                        catalog))
                 .toList();
     }
 
@@ -298,7 +324,12 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found for this seller."));
     }
 
-    private SellerOrderSummaryDto toSummary(Long orderId, List<OrderItem> items, Order order) {
+    private SellerOrderSummaryDto toSummary(
+            Long orderId,
+            List<OrderItem> items,
+            Order order,
+            LineCatalog catalog,
+            Map<Integer, String> resolvedNamesByItemId) {
         Order resolved = order != null ? order : buildSyntheticOrder(orderId, items);
         OrderItem first = items.get(0);
         int totalQty = items.stream().mapToInt(i -> i.getQuantity() != null ? i.getQuantity() : 0).sum();
@@ -306,14 +337,17 @@ public class OrderServiceImpl implements OrderService {
         String displayId = displayOrderId(resolved, orderId);
         List<OrderStatusHistory> statusHistory = loadStatusHistory(orderId);
         String uiStatus = toUiStatus(resolveRawStatus(resolved, items, statusHistory));
-        String productLabel = buildProductLabel(items, loadProductNames(items), loadResolvedNamesByItemIds(items));
+        Map<Long, String> productNames = loadProductNames(items);
+        String productLabel = buildProductLabel(items, productNames, resolvedNamesByItemId);
+        String color = resolveLineColor(first, catalog);
+        String size = resolveLineSize(first, catalog);
 
         return SellerOrderSummaryDto.builder()
                 .id(displayId)
                 .orderId(orderId)
                 .date(formatDateTime(resolved.getCreatedAt() != null ? resolved.getCreatedAt() : first.getCreatedAt()))
                 .product(productLabel)
-                .variant(buildVariant(first))
+                .variant(buildVariantLabel(color, size))
                 .qty(totalQty)
                 .price(formatInr(totals.total()))
                 .priceAmount(totals.total())
@@ -325,7 +359,7 @@ public class OrderServiceImpl implements OrderService {
                 .customer(resolved.getShippingName() != null && !resolved.getShippingName().isBlank()
                         ? resolved.getShippingName()
                         : "Customer")
-                .image(resolveImageUrl(first.getProductImagePath()))
+                .image(resolveLineImage(first, catalog))
                 .extra(buildExtraNote(resolved))
                 .build();
     }
@@ -343,13 +377,14 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private SellerOrderDetailDto toDetail(Order order, List<OrderItem> items) {
-        return toDetail(order, items, loadResolvedNamesByItemIds(items));
+        return toDetail(order, items, loadResolvedNamesByItemIds(items), loadLineCatalog(items));
     }
 
     private SellerOrderDetailDto toDetail(
             Order order,
             List<OrderItem> items,
-            Map<Integer, String> resolvedNamesByItemId) {
+            Map<Integer, String> resolvedNamesByItemId,
+            LineCatalog catalog) {
         items = items.stream()
                 .sorted(Comparator.comparing(OrderItem::getId, Comparator.nullsLast(Integer::compareTo)))
                 .toList();
@@ -375,7 +410,8 @@ public class OrderServiceImpl implements OrderService {
                         customByItem.getOrDefault(item.getId(), List.of()),
                         productNames,
                         resolvedNamesByItemId,
-                        rawStatus))
+                        rawStatus,
+                        catalog))
                 .toList();
 
         List<OrderEmailLogDto> emailLogs = loadEmailLogs(order.getId());
@@ -647,7 +683,8 @@ public class OrderServiceImpl implements OrderService {
             List<OrderItemCustomDetail> customDetails,
             Map<Long, String> productNames,
             Map<Integer, String> resolvedNamesByItemId,
-            String orderRawStatus) {
+            String orderRawStatus,
+            LineCatalog catalog) {
         BigDecimal amount = lineAmount(item);
         BigDecimal subtotal = lineSubtotal(item);
         String effectiveStatus = isCancelledStatus(orderRawStatus)
@@ -655,20 +692,24 @@ public class OrderServiceImpl implements OrderService {
                 : (item.getStatus() != null && !item.getStatus().isBlank()
                         ? item.getStatus()
                         : orderRawStatus);
+        String color = resolveLineColor(item, catalog);
+        String size = resolveLineSize(item, catalog);
+        String sku = resolveLineSku(item, catalog);
+        String hsn = resolveLineHsn(item, catalog);
         return SellerOrderLineDto.builder()
                 .lineItemId(item.getId())
                 .productId(item.getProductId())
                 .variantId(item.getVariantId())
                 .sellerId(item.getSellerId())
                 .name(resolveLineName(item, productNames, resolvedNamesByItemId))
-                .variant(buildVariant(item))
-                .sku(item.getSku() != null ? item.getSku() : "")
+                .variant(buildVariantLabel(color, size))
+                .sku(sku)
                 .qty(item.getQuantity() != null ? item.getQuantity() : 0)
                 .price(formatInr(amount))
                 .priceAmount(amount)
                 .subtotalAmount(subtotal)
-                .image(resolveImageUrl(item.getProductImagePath()))
-                .hsnCode(item.getHsnCode())
+                .image(resolveLineImage(item, catalog))
+                .hsnCode(hsn)
                 .weight(item.getWeight())
                 .lengthCm(item.getLengthCm())
                 .widthCm(item.getWidthCm())
@@ -681,8 +722,8 @@ public class OrderServiceImpl implements OrderService {
                 .tax(null)
                 .status(effectiveStatus)
                 .uiStatus(toUiStatus(effectiveStatus))
-                .color(item.getColor())
-                .size(item.getSize())
+                .color(color)
+                .size(size)
                 .sellerName(item.getSellerName())
                 .customDetails(customDetails.stream().map(this::toCustomDetailDto).toList())
                 .build();
@@ -1003,18 +1044,241 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private String buildVariant(OrderItem item) {
-        String color = item.getColor();
-        String size = item.getSize();
-        if (color != null && !color.isBlank() && size != null && !size.isBlank()) {
-            return color + " • " + size;
+        return buildVariantLabel(item.getColor(), item.getSize());
+    }
+
+    private String buildVariantLabel(String color, String size) {
+        boolean hasColor = color != null && !color.isBlank() && !"—".equals(color.trim());
+        boolean hasSize = size != null && !size.isBlank() && !"—".equals(size.trim());
+        if (hasColor && hasSize) {
+            return color.trim() + " • " + size.trim();
         }
-        if (color != null && !color.isBlank()) {
-            return color;
+        if (hasColor) {
+            return color.trim();
         }
-        if (size != null && !size.isBlank()) {
-            return size;
+        if (hasSize) {
+            return size.trim();
         }
-        return "—";
+        return "";
+    }
+
+    private record LineCatalog(
+            Map<Long, ProductVariant> variantsById,
+            Map<Long, Product> productsById,
+            Map<Long, List<ProductImage>> imagesByProductId,
+            Map<Long, Color> colorById,
+            Map<Long, Size> sizeById
+    ) {
+        static LineCatalog empty() {
+            return new LineCatalog(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        }
+    }
+
+    private LineCatalog loadLineCatalog(List<OrderItem> items) {
+        if (items == null || items.isEmpty()) {
+            return LineCatalog.empty();
+        }
+
+        Set<Long> variantIds = items.stream()
+                .map(OrderItem::getVariantId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        Map<Long, ProductVariant> variantsById = new HashMap<>();
+        if (!variantIds.isEmpty()) {
+            for (ProductVariant variant : productVariantRepository.findAllById(variantIds)) {
+                variantsById.put(variant.getId(), variant);
+            }
+        }
+
+        Set<Long> productIds = new LinkedHashSet<>();
+        for (OrderItem item : items) {
+            if (item.getProductId() != null) {
+                productIds.add(item.getProductId());
+            } else if (item.getVariantId() != null) {
+                ProductVariant variant = variantsById.get(item.getVariantId());
+                if (variant != null && variant.getProductId() != null) {
+                    productIds.add(variant.getProductId());
+                }
+            }
+        }
+
+        Map<Long, Product> productsById = new HashMap<>();
+        if (!productIds.isEmpty()) {
+            for (Product product : productRepository.findAllById(productIds)) {
+                productsById.put(product.getId(), product);
+            }
+        }
+
+        Map<Long, List<ProductImage>> imagesByProductId = productIds.isEmpty()
+                ? Map.of()
+                : productImageRepository.findByProductIdInOrderByIsPrimaryDescSortOrderAsc(productIds).stream()
+                        .collect(Collectors.groupingBy(
+                                ProductImage::getProductId,
+                                LinkedHashMap::new,
+                                Collectors.toList()));
+
+        Set<Long> colorIds = new HashSet<>();
+        Set<Long> sizeIds = new HashSet<>();
+        for (OrderItem item : items) {
+            collectCatalogId(item.getColor(), colorIds);
+            collectCatalogId(item.getSize(), sizeIds);
+            ProductVariant variant = item.getVariantId() != null ? variantsById.get(item.getVariantId()) : null;
+            if (variant != null) {
+                collectCatalogId(variant.getColor(), colorIds);
+                collectCatalogId(variant.getSize(), sizeIds);
+            }
+        }
+
+        Map<Long, Color> colorById = new HashMap<>();
+        if (!colorIds.isEmpty()) {
+            for (Color color : colorRepository.findAllById(colorIds)) {
+                colorById.put(color.getId(), color);
+            }
+        }
+        Map<Long, Size> sizeById = new HashMap<>();
+        if (!sizeIds.isEmpty()) {
+            for (Size size : sizeRepository.findAllById(sizeIds)) {
+                sizeById.put(size.getId(), size);
+            }
+        }
+
+        return new LineCatalog(variantsById, productsById, imagesByProductId, colorById, sizeById);
+    }
+
+    private void collectCatalogId(String raw, Set<Long> ids) {
+        parseCatalogId(raw).ifPresent(ids::add);
+    }
+
+    private Optional<Long> parseCatalogId(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Long.parseLong(raw.trim()));
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private String resolveLineColor(OrderItem item, LineCatalog catalog) {
+        ProductVariant variant = item.getVariantId() != null
+                ? catalog.variantsById().get(item.getVariantId())
+                : null;
+        String raw = firstNonBlank(item.getColor(), variant != null ? variant.getColor() : null);
+        return resolveColorName(raw, catalog.colorById());
+    }
+
+    private String resolveLineSize(OrderItem item, LineCatalog catalog) {
+        ProductVariant variant = item.getVariantId() != null
+                ? catalog.variantsById().get(item.getVariantId())
+                : null;
+        String raw = firstNonBlank(item.getSize(), variant != null ? variant.getSize() : null);
+        return resolveSizeName(raw, catalog.sizeById());
+    }
+
+    private String resolveColorName(String raw, Map<Long, Color> colorById) {
+        return parseCatalogId(raw)
+                .map(colorById::get)
+                .map(Color::getColorName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElseGet(() -> hasText(raw) ? raw.trim() : "");
+    }
+
+    private String resolveSizeName(String raw, Map<Long, Size> sizeById) {
+        return parseCatalogId(raw)
+                .map(sizeById::get)
+                .map(Size::getSizeName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElseGet(() -> hasText(raw) ? raw.trim() : "");
+    }
+
+    private String resolveLineSku(OrderItem item, LineCatalog catalog) {
+        if (hasText(item.getSku())) {
+            return item.getSku().trim();
+        }
+        ProductVariant variant = item.getVariantId() != null
+                ? catalog.variantsById().get(item.getVariantId())
+                : null;
+        if (variant != null && hasText(variant.getSku())) {
+            return variant.getSku().trim();
+        }
+        Long productId = resolveEffectiveProductId(item, catalog);
+        Product product = productId != null ? catalog.productsById().get(productId) : null;
+        if (product != null && hasText(product.getSku())) {
+            return product.getSku().trim();
+        }
+        return "";
+    }
+
+    private String resolveLineHsn(OrderItem item, LineCatalog catalog) {
+        if (hasText(item.getHsnCode())) {
+            return item.getHsnCode().trim();
+        }
+        Long productId = resolveEffectiveProductId(item, catalog);
+        Product product = productId != null ? catalog.productsById().get(productId) : null;
+        if (product != null && hasText(product.getHsnCode())) {
+            return product.getHsnCode().trim();
+        }
+        return item.getHsnCode();
+    }
+
+    private String resolveLineImage(OrderItem item, LineCatalog catalog) {
+        if (hasText(item.getProductImagePath())) {
+            return resolveImageUrl(item.getProductImagePath());
+        }
+        Long productId = resolveEffectiveProductId(item, catalog);
+        if (productId == null) {
+            return "";
+        }
+        List<ProductImage> images = catalog.imagesByProductId().getOrDefault(productId, List.of());
+        if (images.isEmpty()) {
+            return "";
+        }
+        if (item.getVariantId() != null) {
+            Optional<ProductImage> variantImage = images.stream()
+                    .filter(img -> item.getVariantId().equals(img.getVariantId()))
+                    .findFirst();
+            if (variantImage.isPresent() && hasText(variantImage.get().getImagePath())) {
+                return resolveImageUrl(variantImage.get().getImagePath());
+            }
+        }
+        Optional<ProductImage> primary = images.stream()
+                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
+                .findFirst();
+        ProductImage chosen = primary.orElse(images.get(0));
+        return chosen != null && hasText(chosen.getImagePath())
+                ? resolveImageUrl(chosen.getImagePath())
+                : "";
+    }
+
+    private Long resolveEffectiveProductId(OrderItem item, LineCatalog catalog) {
+        if (item.getProductId() != null) {
+            return item.getProductId();
+        }
+        if (item.getVariantId() != null) {
+            ProductVariant variant = catalog.variantsById().get(item.getVariantId());
+            if (variant != null) {
+                return variant.getProductId();
+            }
+        }
+        return null;
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String buildExtraNote(Order order) {
