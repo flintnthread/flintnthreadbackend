@@ -97,6 +97,20 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByRazorpayOrderId(String razorpayOrderId);
     List<Order> findByRazorpayOrderIdOrderByCreatedAtDesc(String razorpayOrderId);
 
+    /**
+     * Unpaid ONLINE orders (COD gets orderStatus "processing", so it is excluded)
+     * created before the cutoff — candidates for auto-cancel when payment was
+     * never completed. createdAt is stored in UTC.
+     */
+    @Query("""
+            SELECT o FROM Order o
+            WHERE LOWER(COALESCE(o.paymentStatus, '')) IN ('pending', 'failed')
+              AND LOWER(COALESCE(o.orderStatus, '')) IN ('awaiting_payment', 'payment_failed')
+              AND o.createdAt < :cutoff
+            ORDER BY o.createdAt ASC
+            """)
+    List<Order> findExpiredUnpaidOnlineOrders(@Param("cutoff") java.time.LocalDateTime cutoff);
+
     Optional<Order> findByOrderNumber(String orderNumber);
 
     Optional<Order> findByShiprocketAwbCode(String shiprocketAwbCode);

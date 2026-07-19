@@ -50,6 +50,10 @@ public class Address {
     @Column(name = "address_type")
     private String addressType;
 
+    /** Optional custom label shown when addressType is "other" (e.g. "Mom's House"). */
+    @Column(name = "label")
+    private String label;
+
     @Column(name = "is_default", nullable = false)
     private Boolean isDefault = false;
 

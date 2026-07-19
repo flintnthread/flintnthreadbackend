@@ -7,7 +7,8 @@ import com.ecommerce.authdemo.dto.VerifyOtpDTO;
 
 public interface AuthService {
 
-    String sendOtp(LoginRequestDTO dto);
+    OtpResponseDTO sendOtp(LoginRequestDTO dto);
+
     AuthResponseDTO verifyOtp(VerifyOtpDTO dto);
 }
 

@@ -11,7 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -63,9 +66,75 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
     private boolean isH2Database() {
         try (Connection connection = dataSource.getConnection()) {
             String product = connection.getMetaData().getDatabaseProductName();
-            return product != null && product.toLowerCase().contains("h2");
+            return product != null && product.toLowerCase(Locale.ROOT).contains("h2");
         } catch (SQLException ex) {
             log.warn("Could not detect database product, assuming MySQL: {}", ex.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Never run DELETE SQL against a missing table/column inside the account-delete
+     * transaction — a failed statement can poison MySQL's transaction even when caught.
+     */
+    private boolean tableExists(String tableName) {
+        if (tableName == null || tableName.isBlank()) {
+            return false;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData meta = connection.getMetaData();
+            String catalog = connection.getCatalog();
+            String[] candidates = {
+                    tableName,
+                    tableName.toLowerCase(Locale.ROOT),
+                    tableName.toUpperCase(Locale.ROOT)
+            };
+            for (String candidate : candidates) {
+                try (ResultSet rs = meta.getTables(catalog, null, candidate, new String[]{"TABLE", "BASE TABLE"})) {
+                    if (rs.next()) {
+                        return true;
+                    }
+                }
+            }
+            // Some drivers ignore catalog; retry without it.
+            try (ResultSet rs = meta.getTables(null, null, tableName, new String[]{"TABLE", "BASE TABLE"})) {
+                return rs.next();
+            }
+        } catch (SQLException ex) {
+            log.debug("tableExists({}) check failed: {}", tableName, ex.getMessage());
+            return false;
+        }
+    }
+
+    private boolean columnExists(String tableName, String columnName) {
+        if (!tableExists(tableName) || columnName == null || columnName.isBlank()) {
+            return false;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData meta = connection.getMetaData();
+            String catalog = connection.getCatalog();
+            String[] tables = {
+                    tableName,
+                    tableName.toLowerCase(Locale.ROOT),
+                    tableName.toUpperCase(Locale.ROOT)
+            };
+            String[] columns = {
+                    columnName,
+                    columnName.toLowerCase(Locale.ROOT),
+                    columnName.toUpperCase(Locale.ROOT)
+            };
+            for (String table : tables) {
+                for (String column : columns) {
+                    try (ResultSet rs = meta.getColumns(catalog, null, table, column)) {
+                        if (rs.next()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        } catch (SQLException ex) {
+            log.debug("columnExists({}.{}) check failed: {}", tableName, columnName, ex.getMessage());
             return false;
         }
     }
@@ -130,6 +199,12 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
     }
 
     private void safeUpdate(String label, String sql, Object... args) {
+        // Extract first table name after FROM/UPDATE for existence probe when possible.
+        String table = extractPrimaryTable(sql);
+        if (table != null && !tableExists(table)) {
+            log.warn("Skipping cleanup for {} — table '{}' not found", label, table);
+            return;
+        }
         try {
             jdbcTemplate.update(sql, args);
         } catch (Exception ex) {
@@ -137,66 +212,79 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
         }
     }
 
-    private void deleteOrderData(Long userId) {
-        jdbcTemplate.update("UPDATE orders SET address_id = NULL WHERE user_id = ?", userId);
-
-        // Optional / legacy tables — skip when missing so account delete still succeeds.
-        safeDeleteByUserOrders(
-                "shiprocket_webhooks",
-                "DELETE FROM shiprocket_webhooks WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                userId
-        );
-        safeDeleteByUserOrders(
-                "shiprocket_sync_logs",
-                "DELETE FROM shiprocket_sync_logs WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                userId
-        );
-        safeDeleteByUserOrders(
-                "invoices",
-                "DELETE FROM invoices WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                userId
-        );
-        safeDeleteByUserOrders(
-                "payment_transactions",
-                "DELETE FROM payment_transactions WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                userId
-        );
-        // `payments` may be absent or lack order_id on older schemas.
-        safeDeletePaymentsForUserOrders(userId);
-        safeDeleteByUserOrders(
-                "seller_payment_invoices",
-                "DELETE FROM seller_payment_invoices WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                userId
-        );
-        safeDeleteByUserOrders(
-                "wallet_transactions",
-                "DELETE FROM wallet_transactions WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                userId
-        );
-        safeDeleteByUserOrders(
-                "order_status_history",
-                "DELETE FROM order_status_history WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                userId
-        );
-
-        jdbcTemplate.update(
-                """
-                DELETE FROM order_items
-                WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
-                """,
-                userId
-        );
-
-        jdbcTemplate.update("DELETE FROM orders WHERE user_id = ?", userId);
+    private String extractPrimaryTable(String sql) {
+        if (sql == null) {
+            return null;
+        }
+        String normalized = sql.replace('\n', ' ').replaceAll("\\s+", " ").trim();
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        int fromIdx = upper.indexOf(" FROM ");
+        if (fromIdx < 0) {
+            int updateIdx = upper.indexOf("UPDATE ");
+            if (updateIdx < 0) {
+                return null;
+            }
+            String afterUpdate = normalized.substring(updateIdx + 7).trim();
+            return afterUpdate.split("\\s+")[0];
+        }
+        String afterFrom = normalized.substring(fromIdx + 6).trim();
+        return afterFrom.split("\\s+")[0];
     }
 
-    private void safeDeleteByUserOrders(String tableLabel, String sql, Long userId) {
+    private void deleteOrderData(Long userId) {
+        if (tableExists("orders") && columnExists("orders", "address_id")) {
+            safeUpdate(
+                    "orders.address_id",
+                    "UPDATE orders SET address_id = NULL WHERE user_id = ?",
+                    userId
+            );
+        }
+
+        // Optional / legacy tables — probe schema first so bad grammar never hits the TX.
+        safeDeleteByOrderFk("shiprocket_webhooks", "order_id", userId);
+        safeDeleteByOrderFk("shiprocket_sync_logs", "order_id", userId);
+        safeDeleteByOrderFk("invoices", "order_id", userId);
+        safeDeleteByOrderFk("payment_transactions", "order_id", userId);
+        safeDeletePaymentsForUserOrders(userId);
+        safeDeleteByOrderFk("seller_payment_invoices", "order_id", userId);
+        safeDeleteByOrderFk("wallet_transactions", "order_id", userId);
+        safeDeleteByOrderFk("order_status_history", "order_id", userId);
+
+        if (tableExists("order_items") && columnExists("order_items", "order_id")) {
+            safeUpdate(
+                    "order_items",
+                    """
+                    DELETE FROM order_items
+                    WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)
+                    """,
+                    userId
+            );
+        }
+
+        if (tableExists("orders") && columnExists("orders", "user_id")) {
+            safeUpdate("orders", "DELETE FROM orders WHERE user_id = ?", userId);
+        }
+    }
+
+    private void safeDeleteByOrderFk(String table, String orderColumn, Long userId) {
+        if (!tableExists(table)) {
+            log.warn("Skipping cleanup for {} — table not found", table);
+            return;
+        }
+        if (!columnExists(table, orderColumn)) {
+            log.warn("Skipping cleanup for {} — column '{}' not found", table, orderColumn);
+            return;
+        }
         try {
-            jdbcTemplate.update(sql, userId);
+            jdbcTemplate.update(
+                    "DELETE FROM " + table + " WHERE " + orderColumn
+                            + " IN (SELECT id FROM orders WHERE user_id = ?)",
+                    userId
+            );
         } catch (Exception ex) {
             log.warn(
                     "Skipping cleanup for {} while deleting userId={}: {}",
-                    tableLabel,
+                    table,
                     userId,
                     ex.getMessage()
             );
@@ -204,20 +292,41 @@ public class UserAccountDeletionServiceImpl implements UserAccountDeletionServic
     }
 
     private void safeDeletePaymentsForUserOrders(Long userId) {
-        String[] candidates = {
-                "DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-                "DELETE FROM payments WHERE orderId IN (SELECT id FROM orders WHERE user_id = ?)",
-                "DELETE FROM payment WHERE order_id IN (SELECT id FROM orders WHERE user_id = ?)",
-        };
-        for (String sql : candidates) {
-            try {
-                jdbcTemplate.update(sql, userId);
-                return;
-            } catch (Exception ex) {
-                log.debug("payments cleanup attempt failed for userId={}: {}", userId, ex.getMessage());
-            }
+        String table = null;
+        if (tableExists("payments")) {
+            table = "payments";
+        } else if (tableExists("payment")) {
+            table = "payment";
         }
-        log.warn("No compatible payments table cleanup succeeded for userId={}", userId);
+        if (table == null) {
+            log.warn("Skipping payments cleanup — no payments/payment table for userId={}", userId);
+            return;
+        }
+
+        String orderColumn = null;
+        if (columnExists(table, "order_id")) {
+            orderColumn = "order_id";
+        } else if (columnExists(table, "orderId")) {
+            orderColumn = "orderId";
+        }
+        if (orderColumn == null) {
+            log.warn(
+                    "Skipping payments cleanup — {}.order_id/orderId not found for userId={}",
+                    table,
+                    userId
+            );
+            return;
+        }
+
+        try {
+            jdbcTemplate.update(
+                    "DELETE FROM " + table + " WHERE " + orderColumn
+                            + " IN (SELECT id FROM orders WHERE user_id = ?)",
+                    userId
+            );
+        } catch (Exception ex) {
+            log.warn("Skipping payments cleanup for userId={}: {}", userId, ex.getMessage());
+        }
     }
 
     private void deleteUserScopedRows(Long userId, int uid) {

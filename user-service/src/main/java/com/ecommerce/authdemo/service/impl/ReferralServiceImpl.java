@@ -5,7 +5,6 @@ import com.ecommerce.authdemo.dto.ReferralResponse;
 import com.ecommerce.authdemo.dto.ReferralRewardStatusDto;
 import com.ecommerce.authdemo.dto.ShareDto;
 import com.ecommerce.authdemo.entity.ReferralOrderDiscountRedemption;
-import com.ecommerce.authdemo.entity.ReferralTransaction;
 import com.ecommerce.authdemo.entity.User;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.ReferralDiscountRepository;
@@ -18,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -35,8 +35,7 @@ public class ReferralServiceImpl implements ReferralService {
     private static final SecureRandom REF_CODE_RANDOM = new SecureRandom();
 
     /**
-     * Example: {@code FNT482917} — {@code FNT} + random 6 digits ({@code 482917}).
-     * Username slug is intentionally not included.
+     * Preferred format: {@code FNTSRAV004716} — {@code FNT} + 4-char username slug + 6 digits.
      */
     private static final String REF_CODE_TAG = "FNT";
     /** Legacy brand prefix previously used before {@link #REF_CODE_TAG}. */
@@ -56,12 +55,30 @@ public class ReferralServiceImpl implements ReferralService {
                 "f&t" + String.format("%06d", userId)
         );
 
-        user.setReferralCode(buildReferralCode(userId));
+        user.setReferralCode(buildReferralCode(userId, username));
         userRepository.save(user);
     }
 
-    private String buildReferralCode(Long userId) {
-        String prefix = REF_CODE_TAG;
+    /** First 4 alphanumeric chars of username, uppercased and padded if short. */
+    private String usernameSlug(String username) {
+        String cleaned = username == null
+                ? ""
+                : username.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+        if (cleaned.isEmpty()) {
+            cleaned = "USER";
+        }
+        if (cleaned.length() >= 4) {
+            return cleaned.substring(0, 4);
+        }
+        StringBuilder padded = new StringBuilder(cleaned);
+        while (padded.length() < 4) {
+            padded.append('X');
+        }
+        return padded.toString();
+    }
+
+    private String buildReferralCode(Long userId, String username) {
+        String prefix = REF_CODE_TAG + usernameSlug(username);
         for (int attempt = 0; attempt < 100; attempt++) {
             int suffixNum = REF_CODE_RANDOM.nextInt(1_000_000);
             String code = prefix + String.format("%06d", suffixNum);
@@ -73,24 +90,6 @@ public class ReferralServiceImpl implements ReferralService {
         return prefix + String.format("%06d", fallback);
     }
 
-    /** Older codes ended with zero-padded user id — regenerate with random suffix. */
-    private boolean hasLegacyUserIdSuffix(String code, Long userId) {
-        if (code == null || userId == null) {
-            return false;
-        }
-        String upper = code.trim().toUpperCase();
-        String legacySuffix = String.format("%06d", userId);
-        if (!upper.endsWith(legacySuffix)) {
-            return false;
-        }
-        // Modern codes are FNT + 6 random digits. Do not regenerate when those
-        // digits happen to match the user id — only migrate intentional legacy forms.
-        return hasUsernameSlugInCode(upper)
-                || hasObsoleteRefBrandPrefix(upper)
-                || upper.equals(REF_CODE_TAG + legacySuffix)
-                || upper.equals(LEGACY_REF_CODE_TAG + legacySuffix);
-    }
-
     private boolean hasObsoleteRefBrandPrefix(String code) {
         if (code == null || code.isBlank()) {
             return false;
@@ -99,10 +98,7 @@ public class ReferralServiceImpl implements ReferralService {
         return upper.startsWith(LEGACY_REF_CODE_TAG) && !upper.startsWith(REF_CODE_TAG);
     }
 
-    /**
-     * Legacy format included a 4-char username slug: {@code FNTSRAV004716}.
-     * Modern format is {@code FNT004716} (brand + 6 digits only).
-     */
+    /** {@code FNTSRAV004716} / {@code REFSRAV004716} style (brand + 4-char slug + 6 digits). */
     private boolean hasUsernameSlugInCode(String code) {
         if (code == null || code.isBlank()) {
             return false;
@@ -114,7 +110,15 @@ public class ReferralServiceImpl implements ReferralService {
         return upper.matches("^FNT[A-Z0-9]{4}\\d{6}$");
     }
 
-    /** {@code FNTSRAV004716} / {@code REFSRAV004716} → {@code FNT004716} */
+    /** Brand + 6 digits only, e.g. {@code FNT004716}. */
+    private boolean isDigitsOnlyFntCode(String code) {
+        if (code == null || code.isBlank()) {
+            return false;
+        }
+        return code.trim().toUpperCase().matches("^FNT\\d{6}$");
+    }
+
+    /** {@code FNTSRAV004716} / {@code REFSRAV004716} → {@code FNT004716} (lookup helper only). */
     private String stripUsernameSlugFromCode(String code) {
         String upper = code.trim().toUpperCase();
         if (upper.startsWith(LEGACY_REF_CODE_TAG) && !upper.startsWith(REF_CODE_TAG)) {
@@ -136,8 +140,8 @@ public class ReferralServiceImpl implements ReferralService {
     }
 
     /**
-     * Persist FNT prefix for legacy REF codes, strip username slug, and regenerate
-     * truly legacy id-suffix codes.
+     * Keep / restore {@code FNT + username slug + digits}. Convert legacy {@code REF…}
+     * to {@code FNT…}. Do not strip the username slug.
      */
     private User ensureModernReferralCode(User user) {
         Long userId = user.getId();
@@ -146,33 +150,47 @@ public class ReferralServiceImpl implements ReferralService {
             generateCodes(userId, user.getUsername());
             return userRepository.findById(userId).orElseThrow();
         }
-        if (hasLegacyUserIdSuffix(code, userId)) {
-            generateCodes(userId, user.getUsername());
-            return userRepository.findById(userId).orElseThrow();
+
+        String upper = code.trim().toUpperCase();
+
+        // Legacy REF… → FNT… (preserve slug + digits).
+        if (hasObsoleteRefBrandPrefix(upper)) {
+            String branded = toFntBrandPrefix(upper);
+            if (!branded.equalsIgnoreCase(upper)
+                    && userRepository.findByReferralCode(branded).isEmpty()) {
+                user.setReferralCode(branded);
+                userRepository.save(user);
+                upper = branded;
+            } else if (!branded.equalsIgnoreCase(upper)) {
+                // Collision on branded value — leave REF code as-is for lookup compatibility.
+                return user;
+            } else {
+                upper = branded;
+            }
         }
-        if (hasUsernameSlugInCode(code) || hasObsoleteRefBrandPrefix(code)) {
-            String migrated = stripUsernameSlugFromCode(code);
-            if (!migrated.equalsIgnoreCase(code.trim())
-                    && userRepository.findByReferralCode(migrated).isEmpty()) {
-                user.setReferralCode(migrated);
+
+        // Already has username slug — keep it.
+        if (hasUsernameSlugInCode(upper)) {
+            if (!upper.equals(code.trim())) {
+                user.setReferralCode(upper);
+                userRepository.save(user);
+            }
+            return user;
+        }
+
+        // FNT + 6 digits only → restore username slug, keep the same 6 digits.
+        if (isDigitsOnlyFntCode(upper)) {
+            String digits = upper.substring(REF_CODE_TAG.length());
+            String restored = REF_CODE_TAG + usernameSlug(user.getUsername()) + digits;
+            if (!restored.equals(upper) && userRepository.findByReferralCode(restored).isEmpty()) {
+                user.setReferralCode(restored);
                 userRepository.save(user);
                 return user;
             }
-            if (hasObsoleteRefBrandPrefix(code)) {
-                String branded = toFntBrandPrefix(code);
-                if (hasUsernameSlugInCode(branded)) {
-                    branded = stripUsernameSlugFromCode(branded);
-                }
-                if (userRepository.findByReferralCode(branded).isEmpty()) {
-                    user.setReferralCode(branded);
-                    userRepository.save(user);
-                    return user;
-                }
-            }
-            // Collision on migrated value — generate a fresh FNT + digits code.
-            generateCodes(userId, user.getUsername());
-            return userRepository.findById(userId).orElseThrow();
+            // Collision: keep existing short code rather than breaking shared links.
+            return user;
         }
+
         return user;
     }
 
@@ -203,7 +221,7 @@ public class ReferralServiceImpl implements ReferralService {
                 return branded;
             }
         }
-        // Accept old slug codes (FNTSRAV004716) against modern FNT004716, and reverse.
+        // Accept slug codes (FNTSRAV004716) against short FNT004716 in DB.
         String stripped = stripUsernameSlugFromCode(code);
         if (!stripped.equals(code)) {
             Optional<User> byStripped = userRepository.findByReferralCode(stripped);
@@ -217,6 +235,14 @@ public class ReferralServiceImpl implements ReferralService {
                 if (legacyStripped.isPresent()) {
                     return legacyStripped;
                 }
+            }
+        }
+        // Accept short FNT004716 against slug form FNT????004716 in DB.
+        if (isDigitsOnlyFntCode(code)) {
+            String sixDigits = code.substring(REF_CODE_TAG.length());
+            List<User> slugMatches = userRepository.findByReferralCodeSlugEndingWith(sixDigits);
+            if (slugMatches.size() == 1) {
+                return Optional.of(slugMatches.get(0));
             }
         }
         return Optional.empty();

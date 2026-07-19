@@ -13,8 +13,6 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
-import com.ecommerce.authdemo.repository.DeliveryPincodeRepository;
-
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -28,7 +26,6 @@ public class AddressServiceImpl implements AddressService {
     private final AddressRepository addressRepository;
     private final OrderRepository orderRepository;
     private final SecurityUtil securityUtil;
-    private final DeliveryPincodeRepository deliveryPincodeRepository;
 
     private Long getUserId() {
         return securityUtil.getCurrentUserId();
@@ -78,12 +75,9 @@ public class AddressServiceImpl implements AddressService {
             throw new IllegalArgumentException("Please enter a valid 6-digit pincode.");
         }
 
-        boolean deliveryAvailable = deliveryPincodeRepository.existsServiceablePincode(pincode);
-
-        if (!deliveryAvailable) {
-            throw new IllegalArgumentException("Delivery not available for this pincode.");
-        }
-
+        // Allow saving any valid Indian pincode in the address book.
+        // Platform / product delivery availability is enforced at checkout
+        // via ProductDeliveryCheckService — do not block address create here.
         request.setPincode(pincode);
 
         if (request.getCity() == null || request.getCity().trim().isEmpty()) {
@@ -94,6 +88,14 @@ public class AddressServiceImpl implements AddressService {
         Address duplicate = findDuplicateAddress(existing, request);
         if (duplicate != null) {
             return reuseExistingAddress(duplicate, request, userId);
+        }
+
+        if (request.getAddressLine1() == null || request.getAddressLine1().trim().isEmpty()) {
+            throw new IllegalArgumentException("Address line is required");
+        }
+
+        if (request.getState() == null || request.getState().trim().isEmpty()) {
+            throw new IllegalArgumentException("State is required");
         }
 
         if (Boolean.TRUE.equals(request.getIsDefault())) {
@@ -124,6 +126,7 @@ Address address = Address.builder()
                 .country(request.getCountry() != null ? request.getCountry() : "India")
                 .pincode(request.getPincode())
                 .addressType(request.getAddressType() != null ? request.getAddressType() : "home")
+                .label(resolveLabel(request.getAddressType(), request.getLabel()))
                 .isDefault(isFirst || Boolean.TRUE.equals(request.getIsDefault()))
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
@@ -152,6 +155,11 @@ Address address = Address.builder()
         }
         if (!isBlank(request.getName()) && isBlank(existing.getName())) {
             existing.setName(request.getName().trim());
+            dirty = true;
+        }
+        String reusedLabel = resolveLabel(request.getAddressType(), request.getLabel());
+        if (reusedLabel != null && !reusedLabel.equals(existing.getLabel())) {
+            existing.setLabel(reusedLabel);
             dirty = true;
         }
 
@@ -202,6 +210,22 @@ Address address = Address.builder()
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    /** Keep a custom label only for "other" addresses; clear it for home/work. */
+    private static String resolveLabel(String addressType, String label) {
+        String type = addressType != null ? addressType.trim().toLowerCase() : "";
+        if (!"other".equals(type)) {
+            return null;
+        }
+        if (label == null) {
+            return null;
+        }
+        String trimmed = label.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
     }
 
     private static String normalizePincode(String value) {
@@ -333,15 +357,21 @@ address.setPhone(phone);
             throw new IllegalArgumentException("Please enter a valid 6-digit pincode.");
         }
 
-        boolean deliveryAvailable = deliveryPincodeRepository.existsServiceablePincode(pincode);
-
-        if (!deliveryAvailable) {
-            throw new IllegalArgumentException("Delivery not available for this pincode.");
+        // Same as add: address book accepts any valid pincode; delivery is checked at checkout.
+        if (request.getAddressLine1() == null || request.getAddressLine1().trim().isEmpty()) {
+            throw new IllegalArgumentException("Address line is required");
+        }
+        if (request.getCity() == null || request.getCity().trim().isEmpty()) {
+            throw new IllegalArgumentException("City is required");
+        }
+        if (request.getState() == null || request.getState().trim().isEmpty()) {
+            throw new IllegalArgumentException("State is required");
         }
 
         address.setPincode(pincode);
 
         address.setAddressType(request.getAddressType());
+        address.setLabel(resolveLabel(request.getAddressType(), request.getLabel()));
 
         if (request.getIsDefault() != null) {
             address.setIsDefault(request.getIsDefault());

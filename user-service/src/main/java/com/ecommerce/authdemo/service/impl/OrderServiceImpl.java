@@ -1068,6 +1068,96 @@ public class OrderServiceImpl implements OrderService {
         return orderRepository.save(order);
     }
 
+    @Override
+    @Transactional
+    public Order systemCancelUnpaidOrder(Long orderId, String reason) {
+        if (orderId == null) {
+            return null;
+        }
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            return null;
+        }
+
+        String paymentStatus = order.getPaymentStatus() != null
+                ? order.getPaymentStatus().trim().toLowerCase(Locale.ENGLISH)
+                : "";
+        String orderStatus = order.getOrderStatus() != null
+                ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                : "";
+
+        // Never touch a paid, already-cancelled, or COD order.
+        boolean paid = "paid".equals(paymentStatus)
+                || "success".equals(paymentStatus)
+                || "completed".equals(paymentStatus)
+                || "captured".equals(paymentStatus);
+        if (paid || "cancelled".equals(orderStatus) || isCodPaymentMethod(order.getPaymentMethod())) {
+            return order;
+        }
+
+        // Restore stock decremented at placeOrder for each line.
+        for (OrderItem item : orderItemRepository.findByOrderId(orderId)) {
+            try {
+                ProductVariant variant = productVariantRepository
+                        .findById(item.getVariantId())
+                        .orElse(null);
+                if (variant == null) {
+                    continue;
+                }
+                int currentStock = variant.getStock() != null ? variant.getStock() : 0;
+                int qty = item.getQuantity() != null ? item.getQuantity() : 0;
+                variant.setStock(currentStock + qty);
+                productVariantRepository.save(variant);
+            } catch (Exception e) {
+                log.error(
+                        "Auto-cancel stock restore failed order={} variant={} reason={}",
+                        order.getOrderNumber(), item.getVariantId(), e.getMessage(), e
+                );
+            }
+        }
+
+        // Refund only what was really taken: the FNT Wallet portion debited at
+        // checkout. The Razorpay amount was never captured for an unpaid order.
+        try {
+            BigDecimal walletUsed = resolveWalletAmountUsedForOrder(order);
+            if (walletUsed.compareTo(BigDecimal.ZERO) > 0) {
+                walletService.creditOrderCancellationRefund(
+                        Math.toIntExact(order.getUserId()),
+                        order.getId(),
+                        walletUsed,
+                        order.getOrderNumber()
+                );
+            }
+        } catch (Exception e) {
+            log.error(
+                    "Auto-cancel wallet refund failed order={} reason={}",
+                    order.getOrderNumber(), e.getMessage(), e
+            );
+        }
+
+        order.setOrderStatus("cancelled");
+        order.setPaymentStatus("failed");
+        order.setShiprocketStatus("cancelled");
+        order.setCancelReason(reason != null ? reason : "Payment not completed in time");
+        order.setUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        Order saved = orderRepository.save(order);
+
+        try {
+            pushNotificationService.notifyUser(
+                    saved.getUserId(),
+                    "Order #" + saved.getOrderNumber() + " cancelled",
+                    "Payment wasn't completed in time, so your order was cancelled. Any FNT Wallet amount used has been refunded.",
+                    "order",
+                    "/orders?orderId=" + saved.getId()
+            );
+        } catch (Exception e) {
+            log.warn("Auto-cancel notify failed order={}: {}", saved.getOrderNumber(), e.getMessage());
+        }
+
+        log.info("Auto-cancelled unpaid online order {} (id={})", saved.getOrderNumber(), saved.getId());
+        return saved;
+    }
+
     /**
      * Push to Shiprocket only after DB commit, off the request thread.
      * Online unpaid orders are skipped until markOrderAsPaid.

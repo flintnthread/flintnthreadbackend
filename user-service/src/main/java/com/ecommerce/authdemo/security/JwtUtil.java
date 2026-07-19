@@ -179,4 +179,33 @@ public class JwtUtil {
         return tokenIdentifier.equals(identifier) && !isTokenExpired(token);
     }
 
+    /**
+     * Short-lived proof that signup email OTP was verified (30 minutes).
+     */
+    public String generateSignupEmailToken(String email) {
+        return Jwts.builder()
+                .setSubject(email.trim().toLowerCase())
+                .claim("purpose", "SIGNUP_EMAIL_VERIFIED")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 1000L * 60 * 30))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean isValidSignupEmailToken(String token, String email) {
+        if (token == null || token.isBlank() || email == null || email.isBlank()) {
+            return false;
+        }
+        try {
+            Claims claims = extractClaims(token);
+            String purpose = claims.get("purpose", String.class);
+            String subject = claims.getSubject();
+            return "SIGNUP_EMAIL_VERIFIED".equals(purpose)
+                    && email.trim().equalsIgnoreCase(subject)
+                    && !isTokenExpired(token);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
 }
