@@ -501,17 +501,61 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public OrderResponseDTO getOrderDetails(Long orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
         assertCanAccessOrder(order);
 
+        // Ship Now in Shiprocket dashboard often skips our webhook — pull AWB/tracking on detail view.
+        if (needsShiprocketTrackingSync(order)) {
+            try {
+                shiprocketService.syncShipmentDetails(order);
+                order = orderRepository.findById(orderId).orElse(order);
+            } catch (Exception e) {
+                log.warn(
+                        "Shiprocket AWB sync skipped for orderId={}: {}",
+                        orderId,
+                        e.getMessage()
+                );
+            }
+        }
+
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
         List<OrderItemDTO> itemDTOList = items.stream().map(this::buildOrderItemDTO).toList();
 
         return buildDetailedOrderResponse(order, itemDTOList);
+    }
+
+    private boolean needsShiprocketTrackingSync(Order order) {
+        if (order == null) {
+            return false;
+        }
+        boolean hasAwb = order.getShiprocketAwbCode() != null
+                && !order.getShiprocketAwbCode().isBlank();
+        boolean hasTracking = order.getShiprocketTrackingUrl() != null
+                && !order.getShiprocketTrackingUrl().isBlank();
+        if (hasAwb && hasTracking) {
+            return false;
+        }
+        boolean linked = (order.getShiprocketOrderId() != null
+                && !order.getShiprocketOrderId().isBlank())
+                || (order.getShiprocketShipmentId() != null
+                && !order.getShiprocketShipmentId().isBlank())
+                || (order.getShiprocketPushedAt() != null);
+        if (linked) {
+            return true;
+        }
+        // Order may exist on Shiprocket under channel order id even if local SR ids were never saved.
+        String status = order.getOrderStatus() != null
+                ? order.getOrderStatus().trim().toLowerCase(Locale.ROOT)
+                : "";
+        return !status.isEmpty()
+                && !status.equals("cancelled")
+                && !status.equals("new")
+                && order.getOrderNumber() != null
+                && !order.getOrderNumber().isBlank();
     }
 
     @Override
@@ -1894,7 +1938,7 @@ public class OrderServiceImpl implements OrderService {
                 )
 
                 .shiprocketTrackingUrl(
-                        order.getShiprocketTrackingUrl()
+                        resolveShiprocketTrackingUrl(order)
                 )
 
                 .shiprocketStatus(
@@ -1952,7 +1996,7 @@ public class OrderServiceImpl implements OrderService {
                 .items(itemDTOList)
                 .shiprocketAwbCode(order.getShiprocketAwbCode())
                 .shiprocketCourierName(order.getShiprocketCourierName())
-                .shiprocketTrackingUrl(order.getShiprocketTrackingUrl())
+                .shiprocketTrackingUrl(resolveShiprocketTrackingUrl(order))
                 .shiprocketStatus(order.getShiprocketStatus());
 
         applyWalletAmountFields(order, summaryBuilder);
@@ -2016,7 +2060,7 @@ public class OrderServiceImpl implements OrderService {
                         order.getShiprocketCourierName())
 
                 .shiprocketTrackingUrl(
-                        order.getShiprocketTrackingUrl())
+                        resolveShiprocketTrackingUrl(order))
 
                 .shiprocketStatus(
                         order.getShiprocketStatus());
@@ -2071,7 +2115,7 @@ public class OrderServiceImpl implements OrderService {
                 )
 
                 .shiprocketTrackingUrl(
-                        order.getShiprocketTrackingUrl()
+                        resolveShiprocketTrackingUrl(order)
                 )
 
                 .shiprocketStatus(
@@ -2091,7 +2135,24 @@ public class OrderServiceImpl implements OrderService {
         applyStatusTimelineFields(order, builder);
         builder
                 .taxAmount(order.getTaxAmount())
-                .razorpayPaymentId(order.getRazorpayPaymentId());
+                .razorpayPaymentId(order.getRazorpayPaymentId())
+                .shiprocketTrackingUrl(resolveShiprocketTrackingUrl(order));
+    }
+
+    /** Prefer DB tracking URL; otherwise build Shiprocket public track link from AWB. */
+    private String resolveShiprocketTrackingUrl(Order order) {
+        if (order == null) {
+            return null;
+        }
+        String url = order.getShiprocketTrackingUrl();
+        if (url != null && !url.isBlank()) {
+            return url.trim();
+        }
+        String awb = order.getShiprocketAwbCode();
+        if (awb != null && !awb.isBlank()) {
+            return "https://shiprocket.co/tracking/" + awb.trim();
+        }
+        return null;
     }
 
     private void applyStatusTimelineFields(

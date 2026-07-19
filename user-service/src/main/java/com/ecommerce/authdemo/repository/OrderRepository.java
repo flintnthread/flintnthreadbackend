@@ -115,6 +115,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByShiprocketAwbCode(String shiprocketAwbCode);
 
+    Optional<Order> findByShiprocketOrderId(String shiprocketOrderId);
+
     Optional<Order> findTopByPaymentStatusOrderByCreatedAtDesc(String status);
 
     Optional<Order> findTopByUserIdAndPaymentStatusOrderByCreatedAtDesc(Long userId, String paymentStatus);
