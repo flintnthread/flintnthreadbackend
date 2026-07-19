@@ -15,6 +15,10 @@ import java.util.Optional;
 
         Optional<SellerGstDetails> findByGstin(String gstin);
 
+        Optional<SellerGstDetails> findByGstinIgnoreCase(String gstin);
+
         boolean existsByGstin(String gstin);
+
+        boolean existsByGstinIgnoreCase(String gstin);
     }
 
