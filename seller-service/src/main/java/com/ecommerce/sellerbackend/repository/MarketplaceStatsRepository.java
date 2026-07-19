@@ -10,14 +10,10 @@ public class MarketplaceStatsRepository {
     @PersistenceContext
     private EntityManager entityManager;
 
+    /** All registered marketplace users (not only those who placed an order). */
     public long countDistinctCustomers() {
         Number count = (Number) entityManager.createNativeQuery("""
-                SELECT COUNT(*) FROM (
-                    SELECT shipping_email
-                    FROM orders
-                    WHERE shipping_email IS NOT NULL AND TRIM(shipping_email) != ''
-                    GROUP BY shipping_email
-                ) t
+                SELECT COUNT(*) FROM users
                 """)
                 .getSingleResult();
         return count.longValue();

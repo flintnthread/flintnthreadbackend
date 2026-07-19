@@ -2,6 +2,7 @@ package com.ecommerce.authdemo.service.impl;
 
 import com.ecommerce.authdemo.dto.*;
 import com.ecommerce.authdemo.dto.Enum.AdminStatus;
+import com.ecommerce.authdemo.dto.Enum.OrderStatus;
 import com.ecommerce.authdemo.entity.*;
 import com.ecommerce.authdemo.event.OrderPlacedEvent;
 import com.ecommerce.authdemo.service.*;
@@ -774,6 +775,15 @@ public class OrderServiceImpl implements OrderService {
 
         // Always cancel locally once past blocked statuses. Shiprocket cancel is
         // best-effort so a courier API failure does not block the shopper.
+        // Keep order_items + status history in sync so seller/admin panels see Cancelled
+        // (seller UI prefers line-item status over orders.order_status).
+        for (OrderItem item : items) {
+            item.setStatus("cancelled");
+        }
+        if (!items.isEmpty()) {
+            orderItemRepository.saveAll(items);
+        }
+
         order.setOrderStatus("cancelled");
         if (shiprocketCancelled || !shiprocketCancelAttempted) {
             order.setShiprocketStatus("cancelled");
@@ -794,6 +804,26 @@ public class OrderServiceImpl implements OrderService {
         order.setCancelReason(cancelReason);
         order.setUpdatedAt(LocalDateTime.now());
         orderRepository.save(order);
+
+        try {
+            OrderStatusHistory history = OrderStatusHistory.builder()
+                    .order(order)
+                    .status(OrderStatus.CANCELLED)
+                    .comment(
+                            cancelReason != null && !cancelReason.isBlank()
+                                    ? cancelReason.trim()
+                                    : "Cancelled by customer"
+                    )
+                    .createdBy(order.getUserId())
+                    .build();
+            orderStatusHistoryRepository.save(history);
+        } catch (Exception e) {
+            log.warn(
+                    "Skipping order_status_history insert for cancelled orderId={}",
+                    orderId,
+                    e
+            );
+        }
 
         boolean walletCredited = false;
         BigDecimal walletCreditAmount = BigDecimal.ZERO;
