@@ -38,6 +38,13 @@ public interface OrderService {
     /** Mark unpaid online order as payment_failed after Razorpay cancel/fail. */
     Order markOrderPaymentFailed(String razorpayOrderId);
 
+    /**
+     * System-initiated cancel for an unpaid online order whose payment window
+     * expired. Restores stock, refunds any wallet actually debited, and notifies
+     * the shopper. Runs without a security context (used by the cleanup job).
+     */
+    Order systemCancelUnpaidOrder(Long orderId, String reason);
+
     /** Retry Shiprocket create for a paid/COD order that was not linked yet. */
     ShiprocketShipmentResult pushOrderToShiprocket(Long orderId);
 

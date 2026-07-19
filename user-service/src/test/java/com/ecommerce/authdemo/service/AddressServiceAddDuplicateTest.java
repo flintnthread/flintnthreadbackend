@@ -4,7 +4,6 @@ import com.ecommerce.authdemo.dto.AddressRequest;
 import com.ecommerce.authdemo.entity.Address;
 import com.ecommerce.authdemo.entity.User;
 import com.ecommerce.authdemo.repository.AddressRepository;
-import com.ecommerce.authdemo.repository.DeliveryPincodeRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.service.impl.AddressServiceImpl;
 import com.ecommerce.authdemo.util.SecurityUtil;
@@ -33,8 +32,6 @@ class AddressServiceAddDuplicateTest {
     private OrderRepository orderRepository;
     @Mock
     private SecurityUtil securityUtil;
-    @Mock
-    private DeliveryPincodeRepository deliveryPincodeRepository;
 
     @InjectMocks
     private AddressServiceImpl addressService;
@@ -44,7 +41,6 @@ class AddressServiceAddDuplicateTest {
     @BeforeEach
     void setUp() {
         when(securityUtil.getCurrentUserId()).thenReturn(USER_ID);
-        when(deliveryPincodeRepository.existsServiceablePincode("502319")).thenReturn(true);
     }
 
     @Test
