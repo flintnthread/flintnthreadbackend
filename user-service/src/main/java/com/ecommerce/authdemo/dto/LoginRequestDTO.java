@@ -10,8 +10,9 @@ public class LoginRequestDTO {
     @Email(message = "Invalid email format")
     private String email;
 
+    /** 10-digit Indian mobile; blank/null allowed when logging in with email only. */
     @Pattern(
-            regexp = "^[6-9]\\d{9}$",
+            regexp = "^$|^[6-9]\\d{9}$",
             message = "Mobile number must be a valid 10-digit Indian number"
     )
     private String mobile;

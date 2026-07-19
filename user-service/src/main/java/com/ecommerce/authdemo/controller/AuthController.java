@@ -2,6 +2,7 @@ package com.ecommerce.authdemo.controller;
 
 import com.ecommerce.authdemo.dto.AuthResponseDTO;
 import com.ecommerce.authdemo.dto.LoginRequestDTO;
+import com.ecommerce.authdemo.dto.OtpResponseDTO;
 import com.ecommerce.authdemo.dto.VerifyOtpDTO;
 import com.ecommerce.authdemo.exception.*;
 import com.ecommerce.authdemo.service.AuthService;
@@ -29,19 +30,42 @@ public class AuthController {
         Map<String, Object> response = new HashMap<>();
 
         try {
-            String deliveryChannel = authService.sendOtp(dto);
+            OtpResponseDTO result = authService.sendOtp(dto);
 
-            response.put("success", true);
-            response.put("message", "OTP sent successfully via " + deliveryChannel);
+            response.put("success", result.isSuccess());
+            response.put("message", result.getMessage());
+            if (result.getDeliveryChannel() != null) {
+                response.put("deliveryChannel", result.getDeliveryChannel());
+            }
+            if (result.getNextStep() != null) {
+                response.put("nextStep", result.getNextStep());
+            }
+            if (result.getCode() != null) {
+                response.put("code", result.getCode());
+            }
+            if (result.getEmail() != null) {
+                response.put("email", result.getEmail());
+            }
+            if (result.getMaskedPhone() != null) {
+                response.put("maskedPhone", result.getMaskedPhone());
+            }
 
             return ResponseEntity.ok(response);
 
-        } catch (InvalidMobileException | InvalidEmailException e) {
+        } catch (InvalidMobileException | InvalidEmailException | InvalidIdentifierException e) {
 
             response.put("success", false);
             response.put("message", e.getMessage());
 
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+
+        } catch (PhoneAlreadyLinkedException e) {
+
+            response.put("success", false);
+            response.put("code", "PHONE_ALREADY_LINKED");
+            response.put("message", e.getMessage());
+
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
 
         } catch (TooManyRequestsException e) {
 
@@ -59,10 +83,10 @@ public class AuthController {
 
         } catch (Exception e) {
 
-            e.printStackTrace(); // 🔥 DEBUG
+            e.printStackTrace();
 
             response.put("success", false);
-            response.put("message", e.getMessage()); // ✅ REAL ERROR
+            response.put("message", e.getMessage());
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
@@ -82,6 +106,15 @@ public class AuthController {
             response.put("role", authResponse.getRole());
             if (authResponse.getUserId() != null) {
                 response.put("userId", authResponse.getUserId());
+            }
+            if (authResponse.getEmail() != null) {
+                response.put("email", authResponse.getEmail());
+            }
+            if (authResponse.getContactNumber() != null) {
+                response.put("contactNumber", authResponse.getContactNumber());
+            }
+            if (authResponse.getDisplayName() != null) {
+                response.put("displayName", authResponse.getDisplayName());
             }
 
             return ResponseEntity.ok(response);
@@ -107,12 +140,20 @@ public class AuthController {
 
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(response);
 
-        } catch (Exception e) {
-
-            e.printStackTrace(); // 🔥 VERY IMPORTANT
+        } catch (PhoneAlreadyLinkedException e) {
 
             response.put("success", false);
-            response.put("message", e.getMessage()); // ✅ SHOW REAL ERROR
+            response.put("code", "PHONE_ALREADY_LINKED");
+            response.put("message", e.getMessage());
+
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+
+        } catch (Exception e) {
+
+            e.printStackTrace();
+
+            response.put("success", false);
+            response.put("message", e.getMessage());
 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
