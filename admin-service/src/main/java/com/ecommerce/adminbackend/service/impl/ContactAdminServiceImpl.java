@@ -67,6 +67,34 @@ public class ContactAdminServiceImpl extends BaseAdminService implements Contact
 
     @Override
     @Transactional
+    public Map<String, Object> createContact(Map<String, Object> body) {
+        ContactInquiry contact = new ContactInquiry();
+        contact.setName(requireNonBlank(stringAt(body, "name"), "name"));
+        contact.setEmail(requireNonBlank(stringAt(body, "email"), "email"));
+        contact.setPhone(blankToNull(stringAt(body, "phone")));
+        contact.setSubject(requireNonBlank(stringAt(body, "subject"), "subject"));
+        contact.setMessage(requireNonBlank(
+                body.containsKey("message") ? stringAt(body, "message") : stringAt(body, "content"),
+                "message"));
+        Boolean status = null;
+        if (body.containsKey("status")) {
+            Object raw = body.get("status");
+            if (raw instanceof Boolean bool) {
+                status = bool;
+            } else {
+                String text = String.valueOf(raw).trim().toLowerCase();
+                status = "read".equals(text) || "replied".equals(text) || "true".equals(text) || "1".equals(text);
+            }
+        } else if (body.containsKey("active")) {
+            Object raw = body.get("active");
+            status = raw instanceof Boolean bool ? bool : Boolean.parseBoolean(String.valueOf(raw));
+        }
+        contact.setStatus(Boolean.TRUE.equals(status));
+        return toContact(contactRepository.save(contact));
+    }
+
+    @Override
+    @Transactional
     public void deleteContact(Integer id) {
         ContactInquiry contact = requireContact(id);
         contactRepository.delete(contact);

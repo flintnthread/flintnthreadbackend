@@ -16,5 +16,7 @@ public interface ContactAdminService {
 
     Map<String, Object> reply(Integer id, String reply);
 
+    Map<String, Object> createContact(Map<String, Object> body);
+
     void deleteContact(Integer id);
 }

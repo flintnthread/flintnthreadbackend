@@ -19,10 +19,14 @@ public class PasswordResetUrlHelper {
     private String passwordResetRedirectUrl;
 
     /**
-     * Link placed in the password reset email. Opens the seller app reset-password page.
+     * Link placed in the password reset email. Hits seller-service
+     * ({@code /api/auth/reset-password}) like email verification, so the hop
+     * works on any phone/PC without needing Expo local server.
      */
     public String buildEmailLinkClickUrl(String resetToken) {
-        return buildResetPageRedirect(resetToken);
+        return trimTrailingSlash(SslSafePublicUrl.normalize(backendPublicUrl))
+                + "/api/auth/reset-password?token="
+                + URLEncoder.encode(resetToken, StandardCharsets.UTF_8);
     }
 
     public String buildResetPageRedirect(String token) {

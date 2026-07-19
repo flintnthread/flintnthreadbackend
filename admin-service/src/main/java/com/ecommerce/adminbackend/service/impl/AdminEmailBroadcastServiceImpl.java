@@ -92,7 +92,6 @@ public class AdminEmailBroadcastServiceImpl extends BaseAdminService implements 
     }
 
     @Override
-    @Transactional
     public Map<String, Object> sendToSellers(Map<String, Object> body) {
         String subject = requireNonBlank(stringAt(body, "subject"), "subject");
         String message = requireNonBlank(stringAt(body, "message"), "message");

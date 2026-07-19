@@ -172,8 +172,7 @@ public class OrderServiceImpl implements OrderService {
                 finalAmount = cart.getPriceSummary().getFinalTotal();
             }
 
-            shipping = BigDecimal.ZERO;
-            finalAmount = subtotal.subtract(discount).max(BigDecimal.ZERO);
+            // Keep cart deliveryCharge in shippingAmount / finalAmount (do not zero shipping).
 
             // ✅ Apply inviter referral reward (10% off subtotal) when unlocked — not on referee signup
             double referralDiscountPercent = 0.0d;
@@ -203,7 +202,7 @@ public class OrderServiceImpl implements OrderService {
                         .multiply(BigDecimal.valueOf(referralDiscountPercent))
                         .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
                 discount = discount.add(extraDiscount);
-                finalAmount = subtotal.subtract(discount).max(BigDecimal.ZERO);
+                finalAmount = subtotal.add(shipping).subtract(discount).max(BigDecimal.ZERO);
             }
 
             // Platform fee is always added to the payable order amount at checkout.
@@ -309,17 +308,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Order history for Switch Account: all accounts that share the same registered mobile
-     * see every order owned by those accounts, plus orders whose shipping phone matches
-     * that registered mobile (email A + email B, one phone → combined history).
+     * Normal shopper order history is scoped to the authenticated user only.
+     * Linked-phone sibling merge is not applied here (avoids mixed profiles on Switch Account).
      */
     @Override
     @Transactional(readOnly = true)
     public List<OrderResponseDTO> getUserOrders(String status) {
         User current = securityUtil.getCurrentUser();
-        LinkedPhoneScope scope = resolveLinkedPhoneScope(current);
+        if (current == null || current.getId() == null) {
+            throw new OrderException("User not authenticated");
+        }
 
-        List<Order> orders = loadOrdersForLinkedPhoneScope(scope, status);
+        List<Order> orders = loadOrdersForUserList(current.getId(), status);
 
         return orders.stream()
                 .map(order -> {
@@ -816,11 +816,81 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        notifyOrderCancelledSafely(order, walletCredited, walletCreditAmount);
+
         return CancelOrderResponseDTO.builder()
                 .walletCredited(walletCredited)
                 .walletCreditAmount(walletCreditAmount)
                 .message(message)
                 .build();
+    }
+
+    /** Best-effort cancel push + email; failures must not roll back cancel. */
+    private void notifyOrderCancelledSafely(
+            Order order,
+            boolean walletCredited,
+            BigDecimal walletCreditAmount
+    ) {
+        if (order == null || order.getUserId() == null) {
+            return;
+        }
+        String orderLabel = order.getOrderNumber() != null && !order.getOrderNumber().isBlank()
+                ? order.getOrderNumber()
+                : String.valueOf(order.getId());
+        String refundNote = walletCredited && walletCreditAmount != null
+                && walletCreditAmount.compareTo(BigDecimal.ZERO) > 0
+                ? " Refund of ₹" + walletCreditAmount.setScale(2, java.math.RoundingMode.HALF_UP)
+                        + " has been credited to your FNT Wallet."
+                : "";
+
+        try {
+            pushNotificationService.notifyUser(
+                    order.getUserId(),
+                    "Order #" + orderLabel + " cancelled",
+                    "Your order has been cancelled." + refundNote,
+                    "order",
+                    "/orders?orderId=" + order.getId()
+            );
+        } catch (Exception e) {
+            log.warn(
+                    "[NOTIFY] Cancel push failed order={}: {}",
+                    orderLabel,
+                    e.getMessage()
+            );
+        }
+
+        try {
+            User user = userRepository.findById(order.getUserId()).orElse(null);
+            String recipient = firstNonBlank(
+                    user != null ? user.getEmail() : null,
+                    order.getShippingEmail()
+            );
+            if (recipient == null) {
+                log.warn("[EMAIL] No recipient for cancel notice order={}", orderLabel);
+                return;
+            }
+            String html = "<p>Hello,</p>"
+                    + "<p>Your order <strong>#"
+                    + escapeHtml(orderLabel)
+                    + "</strong> (ID: "
+                    + order.getId()
+                    + ") has been cancelled.</p>"
+                    + (refundNote.isBlank()
+                            ? ""
+                            : "<p>" + escapeHtml(refundNote.trim()) + "</p>")
+                    + "<p>— Flint &amp; Thread</p>";
+            emailService.sendNoticeEmail(
+                    recipient,
+                    "Order #" + orderLabel + " cancelled",
+                    html
+            );
+        } catch (Exception e) {
+            log.warn(
+                    "[EMAIL] Cancel notice failed order={}: {}",
+                    orderLabel,
+                    e.getMessage()
+            );
+        }
     }
 
     private boolean shouldCreditWalletOnCancel(Order order) {
@@ -934,6 +1004,40 @@ public class OrderServiceImpl implements OrderService {
         return order;
     }
 
+    @Override
+    @Transactional
+    public Order markOrderPaymentFailed(String razorpayOrderId) {
+        if (razorpayOrderId == null || razorpayOrderId.isBlank()) {
+            throw new OrderException("Razorpay order id is required");
+        }
+        Order order = orderRepository
+                .findByRazorpayOrderId(razorpayOrderId.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        String paymentStatus = order.getPaymentStatus() != null
+                ? order.getPaymentStatus().trim().toLowerCase(Locale.ENGLISH)
+                : "";
+        if ("paid".equals(paymentStatus)
+                || "success".equals(paymentStatus)
+                || "completed".equals(paymentStatus)
+                || "captured".equals(paymentStatus)) {
+            return order;
+        }
+
+        order.setPaymentStatus("failed");
+        String orderStatus = order.getOrderStatus() != null
+                ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                : "";
+        if (orderStatus.isBlank()
+                || "awaiting_payment".equals(orderStatus)
+                || "pending".equals(orderStatus)
+                || "processing".equals(orderStatus)) {
+            order.setOrderStatus("payment_failed");
+        }
+        order.setUpdatedAt(LocalDateTime.now());
+        return orderRepository.save(order);
+    }
+
     /**
      * Push to Shiprocket only after DB commit, off the request thread.
      * Online unpaid orders are skipped until markOrderAsPaid.
@@ -1045,7 +1149,12 @@ public class OrderServiceImpl implements OrderService {
         if (order == null || order.getPaymentStatus() == null) {
             return false;
         }
-        return "pending".equalsIgnoreCase(order.getPaymentStatus().trim());
+        // COD unpaid is collect-on-delivery — not an online Razorpay pending state.
+        if (isCodPaymentMethod(order.getPaymentMethod())) {
+            return false;
+        }
+        return "pending".equalsIgnoreCase(order.getPaymentStatus().trim())
+                || "failed".equalsIgnoreCase(order.getPaymentStatus().trim());
     }
 
     private void sendOrderConfirmationEmailForOrder(Order order) {
@@ -1268,9 +1377,7 @@ public class OrderServiceImpl implements OrderService {
                 .paymentStatus(
                         finalAmount.compareTo(BigDecimal.ZERO) <= 0
                                 ? "paid"
-                                : isCodPaymentMethod(dto.getPaymentMethod())
-                                        ? "paid"
-                                        : "pending"
+                                : "pending"
                 )
                 .orderStatus(
                         finalAmount.compareTo(BigDecimal.ZERO) <= 0
@@ -2288,7 +2395,7 @@ public class OrderServiceImpl implements OrderService {
                 order.getOrderNumber(),
                 formatOrderCreatedDate(order.getCreatedAt()),
                 formatPaymentMethodLabel(order.getPaymentMethod(), walletVal, payable),
-                formatPaymentStatusLabel(order.getPaymentStatus()),
+                formatPaymentStatusLabel(order.getPaymentMethod(), order.getPaymentStatus()),
                 subtotalVal,
                 discountVal,
                 shippingVal,
@@ -2351,9 +2458,10 @@ public class OrderServiceImpl implements OrderService {
         String base = publicWebBaseUrl != null
                 ? publicWebBaseUrl.replaceAll("/+$", "")
                 : "https://flintnthread.in";
-        return base + "/order-view?orderId=" + order.getId()
+        String orderNumber = order.getOrderNumber() != null ? order.getOrderNumber() : "";
+        return base + "/order-view.html?orderId=" + order.getId()
                 + "&orderNumber=" + java.net.URLEncoder.encode(
-                order.getOrderNumber(),
+                orderNumber,
                 java.nio.charset.StandardCharsets.UTF_8
         );
     }
@@ -2421,12 +2529,21 @@ public class OrderServiceImpl implements OrderService {
         return method.trim();
     }
 
-    private String formatPaymentStatusLabel(String status) {
+    private String formatPaymentStatusLabel(String paymentMethod, String status) {
+        String normalized = status != null
+                ? status.trim().toLowerCase(Locale.ENGLISH)
+                : "";
+        boolean paid = normalized.equals("paid")
+                || normalized.equals("success")
+                || normalized.equals("completed")
+                || normalized.equals("captured");
+        if (isCodPaymentMethod(paymentMethod) && !paid) {
+            return "Pending (COD)";
+        }
         if (status == null || status.isBlank()) {
             return "Pending";
         }
-        String normalized = status.trim().toLowerCase(Locale.ENGLISH);
-        if (normalized.equals("paid") || normalized.equals("success")) {
+        if (paid) {
             return "Paid";
         }
         if (normalized.equals("pending")) {

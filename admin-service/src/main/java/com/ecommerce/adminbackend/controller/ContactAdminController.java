@@ -33,6 +33,11 @@ public class ContactAdminController {
         return contactAdminService.listContacts(page, size);
     }
 
+    @PostMapping
+    public Map<String, Object> createContact(@RequestBody Map<String, Object> body) {
+        return contactAdminService.createContact(body);
+    }
+
     @GetMapping("/stats")
     public Map<String, Object> stats() {
         return contactAdminService.stats();
