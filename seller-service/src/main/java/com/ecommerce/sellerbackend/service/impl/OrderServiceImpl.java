@@ -148,9 +148,14 @@ public class OrderServiceImpl implements OrderService {
                 order = buildSyntheticOrder(item.getOrderId(), List.of(item));
             }
             List<OrderStatusHistory> history = historyByOrder.getOrDefault(item.getOrderId(), List.of());
-            String rawStatus = item.getStatus() != null && !item.getStatus().isBlank()
-                    ? item.getStatus()
-                    : resolveRawStatus(order, orderItems, history);
+            String rawStatus;
+            if (order != null && isCancelledStatus(order.getOrderStatus())) {
+                rawStatus = "cancelled";
+            } else if (item.getStatus() != null && !item.getStatus().isBlank()) {
+                rawStatus = item.getStatus();
+            } else {
+                rawStatus = resolveRawStatus(order, orderItems, history);
+            }
             String uiStatus = toUiStatus(rawStatus);
             switch (uiStatus) {
                 case "Pending" -> pending++;
@@ -369,7 +374,8 @@ public class OrderServiceImpl implements OrderService {
                         item,
                         customByItem.getOrDefault(item.getId(), List.of()),
                         productNames,
-                        resolvedNamesByItemId))
+                        resolvedNamesByItemId,
+                        rawStatus))
                 .toList();
 
         List<OrderEmailLogDto> emailLogs = loadEmailLogs(order.getId());
@@ -640,9 +646,15 @@ public class OrderServiceImpl implements OrderService {
             OrderItem item,
             List<OrderItemCustomDetail> customDetails,
             Map<Long, String> productNames,
-            Map<Integer, String> resolvedNamesByItemId) {
+            Map<Integer, String> resolvedNamesByItemId,
+            String orderRawStatus) {
         BigDecimal amount = lineAmount(item);
         BigDecimal subtotal = lineSubtotal(item);
+        String effectiveStatus = isCancelledStatus(orderRawStatus)
+                ? "cancelled"
+                : (item.getStatus() != null && !item.getStatus().isBlank()
+                        ? item.getStatus()
+                        : orderRawStatus);
         return SellerOrderLineDto.builder()
                 .lineItemId(item.getId())
                 .productId(item.getProductId())
@@ -667,8 +679,8 @@ public class OrderServiceImpl implements OrderService {
                 .unitPrice(resolveUnitPrice(item))
                 .discount(null)
                 .tax(null)
-                .status(item.getStatus())
-                .uiStatus(toUiStatus(item.getStatus()))
+                .status(effectiveStatus)
+                .uiStatus(toUiStatus(effectiveStatus))
                 .color(item.getColor())
                 .size(item.getSize())
                 .sellerName(item.getSellerName())
@@ -919,6 +931,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private String resolveRawStatus(Order order, List<OrderItem> items, List<OrderStatusHistory> history) {
+        // Terminal cancel on the order header wins over stale history / line status
+        // (user cancel historically only updated orders.order_status).
+        if (order != null && isCancelledStatus(order.getOrderStatus())) {
+            return "cancelled";
+        }
         if (history != null && !history.isEmpty()) {
             OrderStatusHistory latest = history.get(history.size() - 1);
             if (latest.getStatus() != null && !latest.getStatus().isBlank()) {
@@ -934,6 +951,16 @@ public class OrderServiceImpl implements OrderService {
                 .filter(s -> !s.isBlank())
                 .findFirst()
                 .orElse("pending");
+    }
+
+    private boolean isCancelledStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return false;
+        }
+        String normalized = status.trim().toLowerCase(Locale.ROOT);
+        return "cancelled".equals(normalized)
+                || "canceled".equals(normalized)
+                || normalized.contains("cancel");
     }
 
     private String toUiStatus(String raw) {
