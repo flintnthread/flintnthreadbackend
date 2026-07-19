@@ -208,6 +208,38 @@ public class JwtUtil {
         }
     }
 
+    /** Short-lived proof that signup phone OTP was verified (30 minutes). */
+    public String generateSignupPhoneToken(String email, String mobile) {
+        return Jwts.builder()
+                .setSubject(email.trim().toLowerCase())
+                .claim("purpose", "SIGNUP_PHONE_VERIFIED")
+                .claim("mobile", mobile.trim())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 1000L * 60 * 30))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean isValidSignupPhoneToken(String token, String email, String mobile) {
+        if (token == null || token.isBlank()
+                || email == null || email.isBlank()
+                || mobile == null || mobile.isBlank()) {
+            return false;
+        }
+        try {
+            Claims claims = extractClaims(token);
+            String purpose = claims.get("purpose", String.class);
+            String subject = claims.getSubject();
+            String tokenMobile = claims.get("mobile", String.class);
+            return "SIGNUP_PHONE_VERIFIED".equals(purpose)
+                    && email.trim().equalsIgnoreCase(subject)
+                    && mobile.trim().equals(tokenMobile)
+                    && !isTokenExpired(token);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Short-lived proof for forgot-password reset (15 minutes). */
     public String generatePasswordResetToken(String identifier, Long userId) {
         return Jwts.builder()

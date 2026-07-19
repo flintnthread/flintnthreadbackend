@@ -7,6 +7,7 @@ import com.ecommerce.authdemo.dto.SignupCompleteDTO;
 import com.ecommerce.authdemo.dto.SignupSendEmailOtpDTO;
 import com.ecommerce.authdemo.dto.SignupSendPhoneOtpDTO;
 import com.ecommerce.authdemo.dto.SignupVerifyEmailOtpDTO;
+import com.ecommerce.authdemo.dto.SignupVerifyPhoneOtpDTO;
 import com.ecommerce.authdemo.entity.Otp;
 import com.ecommerce.authdemo.entity.User;
 import com.ecommerce.authdemo.exception.EmailSendException;
@@ -83,10 +84,12 @@ public class SignupServiceImpl implements SignupService {
 
         try {
             emailService.sendOtpEmail(email, otp);
+            log.info("Signup email OTP sent to {}", email);
         } catch (EmailSendException e) {
             throw e;
         } catch (Exception e) {
-            throw new EmailSendException("Unable to send OTP to email");
+            log.error("Signup email OTP failed for {}: {}", email, e.getMessage(), e);
+            throw new EmailSendException("Unable to send OTP to email. Please try again.");
         }
 
         return OtpResponseDTO.builder()
@@ -182,6 +185,45 @@ public class SignupServiceImpl implements SignupService {
 
     @Override
     @Transactional
+    public Map<String, Object> verifyPhoneOtp(SignupVerifyPhoneOtpDTO dto) {
+        String email = normalizeEmail(dto.getEmail());
+        String mobile = normalizeMobile(dto.getMobile());
+
+        if (email == null) {
+            throw new SignupException("Email is required", "EMAIL_REQUIRED");
+        }
+        if (mobile == null || !mobile.matches(MOBILE_REGEX)) {
+            throw new InvalidMobileException("Invalid mobile number");
+        }
+        if (!jwtUtil.isValidSignupEmailToken(dto.getEmailVerifiedToken(), email)) {
+            throw new SignupException(
+                    "Email verification expired. Please verify your email again.",
+                    "EMAIL_TOKEN_INVALID");
+        }
+        if (userRepository.findByContactNumber(mobile).isPresent()) {
+            throw new SignupException(
+                    "This mobile number is already linked to another account.",
+                    "PHONE_EXISTS");
+        }
+
+        assertOtpValid(PHONE_OTP_PREFIX + mobile, dto.getOtp());
+        otpRepository.deleteByIdentifier(PHONE_OTP_PREFIX + mobile);
+        otpRepository.flush();
+
+        String phoneVerifiedToken = jwtUtil.generateSignupPhoneToken(email, mobile);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        result.put("message", "Mobile verified successfully");
+        result.put("email", email);
+        result.put("mobile", mobile);
+        result.put("phoneVerifiedToken", phoneVerifiedToken);
+        result.put("nextStep", "CREATE_ACCOUNT");
+        return result;
+    }
+
+    @Override
+    @Transactional
     public AuthResponseDTO completeSignup(SignupCompleteDTO dto) {
         String firstName = normalizeName(dto.getFirstName());
         String lastName = normalizeName(dto.getLastName());
@@ -210,7 +252,19 @@ public class SignupServiceImpl implements SignupService {
                     "EMAIL_TOKEN_INVALID");
         }
 
-        assertOtpValid(PHONE_OTP_PREFIX + mobile, dto.getOtp());
+        boolean phoneTokenOk = jwtUtil.isValidSignupPhoneToken(
+                dto.getPhoneVerifiedToken(), email, mobile);
+        String rawOtp = dto.getOtp() == null ? "" : dto.getOtp().trim();
+        if (phoneTokenOk) {
+            // Phone already verified — nothing more to check
+        } else if (rawOtp.matches("^\\d{6}$")) {
+            assertOtpValid(PHONE_OTP_PREFIX + mobile, rawOtp);
+            otpRepository.deleteByIdentifier(PHONE_OTP_PREFIX + mobile);
+        } else {
+            throw new SignupException(
+                    "Please verify your mobile number before creating the account.",
+                    "PHONE_NOT_VERIFIED");
+        }
 
         if (userRepository.findByEmail(email).isPresent()) {
             throw new SignupException(

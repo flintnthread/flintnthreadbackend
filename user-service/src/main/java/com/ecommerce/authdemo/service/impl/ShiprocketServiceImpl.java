@@ -8,6 +8,7 @@ import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.ProductVariantRepository;
+import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.service.PlatformIntegrationSettings;
 import com.ecommerce.authdemo.service.ShiprocketService;
 
@@ -27,6 +28,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.Locale;
 
     @Service
     @RequiredArgsConstructor
@@ -47,6 +49,8 @@ import java.util.*;
         private final ProductRepository productRepository;
 
         private final ProductVariantRepository productVariantRepository;
+
+        private final SellerRepository sellerRepository;
 
         private final PlatformIntegrationSettings integrationSettings;
 
@@ -448,19 +452,10 @@ import java.util.*;
                     resolvePickupLocation(primarySellerId)
             );
 
-            // Split customer name into first and last name for Shiprocket
-            String fullName = order.getShippingName();
-            String firstName = fullName != null && !fullName.isBlank() ? fullName.trim() : "Customer";
-            String lastName = "Customer";
-
-            if (fullName != null && fullName.trim().contains(" ")) {
-                String[] nameParts = fullName.trim().split("\\s+", 2);
-                firstName = nameParts[0];
-                lastName = nameParts.length > 1 ? nameParts[1] : "Customer";
-            }
-
-            payload.put("billing_customer_name", firstName);
-            payload.put("billing_last_name", lastName);
+            // Customer name for Shiprocket: use the real name only — never append "Customer".
+            String[] nameParts = splitCustomerName(order.getShippingName());
+            payload.put("billing_customer_name", nameParts[0]);
+            payload.put("billing_last_name", nameParts[1]);
             // Shiprocket requires a valid 10-digit Indian mobile (6–9…). Invalid phones → HTTP 422.
             payload.put("billing_phone", normalizeIndianMobile(order.getShippingPhone()));
             payload.put("billing_email", order.getShippingEmail() != null ? order.getShippingEmail() : "support@flintnthread.in");
@@ -538,8 +533,11 @@ import java.util.*;
 
         /**
          * Shiprocket pickup_location must match a nickname registered in Shiprocket
-         * (Settings → Pickup Addresses), e.g. "ASVI HOME FOODS".
-         * Prefer: per-seller map → configured default from Admin Platform Settings.
+         * (Settings → Pickup Addresses).
+         * Prefer seller business / branch name from DB; only fall back to ASVI HOME FOODS
+         * (or Admin Platform Settings default) when the seller has no usable pickup name.
+         * If Shiprocket rejects the seller nickname, {@link #postCreateAdhocWithPickupFallback}
+         * retries with the platform default.
          */
         private String defaultPickupLocation() {
             String configured = integrationSettings.getShiprocketPickupLocation();
@@ -549,10 +547,35 @@ import java.util.*;
         }
 
         private String resolvePickupLocation(Long sellerId) {
-            String configured = defaultPickupLocation();
+            String fallback = defaultPickupLocation();
 
+            // Optional explicit map: sellerId:PickupNickname
+            String fromMap = resolvePickupFromSellerMap(sellerId);
+            if (fromMap != null) {
+                return fromMap;
+            }
+
+            String fromSeller = resolvePickupFromSellerProfile(sellerId);
+            if (fromSeller != null) {
+                log.info(
+                        "Shiprocket pickup from seller profile sellerId={} pickup={}",
+                        sellerId,
+                        fromSeller
+                );
+                return fromSeller;
+            }
+
+            log.info(
+                    "Shiprocket pickup falling back to platform default for sellerId={} pickup={}",
+                    sellerId,
+                    fallback
+            );
+            return fallback;
+        }
+
+        private String resolvePickupFromSellerMap(Long sellerId) {
             if (sellerId == null || pickupLocationBySeller == null || pickupLocationBySeller.isBlank()) {
-                return configured;
+                return null;
             }
 
             for (String part : pickupLocationBySeller.split(",")) {
@@ -574,7 +597,61 @@ import java.util.*;
                     // skip malformed mapping
                 }
             }
-            return configured;
+            return null;
+        }
+
+        /**
+         * Use seller's registered pickup nickname: business name first, then branch name.
+         * Returns null when missing so caller can fall back to ASVI HOME FOODS.
+         */
+        private String resolvePickupFromSellerProfile(Long sellerId) {
+            if (sellerId == null) {
+                return null;
+            }
+            return sellerRepository.findById(sellerId)
+                    .map(seller -> {
+                        String business = trimToNull(seller.getBusinessName());
+                        if (business != null) {
+                            return business;
+                        }
+                        String branch = trimToNull(seller.getBranchName());
+                        if (branch != null) {
+                            return branch;
+                        }
+                        // Warehouse street text is NOT a Shiprocket pickup nickname — skip it.
+                        return null;
+                    })
+                    .orElse(null);
+        }
+
+        private static String trimToNull(String value) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.trim();
+            return trimmed.isEmpty() ? null : trimmed;
+        }
+
+        /**
+         * @return [firstName, lastName] — lastName may be empty; never forced to "Customer".
+         */
+        private static String[] splitCustomerName(String fullName) {
+            if (fullName == null || fullName.isBlank()) {
+                return new String[]{"Customer", ""};
+            }
+            String trimmed = fullName.trim().replaceAll("\\s+", " ");
+            // Strip a trailing "customer" label if it was previously appended.
+            if (trimmed.toLowerCase(Locale.ROOT).endsWith(" customer")) {
+                trimmed = trimmed.substring(0, trimmed.length() - " customer".length()).trim();
+            }
+            int space = trimmed.indexOf(' ');
+            if (space > 0) {
+                return new String[]{
+                        trimmed.substring(0, space),
+                        trimmed.substring(space + 1)
+                };
+            }
+            return new String[]{trimmed, ""};
         }
 
         /**
