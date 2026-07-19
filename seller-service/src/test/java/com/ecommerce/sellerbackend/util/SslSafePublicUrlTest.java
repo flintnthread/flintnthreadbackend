@@ -12,11 +12,14 @@ class SslSafePublicUrlTest {
                 "https://flintnthread.in/api/auth/verify-email?token=x",
                 SslSafePublicUrl.normalize("https://flintnthread.online/api/auth/verify-email?token=x"));
         assertEquals(
-                "https://flintnthread.in/Seller/verify-email",
+                "https://seller.flintnthread.in/verify-email",
                 SslSafePublicUrl.normalize("https://flintnthread.online/Seller/verify-email"));
         assertEquals(
                 "https://seller.flintnthread.in/path",
                 SslSafePublicUrl.normalize("https://seller.flintnthread.online/path"));
+        assertEquals(
+                "https://seller.flintnthread.in/verify-email",
+                SslSafePublicUrl.normalize("https://flintnthread.in/Seller/verify-email"));
         assertEquals(
                 "https://flintnthread.in",
                 SslSafePublicUrl.normalize("https://flintnthread.in"));

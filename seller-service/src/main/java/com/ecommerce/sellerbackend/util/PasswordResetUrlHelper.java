@@ -12,7 +12,7 @@ public class PasswordResetUrlHelper {
     @Value("${app.backend.public-url:https://flintnthread.in}")
     private String backendPublicUrl;
 
-    @Value("${app.frontend.base-url:https://flintnthread.in/Seller}")
+    @Value("${app.frontend.base-url:https://seller.flintnthread.in}")
     private String frontendBaseUrl;
 
     @Value("${app.frontend.password-reset-redirect-url:}")

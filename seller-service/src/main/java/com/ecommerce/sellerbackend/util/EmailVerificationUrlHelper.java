@@ -8,7 +8,8 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Builds public links for seller email verification.
- * Production defaults use {@code https://flintnthread.in} (matches live TLS certificate SANs).
+ * Production defaults use {@code https://seller.flintnthread.in} for the seller app
+ * and {@code https://flintnthread.in} for API links (matches live TLS certificate SANs).
  */
 @Component
 public class EmailVerificationUrlHelper {
@@ -16,7 +17,7 @@ public class EmailVerificationUrlHelper {
     @Value("${app.backend.public-url:https://flintnthread.in}")
     private String backendPublicUrl;
 
-    @Value("${app.frontend.base-url:https://flintnthread.in/Seller}")
+    @Value("${app.frontend.base-url:https://seller.flintnthread.in}")
     private String frontendBaseUrl;
 
     @Value("${app.frontend.email-verify-redirect-url:}")

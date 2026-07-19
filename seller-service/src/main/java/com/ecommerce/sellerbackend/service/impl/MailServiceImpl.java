@@ -594,7 +594,7 @@ public class MailServiceImpl implements MailService {
             throw new IllegalStateException(
                     "Refusing to send an email with a localhost link (" + link + "). "
                             + "Set APP_BACKEND_PUBLIC_URL=https://flintnthread.in and "
-                            + "APP_FRONTEND_BASE_URL=https://flintnthread.in/Seller "
+                            + "APP_FRONTEND_BASE_URL=https://seller.flintnthread.in "
                             + "(or set app.mail.allow-localhost-links=true only for local development).");
         }
         if (lower.contains("flintnthread.online")) {
@@ -602,7 +602,7 @@ public class MailServiceImpl implements MailService {
                     "Refusing to send an email with a flintnthread.online link (" + link + "). "
                             + "TLS certificate covers flintnthread.in only (NET::ERR_CERT_COMMON_NAME_INVALID). "
                             + "Set APP_BACKEND_PUBLIC_URL=https://flintnthread.in and "
-                            + "APP_FRONTEND_BASE_URL=https://flintnthread.in/Seller.");
+                            + "APP_FRONTEND_BASE_URL=https://seller.flintnthread.in.");
         }
     }
 

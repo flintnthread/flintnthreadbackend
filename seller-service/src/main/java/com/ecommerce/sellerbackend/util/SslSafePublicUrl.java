@@ -26,6 +26,9 @@ public final class SslSafePublicUrl {
         u = replaceHost(u, "http://seller.flintnthread.online", "https://seller.flintnthread.in");
         u = replaceHost(u, "http://admin.flintnthread.online", "https://admin.flintnthread.in");
         u = replaceHost(u, "http://flintnthread.online", "https://flintnthread.in");
+        // Legacy path-based seller app → dedicated seller subdomain.
+        u = replaceHost(u, "https://flintnthread.in/Seller", "https://seller.flintnthread.in");
+        u = replaceHost(u, "http://flintnthread.in/Seller", "https://seller.flintnthread.in");
         return u;
     }
 
