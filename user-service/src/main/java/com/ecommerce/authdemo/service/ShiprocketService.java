@@ -14,6 +14,12 @@ public interface ShiprocketService {
 
     ShiprocketShipmentResult createShipment(Order order);
 
+    /**
+     * Pull latest AWB / courier / tracking URL from Shiprocket into {@code orders}
+     * (used when Ship Now happens in the Shiprocket dashboard and webhook did not update DB).
+     */
+    ShiprocketShipmentResult syncShipmentDetails(Order order);
+
     String trackShipment(String awb);
 
     void handleWebhook(Map<String, Object> webhookData);
