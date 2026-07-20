@@ -1,6 +1,7 @@
 package com.ecommerce.authdemo.controller;
 
 import com.ecommerce.authdemo.service.ShiprocketService;
+import com.ecommerce.authdemo.service.ShiprocketWebhookService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import java.util.Map;
 public class ShiprocketWebhookController {
 
     private final ShiprocketService shiprocketService;
+    private final ShiprocketWebhookService shiprocketWebhookService;
 
     @PostMapping("/webhook")
     public ResponseEntity<Map<String, Object>> receiveWebhook(
@@ -32,6 +34,8 @@ public class ShiprocketWebhookController {
                 ));
             }
 
+            shiprocketWebhookService.handleWebhook(payload);
+            // Legacy flat webhook handler (awb + status only)
             shiprocketService.handleWebhook(payload);
 
             Map<String, Object> ok = new HashMap<>();

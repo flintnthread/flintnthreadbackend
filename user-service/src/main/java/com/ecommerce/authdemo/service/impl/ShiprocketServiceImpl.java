@@ -320,6 +320,22 @@ import java.util.Locale;
                             ? String.valueOf(body.get("awb_code"))
                             : null;
 
+            String courierName = body.get("courier_name") != null
+                    ? String.valueOf(body.get("courier_name"))
+                    : null;
+
+            if ((awb == null || awb.isBlank()) && shipmentId != null && !shipmentId.isBlank()) {
+                Map<String, Object> assigned = tryAssignAwb(shipmentId);
+                if (assigned != null) {
+                    if (assigned.get("awb_code") != null) {
+                        awb = String.valueOf(assigned.get("awb_code"));
+                    }
+                    if (assigned.get("courier_name") != null) {
+                        courierName = String.valueOf(assigned.get("courier_name"));
+                    }
+                }
+            }
+
             String trackingUrl = awb != null
                     ? "https://shiprocket.co/tracking/" + awb
                     : null;
@@ -327,7 +343,8 @@ import java.util.Locale;
             String shiprocketStatus = awb != null ? "awb_assigned" : "new";
 
             order.setShiprocketAwbCode(awb);
-            order.setShiprocketCourierName("Shiprocket");
+            order.setShiprocketCourierName(
+                    courierName != null && !courierName.isBlank() ? courierName : "Shiprocket");
             order.setShiprocketTrackingUrl(trackingUrl);
             order.setShiprocketStatus(shiprocketStatus);
 
@@ -336,7 +353,7 @@ import java.util.Locale;
             orderRepository.updateShipment(
                     order.getOrderNumber(),
                     awb,
-                    "Shiprocket",
+                    order.getShiprocketCourierName(),
                     trackingUrl,
                     shiprocketStatus
             );
@@ -346,8 +363,43 @@ import java.util.Locale;
                     .shipmentId(shipmentId)
                     .awbCode(awb)
                     .trackingUrl(trackingUrl)
-                    .courierName("Shiprocket")
+                    .courierName(order.getShiprocketCourierName())
                     .build();
+        }
+
+        /** Assign AWB via Shiprocket when create/adhoc did not return one immediately. */
+        private Map<String, Object> tryAssignAwb(String shipmentId) {
+            try {
+                String token = getToken();
+                String url = apiBaseUrl + "/courier/assign/awb";
+                HttpHeaders headers = new HttpHeaders();
+                headers.setBearerAuth(token);
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("shipment_id", List.of(Integer.parseInt(shipmentId.trim())));
+                HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+                ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+                Map<String, Object> body = response.getBody();
+                if (body == null) {
+                    return null;
+                }
+                Object responseData = body.get("response");
+                if (responseData instanceof Map<?, ?> dataMap) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> casted = (Map<String, Object>) dataMap;
+                    Object awbAssign = casted.get("data");
+                    if (awbAssign instanceof Map<?, ?> assignMap) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> assign = (Map<String, Object>) assignMap;
+                        return assign;
+                    }
+                }
+                log.info("Shiprocket assign AWB response for shipment {}: {}", shipmentId, body);
+                return body;
+            } catch (Exception e) {
+                log.warn("Shiprocket AWB assign failed for shipment {}: {}", shipmentId, e.getMessage());
+                return null;
+            }
         }
 
         private Map<String, Object>

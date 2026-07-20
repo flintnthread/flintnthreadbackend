@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -34,18 +35,23 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
     public void handleWebhook(Map<String, Object> payload) {
         Map<String, Object> eventData = extractEventData(payload);
 
-        Integer orderId = parseInteger(firstNonBlank(eventData,
-                "order_id", "orderId", "channel_order_id", "channelOrderId"));
+        String channelOrderRef = firstNonBlank(eventData,
+                "channel_order_id", "channelOrderId", "order_id", "orderId");
+        Integer numericOrderId = parseInteger(channelOrderRef);
         String shiprocketOrderId = firstNonBlank(eventData,
                 "shiprocket_order_id", "shiprocketOrderId", "sr_order_id", "srOrderId");
         String shipmentId = firstNonBlank(eventData, "shipment_id", "shipmentId");
         String awbCode = firstNonBlank(eventData, "awb_code", "awb", "awbCode");
-        String courierName = firstNonBlank(eventData, "courier_name", "courierName");
+        String courierName = firstNonBlank(eventData, "courier_name", "courierName", "courier");
         String currentStatus = firstNonBlank(eventData, "current_status", "currentStatus", "status");
         String requestPayloadJson = toJson(payload);
-        Long orderIdLong = orderId == null ? null : orderId.longValue();
-        Optional<Order> orderOptional = orderIdLong == null ? Optional.empty() : orderRepository.findById(orderIdLong);
-        Integer webhookOrderId = orderOptional.isPresent() ? orderId : null;
+
+        Optional<Order> orderOptional = resolveOrderFromWebhook(
+                numericOrderId, channelOrderRef, shiprocketOrderId, awbCode);
+        Order order = orderOptional.orElse(null);
+        Integer webhookOrderId = order != null && order.getId() != null
+                ? Math.toIntExact(order.getId())
+                : numericOrderId;
 
         ShiprocketWebhook webhook = ShiprocketWebhook.builder()
                 .orderId(webhookOrderId)
@@ -58,9 +64,9 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                 .build();
 
         shiprocketWebhookRepository.save(webhook);
-        log.info("Shiprocket webhook saved: orderId={}, awb={}, status={}", orderId, awbCode, currentStatus);
+        log.info("Shiprocket webhook saved: orderId={}, awb={}, status={}", webhookOrderId, awbCode, currentStatus);
 
-        if (orderId == null || isBlank(currentStatus)) {
+        if (isBlank(currentStatus)) {
             shiprocketSyncLogService.logSync(
                     webhookOrderId,
                     null,
@@ -69,13 +75,13 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                     "FAILED",
                     requestPayloadJson,
                     null,
-                    "Missing required order_id or current_status in webhook payload"
+                    "Missing required current_status in webhook payload"
             );
             return;
         }
 
-        if (orderOptional.isEmpty()) {
-            log.warn("Shiprocket webhook references unknown order id={}", orderId);
+        if (order == null) {
+            log.warn("Shiprocket webhook could not resolve order ref={} awb={}", channelOrderRef, awbCode);
             shiprocketSyncLogService.logSync(
                     webhookOrderId,
                     null,
@@ -84,16 +90,15 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                     "FAILED",
                     requestPayloadJson,
                     null,
-                    "Order not found for id " + orderId
+                    "Order not found for webhook"
             );
             return;
         }
 
-        Order order = orderOptional.get();
         String mappedOrderStatus = mapToOrderStatusForOrderTable(currentStatus);
         if (isBlank(mappedOrderStatus)) {
             shiprocketSyncLogService.logSync(
-                    orderId,
+                    Math.toIntExact(order.getId()),
                     order.getOrderNumber(),
                     shiprocketOrderId,
                     "ORDER_STATUS_SYNC",
@@ -107,9 +112,33 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
 
         try {
             order.setOrderStatus(mappedOrderStatus);
+            if (shiprocketOrderId != null && !shiprocketOrderId.isBlank()) {
+                order.setShiprocketOrderId(shiprocketOrderId);
+            }
+            if (shipmentId != null && !shipmentId.isBlank()) {
+                order.setShiprocketShipmentId(shipmentId);
+            }
+            if (awbCode != null && !awbCode.isBlank()) {
+                order.setShiprocketAwbCode(awbCode);
+                if (order.getShiprocketTrackingUrl() == null || order.getShiprocketTrackingUrl().isBlank()) {
+                    order.setShiprocketTrackingUrl("https://shiprocket.co/tracking/" + awbCode);
+                }
+            }
+            if (courierName != null && !courierName.isBlank()) {
+                order.setShiprocketCourierName(courierName);
+            }
+            order.setShiprocketStatus(currentStatus);
+            order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
             orderRepository.save(order);
+            orderRepository.updateShipment(
+                    order.getOrderNumber(),
+                    order.getShiprocketAwbCode(),
+                    order.getShiprocketCourierName(),
+                    order.getShiprocketTrackingUrl(),
+                    order.getShiprocketStatus()
+            );
         } catch (Exception e) {
-            log.warn("Skipping order status update for orderId={} due to schema mismatch", orderId, e);
+            log.warn("Skipping order status update for orderId={} due to schema mismatch", order.getId(), e);
             shiprocketSyncLogService.logSync(
                     webhookOrderId,
                     order.getOrderNumber(),
@@ -118,7 +147,7 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                     "FAILED",
                     requestPayloadJson,
                     null,
-                    "Failed to update order_status with mapped value: " + mappedOrderStatus
+                    "Failed to update order with webhook: " + e.getMessage()
             );
             return;
         }
@@ -134,12 +163,12 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                 orderStatusHistoryRepository.save(history);
             } catch (Exception e) {
                 // Keep webhook processing successful even if status history schema is stricter.
-                log.warn("Skipping order_status_history insert for orderId={} due to schema mismatch", orderId, e);
+                log.warn("Skipping order_status_history insert for orderId={} due to schema mismatch", order.getId(), e);
             }
         }
 
         shiprocketSyncLogService.logSync(
-                orderId,
+                Math.toIntExact(order.getId()),
                 order.getOrderNumber(),
                 shiprocketOrderId,
                 "ORDER_STATUS_SYNC",
@@ -148,6 +177,46 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                 "Mapped status=" + mappedOrderStatus,
                 null
         );
+    }
+
+    private Optional<Order> resolveOrderFromWebhook(
+            Integer numericOrderId,
+            String channelOrderRef,
+            String shiprocketOrderId,
+            String awbCode) {
+        if (numericOrderId != null && numericOrderId > 0) {
+            Optional<Order> byId = orderRepository.findById(numericOrderId.longValue());
+            if (byId.isPresent()) {
+                return byId;
+            }
+        }
+        if (channelOrderRef != null && !channelOrderRef.isBlank()) {
+            String ref = channelOrderRef.trim();
+            Optional<Order> byNumber = orderRepository.findByOrderNumber(ref);
+            if (byNumber.isPresent()) {
+                return byNumber;
+            }
+            if (!ref.startsWith("#")) {
+                byNumber = orderRepository.findByOrderNumber("#" + ref);
+                if (byNumber.isPresent()) {
+                    return byNumber;
+                }
+            }
+        }
+        if (shiprocketOrderId != null && !shiprocketOrderId.isBlank()) {
+            List<Order> matches = orderRepository.findByShiprocketOrderIdOrderByCreatedAtDesc(
+                    shiprocketOrderId.trim());
+            if (!matches.isEmpty()) {
+                return Optional.of(matches.get(0));
+            }
+        }
+        if (awbCode != null && !awbCode.isBlank()) {
+            Optional<Order> byAwb = orderRepository.findByShiprocketAwbCode(awbCode.trim());
+            if (byAwb.isPresent()) {
+                return byAwb;
+            }
+        }
+        return Optional.empty();
     }
 
     private Map<String, Object> extractEventData(Map<String, Object> payload) {

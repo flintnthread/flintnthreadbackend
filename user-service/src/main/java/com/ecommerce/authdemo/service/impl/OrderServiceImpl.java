@@ -96,9 +96,77 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponseDTO placeOrder(PlaceOrderRequestDTO dto) {
+        return executePlaceOrder(dto, null);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO placeOrderAfterVerifiedPayment(
+            PlaceOrderRequestDTO dto,
+            String paymentId
+    ) {
+        if (paymentId == null || paymentId.isBlank()) {
+            throw new OrderException("Payment id is required");
+        }
+        if (dto.getRazorpayOrderId() == null || dto.getRazorpayOrderId().isBlank()) {
+            throw new OrderException("Razorpay order id is required");
+        }
+        return executePlaceOrder(dto, paymentId.trim());
+    }
+
+    @Override
+    @Transactional
+    public Order finalizeOrderAfterPaymentVerified(
+            String razorpayOrderId,
+            String paymentId,
+            PlaceOrderRequestDTO placeRequest
+    ) {
+        if (razorpayOrderId == null || razorpayOrderId.isBlank()) {
+            throw new OrderException("Razorpay order id is required");
+        }
+        if (paymentId == null || paymentId.isBlank()) {
+            throw new OrderException("Payment id is required");
+        }
+        String rzpId = razorpayOrderId.trim();
+        Optional<Order> existing = orderRepository.findByRazorpayOrderId(rzpId);
+        if (existing.isPresent()) {
+            return markOrderAsPaid(rzpId, paymentId.trim());
+        }
+        if (placeRequest == null || placeRequest.getAddressId() == null) {
+            throw new OrderException(
+                    "Checkout details required to create order after payment verification"
+            );
+        }
+        placeRequest.setRazorpayOrderId(rzpId);
+        OrderResponseDTO placed = placeOrderAfterVerifiedPayment(placeRequest, paymentId.trim());
+        return orderRepository.findById(placed.getOrderId())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found after placement"));
+    }
+
+    private OrderResponseDTO executePlaceOrder(PlaceOrderRequestDTO dto, String capturedPaymentId) {
 
         try {
             validatePlaceOrderRequest(dto);
+
+            if (capturedPaymentId != null
+                    && !capturedPaymentId.isBlank()
+                    && dto.getRazorpayOrderId() != null
+                    && !dto.getRazorpayOrderId().isBlank()) {
+                Optional<Order> existing = orderRepository.findByRazorpayOrderId(
+                        dto.getRazorpayOrderId().trim());
+                if (existing.isPresent()) {
+                    Order order = existing.get();
+                    if (!isPaidPaymentStatus(order.getPaymentStatus())) {
+                        order = markOrderAsPaid(dto.getRazorpayOrderId().trim(), capturedPaymentId);
+                    }
+                    List<OrderItemDTO> itemDTOList = orderItemRepository
+                            .findByOrderId(order.getId())
+                            .stream()
+                            .map(this::buildOrderItemDTO)
+                            .toList();
+                    return buildOrderResponse(order, itemDTOList);
+                }
+            }
 
             Long userId = securityUtil.getCurrentUserId();
 
@@ -238,7 +306,7 @@ public class OrderServiceImpl implements OrderService {
 
             Order order = createOrder(
                     userId, dto, address, subtotal, shipping, discount, finalAmount,
-                    walletApplied, inviterReferralApplied
+                    walletApplied, inviterReferralApplied, capturedPaymentId
             );
             order = orderRepository.save(order);
 
@@ -297,8 +365,8 @@ public class OrderServiceImpl implements OrderService {
                 clearCartSafely(userId);
             }
 
-            // Shiprocket after commit so COD/place API returns immediately (no 15s client timeout).
-            scheduleShiprocketAfterCommit(order);
+            // Shiprocket is pushed only after seller confirms (via internal/seller API).
+            // Do not auto-push here — payment success alone must not create shipment.
 
             return buildOrderResponse(order, itemDTOList);
 
@@ -1021,8 +1089,7 @@ public class OrderServiceImpl implements OrderService {
             log.error("Error processing referral on order payment: {}", e.getMessage(), e);
         }
 
-        // Do not block payment verify on Shiprocket (avoids 15s client timeouts).
-        scheduleShiprocketAfterCommit(order);
+        // Shiprocket push happens after seller confirms the order.
 
         order = orderRepository.save(order);
         try {
@@ -1265,6 +1332,17 @@ public class OrderServiceImpl implements OrderService {
         return result;
     }
 
+    private boolean isPaidPaymentStatus(String paymentStatus) {
+        if (paymentStatus == null || paymentStatus.isBlank()) {
+            return false;
+        }
+        String ps = paymentStatus.trim().toLowerCase(Locale.ENGLISH);
+        return "paid".equals(ps)
+                || "success".equals(ps)
+                || "completed".equals(ps)
+                || "captured".equals(ps);
+    }
+
     private boolean isPendingOnlinePayment(Order order) {
         if (order == null || order.getPaymentStatus() == null) {
             return false;
@@ -1476,13 +1554,15 @@ public class OrderServiceImpl implements OrderService {
                               BigDecimal subtotal, BigDecimal shipping,
                               BigDecimal discount, BigDecimal finalAmount,
                               BigDecimal walletApplied,
-                              boolean referralInviterDiscountApplied) {
+                              boolean referralInviterDiscountApplied,
+                              String capturedPaymentId) {
 
         // Calculate tax (18% GST on subtotal)
         BigDecimal taxAmount = subtotal.multiply(new BigDecimal("0.18"));
         double walletUsed = walletApplied != null
                 ? walletApplied.setScale(2, java.math.RoundingMode.HALF_UP).doubleValue()
                 : 0.0d;
+        boolean paidAtCreation = capturedPaymentId != null && !capturedPaymentId.isBlank();
 
         return Order.builder()
                 .userId(userId)
@@ -1494,13 +1574,15 @@ public class OrderServiceImpl implements OrderService {
                 .discountAmount(discount.doubleValue())
                 .paymentMethod(dto.getPaymentMethod())
                 .razorpayOrderId(dto.getRazorpayOrderId())
+                .razorpayPaymentId(paidAtCreation ? capturedPaymentId : null)
                 .paymentStatus(
-                        finalAmount.compareTo(BigDecimal.ZERO) <= 0
+                        paidAtCreation || finalAmount.compareTo(BigDecimal.ZERO) <= 0
                                 ? "paid"
                                 : "pending"
                 )
                 .orderStatus(
-                        finalAmount.compareTo(BigDecimal.ZERO) <= 0
+                        paidAtCreation
+                                || finalAmount.compareTo(BigDecimal.ZERO) <= 0
                                 || isCodPaymentMethod(dto.getPaymentMethod())
                                 ? "processing"
                                 : "awaiting_payment"

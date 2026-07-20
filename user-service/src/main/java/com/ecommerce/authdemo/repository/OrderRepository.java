@@ -97,6 +97,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByRazorpayOrderId(String razorpayOrderId);
     List<Order> findByRazorpayOrderIdOrderByCreatedAtDesc(String razorpayOrderId);
 
+    Optional<Order> findByShiprocketOrderId(String shiprocketOrderId);
+    List<Order> findByShiprocketOrderIdOrderByCreatedAtDesc(String shiprocketOrderId);
+
     /**
      * Unpaid ONLINE orders (COD gets orderStatus "processing", so it is excluded)
      * created before the cutoff — candidates for auto-cancel when payment was
