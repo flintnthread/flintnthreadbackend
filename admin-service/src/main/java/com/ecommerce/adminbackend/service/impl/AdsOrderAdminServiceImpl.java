@@ -24,11 +24,12 @@ public class AdsOrderAdminServiceImpl extends BaseAdminService implements AdsOrd
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<Map<String, Object>> list(String search, String status, String billingType, int page, int size) {
+    public PageResponse<Map<String, Object>> list(String search, String status, String billingType, Integer userId, int page, int size) {
         var result = orderRepository.search(
                 blankToNull(search),
                 blankToNull(status),
                 blankToNull(billingType),
+                userId,
                 PageRequest.of(page, size));
         return PageResponse.from(result.map(this::toSummary));
     }
