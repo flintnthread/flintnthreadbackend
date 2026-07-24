@@ -218,6 +218,8 @@ public class SecurityConfig {
                         // --------------------------------
                         .requestMatchers(HttpMethod.POST, "/api/shiprocket/webhook", "/api/shiprocket/webhook/**")
                         .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/internal/shiprocket/**")
+                        .permitAll()
 
                         // --------------------------------
                         // CONTACT US (PUBLIC SUBMIT)

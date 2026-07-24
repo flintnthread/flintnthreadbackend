@@ -36,6 +36,10 @@ RAZORPAY_KEY_SECRET=
 SHIPROCKET_EMAIL=
 SHIPROCKET_PASSWORD=
 
+# Shared key for admin/seller → user-service Shiprocket push (MUST match on all 3 services)
+INTERNAL_SERVICE_KEY=fnt-internal-dev-key
+USER_SERVICE_URL=http://127.0.0.1:8080
+
 # --- SMS ---
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=

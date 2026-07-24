@@ -15,6 +15,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -34,18 +37,28 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
     public void handleWebhook(Map<String, Object> payload) {
         Map<String, Object> eventData = extractEventData(payload);
 
-        Integer orderId = parseInteger(firstNonBlank(eventData,
-                "order_id", "orderId", "channel_order_id", "channelOrderId"));
+        String channelOrderRef = firstNonBlank(eventData,
+                "channel_order_id", "channelOrderId", "order_number", "orderNumber",
+                "order_id", "orderId");
+        Integer numericOrderId = parseInteger(channelOrderRef);
         String shiprocketOrderId = firstNonBlank(eventData,
-                "shiprocket_order_id", "shiprocketOrderId", "sr_order_id", "srOrderId");
+                "sr_order_id", "srOrderId", "shiprocket_order_id", "shiprocketOrderId",
+                "order_id", "orderId");
         String shipmentId = firstNonBlank(eventData, "shipment_id", "shipmentId");
         String awbCode = firstNonBlank(eventData, "awb_code", "awb", "awbCode");
-        String courierName = firstNonBlank(eventData, "courier_name", "courierName");
-        String currentStatus = firstNonBlank(eventData, "current_status", "currentStatus", "status");
+        String courierName = firstNonBlank(eventData, "courier_name", "courierName", "courier");
+        String currentStatus = firstNonBlank(eventData,
+                "current_status", "currentStatus", "shipment_status", "shipmentStatus", "status");
+        String trackingUrl = firstNonBlank(eventData,
+                "tracking_url", "trackingUrl", "track_url", "trackUrl");
         String requestPayloadJson = toJson(payload);
-        Long orderIdLong = orderId == null ? null : orderId.longValue();
-        Optional<Order> orderOptional = orderIdLong == null ? Optional.empty() : orderRepository.findById(orderIdLong);
-        Integer webhookOrderId = orderOptional.isPresent() ? orderId : null;
+
+        Optional<Order> orderOptional = resolveOrderFromWebhook(
+                numericOrderId, channelOrderRef, shiprocketOrderId, awbCode);
+        Order order = orderOptional.orElse(null);
+        Integer webhookOrderId = order != null && order.getId() != null
+                ? Math.toIntExact(order.getId())
+                : numericOrderId;
 
         ShiprocketWebhook webhook = ShiprocketWebhook.builder()
                 .orderId(webhookOrderId)
@@ -58,24 +71,12 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                 .build();
 
         shiprocketWebhookRepository.save(webhook);
-        log.info("Shiprocket webhook saved: orderId={}, awb={}, status={}", orderId, awbCode, currentStatus);
+        log.info("Shiprocket webhook saved: orderId={}, awb={}, status={}",
+                webhookOrderId, awbCode, currentStatus);
 
-        if (orderId == null || isBlank(currentStatus)) {
-            shiprocketSyncLogService.logSync(
-                    webhookOrderId,
-                    null,
-                    shiprocketOrderId,
-                    "WEBHOOK_RECEIVED",
-                    "FAILED",
-                    requestPayloadJson,
-                    null,
-                    "Missing required order_id or current_status in webhook payload"
-            );
-            return;
-        }
-
-        if (orderOptional.isEmpty()) {
-            log.warn("Shiprocket webhook references unknown order id={}", orderId);
+        if (order == null) {
+            log.warn("Shiprocket webhook references unknown order channel={} sr={} awb={}",
+                    channelOrderRef, shiprocketOrderId, awbCode);
             shiprocketSyncLogService.logSync(
                     webhookOrderId,
                     null,
@@ -84,32 +85,93 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                     "FAILED",
                     requestPayloadJson,
                     null,
-                    "Order not found for id " + orderId
-            );
-            return;
-        }
-
-        Order order = orderOptional.get();
-        String mappedOrderStatus = mapToOrderStatusForOrderTable(currentStatus);
-        if (isBlank(mappedOrderStatus)) {
-            shiprocketSyncLogService.logSync(
-                    orderId,
-                    order.getOrderNumber(),
-                    shiprocketOrderId,
-                    "ORDER_STATUS_SYNC",
-                    "FAILED",
-                    requestPayloadJson,
-                    null,
-                    "Unsupported Shiprocket status: " + currentStatus
+                    "Order not found for webhook identifiers"
             );
             return;
         }
 
         try {
-            order.setOrderStatus(mappedOrderStatus);
+            if (!isBlank(awbCode)) {
+                order.setShiprocketAwbCode(awbCode.trim());
+            }
+            if (!isBlank(shiprocketOrderId)
+                    && (isBlank(channelOrderRef)
+                    || !shiprocketOrderId.trim().equalsIgnoreCase(channelOrderRef.trim()))) {
+                order.setShiprocketOrderId(shiprocketOrderId.trim());
+            }
+            if (!isBlank(shipmentId)) {
+                order.setShiprocketShipmentId(shipmentId.trim());
+            }
+            if (!isBlank(courierName)) {
+                order.setShiprocketCourierName(courierName.trim());
+            } else if (isBlank(order.getShiprocketCourierName())) {
+                order.setShiprocketCourierName("Shiprocket");
+            }
+
+            String resolvedAwb = !isBlank(order.getShiprocketAwbCode())
+                    ? order.getShiprocketAwbCode().trim()
+                    : null;
+            String resolvedTracking = !isBlank(trackingUrl) ? trackingUrl.trim() : null;
+            if (isBlank(resolvedTracking) && !isBlank(resolvedAwb)) {
+                resolvedTracking = "https://shiprocket.co/tracking/" + resolvedAwb;
+            }
+            if (!isBlank(resolvedTracking)) {
+                order.setShiprocketTrackingUrl(resolvedTracking);
+            }
+
+            String mappedOrderStatus = mapToOrderStatusForOrderTable(currentStatus);
+            if (!isBlank(mappedOrderStatus)) {
+                order.setOrderStatus(mappedOrderStatus);
+                order.setShiprocketStatus(mappedOrderStatus);
+            } else if (!isBlank(resolvedAwb)) {
+                order.setOrderStatus("awb_assigned");
+                order.setShiprocketStatus("awb_assigned");
+                mappedOrderStatus = "awb_assigned";
+            } else if (!isBlank(currentStatus)) {
+                order.setShiprocketStatus(currentStatus);
+            }
+
+            order.setShiprocketSyncedAt(LocalDateTime.now());
             orderRepository.save(order);
+            orderRepository.updateShipment(
+                    order.getOrderNumber(),
+                    order.getShiprocketAwbCode(),
+                    order.getShiprocketCourierName(),
+                    order.getShiprocketTrackingUrl(),
+                    order.getShiprocketStatus()
+            );
+
+            OrderStatus orderStatusEnum = mapToOrderStatusEnum(
+                    !isBlank(mappedOrderStatus) ? mappedOrderStatus : order.getOrderStatus()
+            );
+            if (orderStatusEnum != null) {
+                try {
+                    OrderStatusHistory history = OrderStatusHistory.builder()
+                            .order(order)
+                            .status(orderStatusEnum)
+                            .comment("Updated from Shiprocket webhook: " + currentStatus)
+                            .build();
+                    orderStatusHistoryRepository.save(history);
+                } catch (Exception e) {
+                    log.warn("Skipping order_status_history insert for orderId={} due to schema mismatch",
+                            order.getId(), e);
+                }
+            }
+
+            shiprocketSyncLogService.logSync(
+                    order.getId() != null ? order.getId().intValue() : null,
+                    order.getOrderNumber(),
+                    shiprocketOrderId,
+                    "ORDER_STATUS_SYNC",
+                    "SUCCESS",
+                    requestPayloadJson,
+                    "AWB=" + order.getShiprocketAwbCode()
+                            + " trackingUrl=" + order.getShiprocketTrackingUrl()
+                            + " status=" + order.getOrderStatus(),
+                    null
+            );
         } catch (Exception e) {
-            log.warn("Skipping order status update for orderId={} due to schema mismatch", orderId, e);
+            log.warn("Failed to apply Shiprocket webhook to orderId={}", order.getId(), e);
             shiprocketSyncLogService.logSync(
                     webhookOrderId,
                     order.getOrderNumber(),
@@ -118,36 +180,64 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                     "FAILED",
                     requestPayloadJson,
                     null,
-                    "Failed to update order_status with mapped value: " + mappedOrderStatus
+                    e.getMessage() != null ? e.getMessage() : "Failed to update order with webhook"
             );
-            return;
         }
+    }
 
-        OrderStatus orderStatusEnum = mapToOrderStatusEnum(mappedOrderStatus);
-        if (orderStatusEnum != null) {
-            try {
-                OrderStatusHistory history = OrderStatusHistory.builder()
-                        .order(order)
-                        .status(orderStatusEnum)
-                        .comment("Updated from Shiprocket webhook: " + currentStatus)
-                        .build();
-                orderStatusHistoryRepository.save(history);
-            } catch (Exception e) {
-                // Keep webhook processing successful even if status history schema is stricter.
-                log.warn("Skipping order_status_history insert for orderId={} due to schema mismatch", orderId, e);
+    private Optional<Order> resolveOrderFromWebhook(
+            Integer numericOrderId,
+            String channelOrderRef,
+            String shiprocketOrderId,
+            String awbCode) {
+        if (numericOrderId != null && numericOrderId > 0) {
+            Optional<Order> byId = orderRepository.findById(numericOrderId.longValue());
+            if (byId.isPresent()) {
+                return byId;
             }
         }
-
-        shiprocketSyncLogService.logSync(
-                orderId,
-                order.getOrderNumber(),
-                shiprocketOrderId,
-                "ORDER_STATUS_SYNC",
-                "SUCCESS",
-                requestPayloadJson,
-                "Mapped status=" + mappedOrderStatus,
-                null
-        );
+        if (channelOrderRef != null && !channelOrderRef.isBlank()) {
+            String ref = channelOrderRef.trim();
+            Optional<Order> byNumber = orderRepository.findByOrderNumber(ref);
+            if (byNumber.isPresent()) {
+                return byNumber;
+            }
+            if (!ref.startsWith("#")) {
+                byNumber = orderRepository.findByOrderNumber("#" + ref);
+                if (byNumber.isPresent()) {
+                    return byNumber;
+                }
+            }
+        }
+        if (awbCode != null && !awbCode.isBlank()) {
+            Optional<Order> byAwb = orderRepository.findByShiprocketAwbCode(awbCode.trim());
+            if (byAwb.isPresent()) {
+                return byAwb;
+            }
+        }
+        if (shiprocketOrderId != null && !shiprocketOrderId.isBlank()) {
+            String srId = shiprocketOrderId.trim();
+            Optional<Order> bySr = orderRepository.findByShiprocketOrderId(srId);
+            if (bySr.isPresent()) {
+                return bySr;
+            }
+            List<Order> matches = orderRepository.findByShiprocketOrderIdOrderByCreatedAtDesc(srId);
+            if (!matches.isEmpty()) {
+                return Optional.of(matches.get(0));
+            }
+            Optional<Order> byNumber = orderRepository.findByOrderNumber(srId);
+            if (byNumber.isPresent()) {
+                return byNumber;
+            }
+            if (srId.matches("^\\d+$")) {
+                try {
+                    return orderRepository.findById(Long.parseLong(srId));
+                } catch (NumberFormatException ignored) {
+                    return Optional.empty();
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private Map<String, Object> extractEventData(Map<String, Object> payload) {
@@ -156,9 +246,11 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
         }
         Object data = payload.get("data");
         if (data instanceof Map<?, ?> dataMap) {
+            Map<String, Object> merged = new HashMap<>(payload);
             @SuppressWarnings("unchecked")
             Map<String, Object> casted = (Map<String, Object>) dataMap;
-            return casted;
+            merged.putAll(casted);
+            return merged;
         }
         return payload;
     }
@@ -185,7 +277,7 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                 continue;
             }
             String asText = value.toString().trim();
-            if (!asText.isEmpty()) {
+            if (!asText.isEmpty() && !"null".equalsIgnoreCase(asText)) {
                 return asText;
             }
         }
@@ -208,92 +300,48 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
             return null;
         }
         String normalized = normalize(sourceStatus);
-        switch (normalized) {
-
-            case "new":
-                return "new";
-
-            case "confirmed":
-                return "confirmed";
-
-            case "processing":
-                return "processing";
-
-            case "packed":
-                return "packed";
-
-            case "awb_assigned":
-                return "awb_assigned";
-
-            case "pickup_scheduled":
-                return "pickup_scheduled";
-
-            case "picked_up":
-                return "picked_up";
-
-            case "in_transit":
-            case "shipped":
-                return "in_transit";
-
-            case "out_for_delivery":
-                return "out_for_delivery";
-
-            case "delivered":
-                return "delivered";
-
-            case "cancelled":
-            case "canceled":
-                return "cancelled";
-
-            case "rto_initiated":
-                return "rto_initiated";
-
-            case "rto_delivered":
-                return "rto_delivered";
-
-            case "return_initiated":
-            case "returned":
-                return "returned";
-
-            default:
-                return null;
-        }
+        return switch (normalized) {
+            case "new" -> "new";
+            case "confirmed" -> "confirmed";
+            case "processing" -> "processing";
+            case "packed" -> "packed";
+            case "awb_assigned", "awbassigned" -> "awb_assigned";
+            case "pickup_scheduled", "pickup_generated", "pickup_queued" -> "pickup_scheduled";
+            case "picked_up", "shipped" -> "picked_up";
+            case "in_transit", "intransit" -> "in_transit";
+            case "out_for_delivery", "ofd" -> "out_for_delivery";
+            case "delivered" -> "delivered";
+            case "cancelled", "canceled" -> "cancelled";
+            case "rto_initiated", "rto_in_transit" -> "rto_initiated";
+            case "rto_delivered" -> "rto_delivered";
+            case "return_initiated", "returned" -> "returned";
+            default -> null;
+        };
     }
 
     private OrderStatus mapToOrderStatusEnum(String orderTableStatus) {
         String normalized = normalize(orderTableStatus);
         return switch (normalized) {
-
             case "new" -> OrderStatus.CREATED;
-
             case "confirmed",
                  "processing",
                  "packed",
                  "awb_assigned",
                  "pickup_scheduled",
                  "picked_up",
-                 "in_transit"
-                    -> OrderStatus.CONFIRMED;
-
-            case "out_for_delivery"
-                    -> OrderStatus.OUT_FOR_DELIVERY;
-
-            case "delivered"
-                    -> OrderStatus.DELIVERED;
-
-            case "cancelled",
-                 "rto_initiated",
-                 "rto_delivered"
-                    -> OrderStatus.CANCELLED;
-
-            case "returned"
-                    -> OrderStatus.RETURNED;
-
+                 "in_transit" -> OrderStatus.CONFIRMED;
+            case "out_for_delivery" -> OrderStatus.OUT_FOR_DELIVERY;
+            case "delivered" -> OrderStatus.DELIVERED;
+            case "cancelled", "rto_initiated", "rto_delivered" -> OrderStatus.CANCELLED;
+            case "returned" -> OrderStatus.RETURNED;
             default -> null;
         };
     }
 
     private String normalize(String status) {
+        if (status == null) {
+            return "";
+        }
         return status.trim()
                 .toLowerCase(Locale.ROOT)
                 .replace("-", "_")

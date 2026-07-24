@@ -96,9 +96,77 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponseDTO placeOrder(PlaceOrderRequestDTO dto) {
+        return executePlaceOrder(dto, null);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO placeOrderAfterVerifiedPayment(
+            PlaceOrderRequestDTO dto,
+            String paymentId
+    ) {
+        if (paymentId == null || paymentId.isBlank()) {
+            throw new OrderException("Payment id is required");
+        }
+        if (dto.getRazorpayOrderId() == null || dto.getRazorpayOrderId().isBlank()) {
+            throw new OrderException("Razorpay order id is required");
+        }
+        return executePlaceOrder(dto, paymentId.trim());
+    }
+
+    @Override
+    @Transactional
+    public Order finalizeOrderAfterPaymentVerified(
+            String razorpayOrderId,
+            String paymentId,
+            PlaceOrderRequestDTO placeRequest
+    ) {
+        if (razorpayOrderId == null || razorpayOrderId.isBlank()) {
+            throw new OrderException("Razorpay order id is required");
+        }
+        if (paymentId == null || paymentId.isBlank()) {
+            throw new OrderException("Payment id is required");
+        }
+        String rzpId = razorpayOrderId.trim();
+        Optional<Order> existing = orderRepository.findByRazorpayOrderId(rzpId);
+        if (existing.isPresent()) {
+            return markOrderAsPaid(rzpId, paymentId.trim());
+        }
+        if (placeRequest == null || placeRequest.getAddressId() == null) {
+            throw new OrderException(
+                    "Checkout details required to create order after payment verification"
+            );
+        }
+        placeRequest.setRazorpayOrderId(rzpId);
+        OrderResponseDTO placed = placeOrderAfterVerifiedPayment(placeRequest, paymentId.trim());
+        return orderRepository.findById(placed.getOrderId())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found after placement"));
+    }
+
+    private OrderResponseDTO executePlaceOrder(PlaceOrderRequestDTO dto, String capturedPaymentId) {
 
         try {
             validatePlaceOrderRequest(dto);
+
+            if (capturedPaymentId != null
+                    && !capturedPaymentId.isBlank()
+                    && dto.getRazorpayOrderId() != null
+                    && !dto.getRazorpayOrderId().isBlank()) {
+                Optional<Order> existing = orderRepository.findByRazorpayOrderId(
+                        dto.getRazorpayOrderId().trim());
+                if (existing.isPresent()) {
+                    Order order = existing.get();
+                    if (!isPaidPaymentStatus(order.getPaymentStatus())) {
+                        order = markOrderAsPaid(dto.getRazorpayOrderId().trim(), capturedPaymentId);
+                    }
+                    List<OrderItemDTO> itemDTOList = orderItemRepository
+                            .findByOrderId(order.getId())
+                            .stream()
+                            .map(this::buildOrderItemDTO)
+                            .toList();
+                    return buildOrderResponse(order, itemDTOList);
+                }
+            }
 
             Long userId = securityUtil.getCurrentUserId();
 
@@ -238,7 +306,7 @@ public class OrderServiceImpl implements OrderService {
 
             Order order = createOrder(
                     userId, dto, address, subtotal, shipping, discount, finalAmount,
-                    walletApplied, inviterReferralApplied
+                    walletApplied, inviterReferralApplied, capturedPaymentId
             );
             order = orderRepository.save(order);
 
@@ -297,8 +365,8 @@ public class OrderServiceImpl implements OrderService {
                 clearCartSafely(userId);
             }
 
-            // Shiprocket after commit so COD/place API returns immediately (no 15s client timeout).
-            scheduleShiprocketAfterCommit(order);
+            // Shiprocket is pushed only after seller confirms (via internal/seller API).
+            // Do not auto-push here — payment success alone must not create shipment.
 
             return buildOrderResponse(order, itemDTOList);
 
@@ -501,17 +569,61 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public OrderResponseDTO getOrderDetails(Long orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
         assertCanAccessOrder(order);
 
+        // Ship Now in Shiprocket dashboard often skips our webhook — pull AWB/tracking on detail view.
+        if (needsShiprocketTrackingSync(order)) {
+            try {
+                shiprocketService.syncShipmentDetails(order);
+                order = orderRepository.findById(orderId).orElse(order);
+            } catch (Exception e) {
+                log.warn(
+                        "Shiprocket AWB sync skipped for orderId={}: {}",
+                        orderId,
+                        e.getMessage()
+                );
+            }
+        }
+
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
         List<OrderItemDTO> itemDTOList = items.stream().map(this::buildOrderItemDTO).toList();
 
         return buildDetailedOrderResponse(order, itemDTOList);
+    }
+
+    private boolean needsShiprocketTrackingSync(Order order) {
+        if (order == null) {
+            return false;
+        }
+        boolean hasAwb = order.getShiprocketAwbCode() != null
+                && !order.getShiprocketAwbCode().isBlank();
+        boolean hasTracking = order.getShiprocketTrackingUrl() != null
+                && !order.getShiprocketTrackingUrl().isBlank();
+        if (hasAwb && hasTracking) {
+            return false;
+        }
+        boolean linked = (order.getShiprocketOrderId() != null
+                && !order.getShiprocketOrderId().isBlank())
+                || (order.getShiprocketShipmentId() != null
+                && !order.getShiprocketShipmentId().isBlank())
+                || (order.getShiprocketPushedAt() != null);
+        if (linked) {
+            return true;
+        }
+        // Order may exist on Shiprocket under channel order id even if local SR ids were never saved.
+        String status = order.getOrderStatus() != null
+                ? order.getOrderStatus().trim().toLowerCase(Locale.ROOT)
+                : "";
+        return !status.isEmpty()
+                && !status.equals("cancelled")
+                && !status.equals("new")
+                && order.getOrderNumber() != null
+                && !order.getOrderNumber().isBlank();
     }
 
     @Override
@@ -1021,8 +1133,7 @@ public class OrderServiceImpl implements OrderService {
             log.error("Error processing referral on order payment: {}", e.getMessage(), e);
         }
 
-        // Do not block payment verify on Shiprocket (avoids 15s client timeouts).
-        scheduleShiprocketAfterCommit(order);
+        // Shiprocket push happens after seller confirms the order.
 
         order = orderRepository.save(order);
         try {
@@ -1230,7 +1341,16 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
+        // Already linked: sync AWB if missing instead of creating a duplicate.
         if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
+            if (order.getShiprocketAwbCode() == null || order.getShiprocketAwbCode().isBlank()
+                    || order.getShiprocketTrackingUrl() == null || order.getShiprocketTrackingUrl().isBlank()) {
+                log.info(
+                        "Shiprocket already linked for orderNumber={} without AWB — syncing",
+                        order.getOrderNumber()
+                );
+                return shiprocketService.syncShipmentDetails(order);
+            }
             return ShiprocketShipmentResult.builder()
                     .shipmentId(order.getShiprocketShipmentId())
                     .awbCode(order.getShiprocketAwbCode())
@@ -1238,6 +1358,8 @@ public class OrderServiceImpl implements OrderService {
                     .courierName(order.getShiprocketCourierName() != null
                             ? order.getShiprocketCourierName()
                             : "Shiprocket")
+                    .alreadyExists(true)
+                    .message("Shipment already exists on Shiprocket")
                     .build();
         }
 
@@ -1256,13 +1378,48 @@ public class OrderServiceImpl implements OrderService {
             );
         }
 
-        ShiprocketShipmentResult result = shiprocketService.createShipment(order);
-        log.info(
-                "Shiprocket push retry OK orderNumber={} shipmentId={}",
-                order.getOrderNumber(),
-                result.getShipmentId()
-        );
-        return result;
+        try {
+            ShiprocketShipmentResult result = shiprocketService.createShipment(order);
+            log.info(
+                    "Shiprocket push retry OK orderNumber={} shipmentId={} awb={}",
+                    order.getOrderNumber(),
+                    result.getShipmentId(),
+                    result.getAwbCode()
+            );
+            return result;
+        } catch (Exception e) {
+            try {
+                markShiprocketCreateFailed(order.getOrderNumber(), e.getMessage());
+            } catch (Exception ignore) {
+                // ignore secondary failure
+            }
+            throw e;
+        }
+    }
+
+    @Override
+    @Transactional
+    public ShiprocketShipmentResult syncOrderToShiprocket(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getShiprocketOrderId() == null || order.getShiprocketOrderId().isBlank()) {
+            throw new OrderException(
+                    "Order is not linked to Shiprocket yet. Use Push to Shiprocket first."
+            );
+        }
+        return shiprocketService.syncShipmentDetails(order);
+    }
+
+    private boolean isPaidPaymentStatus(String paymentStatus) {
+        if (paymentStatus == null || paymentStatus.isBlank()) {
+            return false;
+        }
+        String ps = paymentStatus.trim().toLowerCase(Locale.ENGLISH);
+        return "paid".equals(ps)
+                || "success".equals(ps)
+                || "completed".equals(ps)
+                || "captured".equals(ps);
     }
 
     private boolean isPendingOnlinePayment(Order order) {
@@ -1387,11 +1544,14 @@ public class OrderServiceImpl implements OrderService {
                                             "Order not found"
                                     ));
 
-            order.setShiprocketStatus(
-                    reason == null || reason.isBlank()
-                            ? "shipment_creation_failed"
-                            : ("failed: " + reason).substring(0, Math.min(50, ("failed: " + reason).length()))
-            );
+            String status = reason == null || reason.isBlank()
+                    ? "shipment_creation_failed"
+                    : ("failed: " + reason);
+            // orders.shiprocket_status is VARCHAR(500) on live DB
+            if (status.length() > 500) {
+                status = status.substring(0, 500);
+            }
+            order.setShiprocketStatus(status);
 
             orderRepository.save(order);
 
@@ -1476,13 +1636,15 @@ public class OrderServiceImpl implements OrderService {
                               BigDecimal subtotal, BigDecimal shipping,
                               BigDecimal discount, BigDecimal finalAmount,
                               BigDecimal walletApplied,
-                              boolean referralInviterDiscountApplied) {
+                              boolean referralInviterDiscountApplied,
+                              String capturedPaymentId) {
 
         // Calculate tax (18% GST on subtotal)
         BigDecimal taxAmount = subtotal.multiply(new BigDecimal("0.18"));
         double walletUsed = walletApplied != null
                 ? walletApplied.setScale(2, java.math.RoundingMode.HALF_UP).doubleValue()
                 : 0.0d;
+        boolean paidAtCreation = capturedPaymentId != null && !capturedPaymentId.isBlank();
 
         return Order.builder()
                 .userId(userId)
@@ -1494,13 +1656,15 @@ public class OrderServiceImpl implements OrderService {
                 .discountAmount(discount.doubleValue())
                 .paymentMethod(dto.getPaymentMethod())
                 .razorpayOrderId(dto.getRazorpayOrderId())
+                .razorpayPaymentId(paidAtCreation ? capturedPaymentId : null)
                 .paymentStatus(
-                        finalAmount.compareTo(BigDecimal.ZERO) <= 0
+                        paidAtCreation || finalAmount.compareTo(BigDecimal.ZERO) <= 0
                                 ? "paid"
                                 : "pending"
                 )
                 .orderStatus(
-                        finalAmount.compareTo(BigDecimal.ZERO) <= 0
+                        paidAtCreation
+                                || finalAmount.compareTo(BigDecimal.ZERO) <= 0
                                 || isCodPaymentMethod(dto.getPaymentMethod())
                                 ? "processing"
                                 : "awaiting_payment"
@@ -1894,7 +2058,7 @@ public class OrderServiceImpl implements OrderService {
                 )
 
                 .shiprocketTrackingUrl(
-                        order.getShiprocketTrackingUrl()
+                        resolveShiprocketTrackingUrl(order)
                 )
 
                 .shiprocketStatus(
@@ -1952,7 +2116,7 @@ public class OrderServiceImpl implements OrderService {
                 .items(itemDTOList)
                 .shiprocketAwbCode(order.getShiprocketAwbCode())
                 .shiprocketCourierName(order.getShiprocketCourierName())
-                .shiprocketTrackingUrl(order.getShiprocketTrackingUrl())
+                .shiprocketTrackingUrl(resolveShiprocketTrackingUrl(order))
                 .shiprocketStatus(order.getShiprocketStatus());
 
         applyWalletAmountFields(order, summaryBuilder);
@@ -2016,7 +2180,7 @@ public class OrderServiceImpl implements OrderService {
                         order.getShiprocketCourierName())
 
                 .shiprocketTrackingUrl(
-                        order.getShiprocketTrackingUrl())
+                        resolveShiprocketTrackingUrl(order))
 
                 .shiprocketStatus(
                         order.getShiprocketStatus());
@@ -2071,7 +2235,7 @@ public class OrderServiceImpl implements OrderService {
                 )
 
                 .shiprocketTrackingUrl(
-                        order.getShiprocketTrackingUrl()
+                        resolveShiprocketTrackingUrl(order)
                 )
 
                 .shiprocketStatus(
@@ -2091,7 +2255,24 @@ public class OrderServiceImpl implements OrderService {
         applyStatusTimelineFields(order, builder);
         builder
                 .taxAmount(order.getTaxAmount())
-                .razorpayPaymentId(order.getRazorpayPaymentId());
+                .razorpayPaymentId(order.getRazorpayPaymentId())
+                .shiprocketTrackingUrl(resolveShiprocketTrackingUrl(order));
+    }
+
+    /** Prefer DB tracking URL; otherwise build Shiprocket public track link from AWB. */
+    private String resolveShiprocketTrackingUrl(Order order) {
+        if (order == null) {
+            return null;
+        }
+        String url = order.getShiprocketTrackingUrl();
+        if (url != null && !url.isBlank()) {
+            return url.trim();
+        }
+        String awb = order.getShiprocketAwbCode();
+        if (awb != null && !awb.isBlank()) {
+            return "https://shiprocket.co/tracking/" + awb.trim();
+        }
+        return null;
     }
 
     private void applyStatusTimelineFields(

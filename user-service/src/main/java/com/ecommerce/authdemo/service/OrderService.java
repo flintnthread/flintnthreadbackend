@@ -35,6 +35,21 @@ public interface OrderService {
 
     Order markOrderAsPaid(String razorpayOrderId, String paymentId);
 
+    /**
+     * Create ecommerce order only after Razorpay payment is verified, or mark
+     * an existing awaiting_payment order as paid (retry / legacy flow).
+     */
+    Order finalizeOrderAfterPaymentVerified(
+            String razorpayOrderId,
+            String paymentId,
+            PlaceOrderRequestDTO placeRequest
+    );
+
+    OrderResponseDTO placeOrderAfterVerifiedPayment(
+            PlaceOrderRequestDTO dto,
+            String paymentId
+    );
+
     /** Mark unpaid online order as payment_failed after Razorpay cancel/fail. */
     Order markOrderPaymentFailed(String razorpayOrderId);
 
@@ -47,6 +62,9 @@ public interface OrderService {
 
     /** Retry Shiprocket create for a paid/COD order that was not linked yet. */
     ShiprocketShipmentResult pushOrderToShiprocket(Long orderId);
+
+    /** Pull latest AWB/courier/tracking from Shiprocket for an already-linked order. */
+    ShiprocketShipmentResult syncOrderToShiprocket(Long orderId);
 
     void updateShipment(String orderNumber, String awb, String courier, String trackingUrl, String shiprocketStatus);
 

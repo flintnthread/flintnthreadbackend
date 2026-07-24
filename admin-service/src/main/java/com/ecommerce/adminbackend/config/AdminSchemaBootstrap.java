@@ -8,6 +8,9 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+/**
+ * Ensures admin-owned support tables exist. Does not alter the shared {@code orders} table.
+ */
 @Component
 @RequiredArgsConstructor
 public class AdminSchemaBootstrap implements ApplicationRunner {

@@ -32,11 +32,14 @@ public class SignupCompleteDTO {
     @NotBlank(message = "Email verification token is required")
     private String emailVerifiedToken;
 
-    /** Optional when phone was verified with a separate phoneVerifiedToken. */
+    /** Required after phone OTP verify step (preferred over raw otp). */
     private String phoneVerifiedToken;
 
-    @NotBlank(message = "OTP is required")
-    @Pattern(regexp = "^\\d{6}$", message = "OTP must be 6 digits")
+    /** Optional when phoneVerifiedToken is provided. */
+    @Pattern(
+            regexp = "^$|^\\d{6}$",
+            message = "OTP must be 6 digits"
+    )
     private String otp;
 
     private String referralCode;

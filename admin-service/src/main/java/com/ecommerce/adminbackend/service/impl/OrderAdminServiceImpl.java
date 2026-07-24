@@ -20,6 +20,7 @@ import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
 import com.ecommerce.adminbackend.repository.SizeRepository;
+import com.ecommerce.adminbackend.service.AdminShiprocketService;
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.OrderAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
@@ -30,6 +31,7 @@ import com.ecommerce.adminbackend.util.InvoicePdfRenderer;
 import com.ecommerce.adminbackend.util.ShippingLabelHtmlBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -76,6 +78,10 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private final MediaUrlHelper mediaUrlHelper;
     private final InvoiceSettings invoiceSettings;
     private final MailService mailService;
+    private final AdminShiprocketService adminShiprocketService;
+
+    @Value("${shiprocket.dashboard.url:https://app.shiprocket.in/seller/home}")
+    private String shiprocketDashboardUrl;
 
     @Override
     @Transactional(readOnly = true)
@@ -387,6 +393,178 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
     @Override
     @Transactional
+    public Map<String, Object> pushToShiprocket(Long id) {
+        Order order = requireOrder(id);
+        validateShiprocketReady(order, id);
+
+        boolean alreadyLinked = order.getShiprocketOrderId() != null
+                && !order.getShiprocketOrderId().isBlank();
+        boolean hasAwb = order.getShiprocketAwbCode() != null
+                && !order.getShiprocketAwbCode().isBlank();
+        if (alreadyLinked && hasAwb) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("alreadyExists", true);
+            response.put("message", "Shipment already exists on Shiprocket. Use Sync Now to refresh details.");
+            response.put("order", getOrder(id));
+            return response;
+        }
+
+        try {
+            // Direct Shiprocket API from admin (does not require user-service to be running).
+            Map<String, Object> shiprocket = adminShiprocketService.createOrSyncShipment(order);
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("message", shiprocket.getOrDefault("message", "Shiprocket shipment created"));
+            response.put("shiprocket", shiprocket);
+            response.put("alreadyExists", Boolean.TRUE.equals(shiprocket.get("already_exists")));
+            try {
+                response.put("order", getOrder(id));
+            } catch (Exception reloadEx) {
+                log.warn("Shiprocket push OK but order reload failed orderId={}: {}", id, reloadEx.getMessage());
+            }
+            return response;
+        } catch (Exception e) {
+            log.error("Admin Shiprocket push failed orderId={}: {}", id, e.getMessage(), e);
+            throw new IllegalStateException(friendlyShiprocketError(e), e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> syncFromShiprocket(Long id) {
+        Order order = requireOrder(id);
+        if (order.getShiprocketOrderId() == null || order.getShiprocketOrderId().isBlank()) {
+            throw new IllegalStateException(
+                    "Order is not linked to Shiprocket yet. Click Push to Shiprocket first."
+            );
+        }
+        try {
+            Map<String, Object> shiprocket = adminShiprocketService.syncShipment(order);
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("message", shiprocket.getOrDefault("message", "Shiprocket shipment synced"));
+            response.put("shiprocket", shiprocket);
+            response.put("alreadyExists", false);
+            try {
+                response.put("order", getOrder(id));
+            } catch (Exception reloadEx) {
+                log.warn("Shiprocket sync OK but order reload failed orderId={}: {}", id, reloadEx.getMessage());
+            }
+            return response;
+        } catch (Exception e) {
+            log.error("Admin Shiprocket sync failed orderId={}: {}", id, e.getMessage(), e);
+            throw new IllegalStateException(friendlyShiprocketError(e), e);
+        }
+    }
+
+    private static String friendlyShiprocketError(Throwable e) {
+        String raw = rootMessage(e);
+        String lower = raw.toLowerCase(Locale.ENGLISH);
+
+        // Extract exact missing column if present, e.g. Unknown column 'o1_0.shiprocket_invoice_url'
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("unknown column ['`]?(?:[\\w]+\\.)?([\\w]+)['`]?", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(raw);
+        if (m.find()) {
+            String column = m.group(1);
+            if (column.toLowerCase(Locale.ENGLISH).startsWith("shiprocket_")
+                    && (column.toLowerCase(Locale.ENGLISH).contains("invoice")
+                    || column.toLowerCase(Locale.ENGLISH).contains("label")
+                    || column.toLowerCase(Locale.ENGLISH).contains("manifest"))) {
+                return "Push failed because admin-backend is still selecting removed column '"
+                        + column
+                        + "'. Rebuild and restart admin-backend.service with the latest code.";
+            }
+            return "Database column missing: " + column
+                    + ". Code must match existing orders columns only.";
+        }
+
+        if (raw.isBlank() || "null".equalsIgnoreCase(raw.trim())) {
+            return "Shiprocket push failed (no error detail). Check admin-backend logs and Shiprocket credentials in Platform Settings.";
+        }
+        return raw.length() > 400 ? raw.substring(0, 400) : raw;
+    }
+
+    private static String rootMessage(Throwable e) {
+        Throwable cur = e;
+        String fallback = e != null ? e.getClass().getSimpleName() : "Error";
+        while (cur != null) {
+            if (cur.getMessage() != null && !cur.getMessage().isBlank()
+                    && !"null".equalsIgnoreCase(cur.getMessage().trim())) {
+                return cur.getMessage();
+            }
+            fallback = cur.getClass().getSimpleName();
+            cur = cur.getCause();
+        }
+        return fallback;
+    }
+
+    private void validateShiprocketReady(Order order, Long orderId) {
+        String status = order.getOrderStatus() != null ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH) : "";
+        if (status.contains("cancel")) {
+            throw new IllegalStateException("Cancelled orders cannot be pushed to Shiprocket.");
+        }
+
+        String paymentStatus = order.getPaymentStatus() != null
+                ? order.getPaymentStatus().trim().toLowerCase(Locale.ENGLISH)
+                : "";
+        boolean paid = paymentStatus.equals("paid")
+                || paymentStatus.equals("completed")
+                || paymentStatus.equals("success")
+                || paymentStatus.equals("captured");
+        boolean cod = isCodPaymentMethod(order.getPaymentMethod());
+        if (!cod && !paid) {
+            throw new IllegalStateException(
+                    "Order is not paid yet. Shiprocket push is only for paid or COD orders."
+            );
+        }
+
+        List<String> missing = new ArrayList<>();
+        if (isBlank(order.getShippingName())) {
+            missing.add("Customer Name");
+        }
+        if (isBlank(order.getShippingPhone())) {
+            missing.add("Mobile Number");
+        }
+        if (isBlank(order.getShippingAddress1())) {
+            missing.add("Shipping Address");
+        }
+        if (isBlank(order.getShippingPincode())) {
+            missing.add("Pincode");
+        }
+        if (isBlank(order.getShippingCity())) {
+            missing.add("City");
+        }
+        if (isBlank(order.getShippingState())) {
+            missing.add("State");
+        }
+        if (order.getTotalAmount() == null) {
+            missing.add("Order Value");
+        }
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        if (items == null || items.isEmpty()) {
+            missing.add("Product Details");
+        }
+        if (!missing.isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot push to Shiprocket. Missing mandatory fields: " + String.join(", ", missing)
+            );
+        }
+    }
+
+    private static boolean isCodPaymentMethod(String paymentMethod) {
+        if (paymentMethod == null || paymentMethod.isBlank()) {
+            return false;
+        }
+        String m = paymentMethod.trim().toLowerCase(Locale.ENGLISH);
+        return m.equals("cod")
+                || m.contains("cash on delivery")
+                || m.contains("cash_on_delivery");
+    }
+
+    @Override
+    @Transactional
     public Map<String, Object> updateGstStatus(Long id, String gstStatus) {
         Order order = requireOrder(id);
         String normalized = normalizeGstStatus(requireNonBlank(gstStatus, "GST status"));
@@ -465,10 +643,53 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         detail.put("shiprocketTrackingUrl", order.getShiprocketTrackingUrl());
         detail.put("shiprocketPushedAt", toUtcIso(order.getShiprocketPushedAt()));
         detail.put("shiprocketSyncedAt", toUtcIso(order.getShiprocketSyncedAt()));
+        detail.put("shiprocketDashboardUrl", shiprocketDashboardUrl);
+        detail.put("shiprocket", toShiprocketDetail(order));
         detail.put("createdAt", toUtcIso(order.getCreatedAt()));
         detail.put("createdAtDisplay", formatOrderDateTimeIst(order.getCreatedAt()));
         detail.put("updatedAt", toUtcIso(order.getUpdatedAt()));
         return detail;
+    }
+
+    private Map<String, Object> toShiprocketDetail(Order order) {
+        Map<String, Object> shiprocket = new LinkedHashMap<>();
+        shiprocket.put("orderId", order.getShiprocketOrderId());
+        shiprocket.put("shipmentId", order.getShiprocketShipmentId());
+        shiprocket.put("awb", order.getShiprocketAwbCode());
+        shiprocket.put("courier", order.getShiprocketCourierName());
+        shiprocket.put("courierName", order.getShiprocketCourierName());
+        shiprocket.put("status", order.getShiprocketStatus());
+        shiprocket.put("shippingStatus", order.getShiprocketStatus());
+        shiprocket.put("pickupStatus", resolvePickupStatus(order.getShiprocketStatus()));
+        shiprocket.put("trackingStatus", order.getShiprocketStatus());
+        shiprocket.put("trackingUrl", order.getShiprocketTrackingUrl());
+        shiprocket.put("pushedAt", toUtcIso(order.getShiprocketPushedAt()));
+        shiprocket.put("syncedAt", toUtcIso(order.getShiprocketSyncedAt()));
+        shiprocket.put("dashboardUrl", shiprocketDashboardUrl);
+        shiprocket.put("alreadyPushed", order.getShiprocketOrderId() != null
+                && !order.getShiprocketOrderId().isBlank());
+        return shiprocket;
+    }
+
+    private static String resolvePickupStatus(String shiprocketStatus) {
+        if (shiprocketStatus == null || shiprocketStatus.isBlank()) {
+            return "pending";
+        }
+        String s = shiprocketStatus.toLowerCase(Locale.ENGLISH);
+        if (s.contains("pickup") && (s.contains("schedul") || s.contains("generated"))) {
+            return "scheduled";
+        }
+        if (s.contains("picked") || s.contains("in transit") || s.contains("shipped")
+                || s.contains("delivered")) {
+            return "picked";
+        }
+        if (s.contains("awb") || s.contains("ready") || s.contains("new")) {
+            return "awaiting_pickup";
+        }
+        if (s.startsWith("failed")) {
+            return "n/a";
+        }
+        return shiprocketStatus;
     }
 
     private Map<String, Object> toStatusHistoryRow(OrderStatusHistory entry) {
