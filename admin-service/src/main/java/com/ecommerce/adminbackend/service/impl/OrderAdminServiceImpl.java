@@ -458,7 +458,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     }
 
     private static String friendlyShiprocketError(Throwable e) {
-        String raw = e.getMessage() != null ? e.getMessage() : "";
+        String raw = rootMessage(e);
         String lower = raw.toLowerCase(Locale.ENGLISH);
 
         // Extract exact missing column if present, e.g. Unknown column 'o1_0.shiprocket_invoice_url'
@@ -473,17 +473,30 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                     || column.toLowerCase(Locale.ENGLISH).contains("manifest"))) {
                 return "Push failed because a service is still selecting removed column '"
                         + column
-                        + "'. Redeploy/restart user-service AND admin-service (both Order entities must match the live DB — no "
-                        + column + "). Do not add this column.";
+                        + "'. Rebuild and restart flintnthread.service (user) and admin-backend.service.";
             }
             return "Database column missing: " + column
                     + ". Code must match existing orders columns only.";
         }
 
-        if (raw.isBlank()) {
-            return "Shiprocket request failed";
+        if (raw.isBlank() || "null".equalsIgnoreCase(raw.trim())) {
+            return "Shiprocket push failed (no error detail). Check user-service logs for order push.";
         }
-        return raw.length() > 300 ? raw.substring(0, 300) : raw;
+        return raw.length() > 400 ? raw.substring(0, 400) : raw;
+    }
+
+    private static String rootMessage(Throwable e) {
+        Throwable cur = e;
+        String fallback = e != null ? e.getClass().getSimpleName() : "Error";
+        while (cur != null) {
+            if (cur.getMessage() != null && !cur.getMessage().isBlank()
+                    && !"null".equalsIgnoreCase(cur.getMessage().trim())) {
+                return cur.getMessage();
+            }
+            fallback = cur.getClass().getSimpleName();
+            cur = cur.getCause();
+        }
+        return fallback;
     }
 
     private void validateShiprocketReady(Order order, Long orderId) {

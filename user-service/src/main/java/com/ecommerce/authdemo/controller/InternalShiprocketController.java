@@ -29,60 +29,60 @@ public class InternalShiprocketController {
     private String internalServiceKey;
 
     @PostMapping("/orders/{orderId}/push")
-    public ResponseEntity<?> pushOrderToShiprocket(
+    public ResponseEntity<Map<String, Object>> pushOrderToShiprocket(
             @PathVariable Long orderId,
             @RequestHeader(value = "X-Internal-Service-Key", required = false) String key) {
         if (!isAuthorized(key)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                    "success", false,
-                    "message", "Forbidden"
+            log.warn("[INTERNAL:SHIPROCKET] push FORBIDDEN orderId={} (internal key mismatch or blank)", orderId);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorBody(
+                    "Forbidden: internal service key mismatch. Set the same INTERNAL_SERVICE_KEY on user and admin."
             ));
         }
         log.info("[INTERNAL:SHIPROCKET] push orderId={}", orderId);
         try {
             ShiprocketShipmentResult result = orderService.pushOrderToShiprocket(orderId);
+            if (result == null) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBody(
+                        "Shiprocket push returned empty result"
+                ));
+            }
             return ResponseEntity.ok(successBody("Shiprocket shipment created", result));
         } catch (ResourceNotFoundException e) {
-            return ResponseEntity.status(404).body(errorBody(e.getMessage()));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(safeMsg(e, "Order not found")));
         } catch (OrderException e) {
-            return ResponseEntity.badRequest().body(errorBody(e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(safeMsg(e, "Invalid order for Shiprocket")));
         } catch (Exception e) {
             log.error("[INTERNAL:SHIPROCKET] push FAILED orderId={}", orderId, e);
-            String detail = e.getMessage() != null ? e.getMessage() : "unknown";
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", detail,
-                    "shipping_error_detail", detail
-            ));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBodyWithDetail(e));
         }
     }
 
     @PostMapping("/orders/{orderId}/sync")
-    public ResponseEntity<?> syncOrderFromShiprocket(
+    public ResponseEntity<Map<String, Object>> syncOrderFromShiprocket(
             @PathVariable Long orderId,
             @RequestHeader(value = "X-Internal-Service-Key", required = false) String key) {
         if (!isAuthorized(key)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                    "success", false,
-                    "message", "Forbidden"
+            log.warn("[INTERNAL:SHIPROCKET] sync FORBIDDEN orderId={} (internal key mismatch or blank)", orderId);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorBody(
+                    "Forbidden: internal service key mismatch. Set the same INTERNAL_SERVICE_KEY on user and admin."
             ));
         }
         log.info("[INTERNAL:SHIPROCKET] sync orderId={}", orderId);
         try {
             ShiprocketShipmentResult result = orderService.syncOrderToShiprocket(orderId);
+            if (result == null) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBody(
+                        "Shiprocket sync returned empty result"
+                ));
+            }
             return ResponseEntity.ok(successBody("Shiprocket shipment synced", result));
         } catch (ResourceNotFoundException e) {
-            return ResponseEntity.status(404).body(errorBody(e.getMessage()));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(safeMsg(e, "Order not found")));
         } catch (OrderException e) {
-            return ResponseEntity.badRequest().body(errorBody(e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(safeMsg(e, "Invalid order for Shiprocket sync")));
         } catch (Exception e) {
             log.error("[INTERNAL:SHIPROCKET] sync FAILED orderId={}", orderId, e);
-            String detail = e.getMessage() != null ? e.getMessage() : "unknown";
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", detail,
-                    "shipping_error_detail", detail
-            ));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBodyWithDetail(e));
         }
     }
 
@@ -104,7 +104,27 @@ public class InternalShiprocketController {
     private static Map<String, Object> errorBody(String message) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", false);
-        body.put("message", message != null ? message : "Shiprocket request failed");
+        body.put("message", message != null && !message.isBlank() ? message : "Shiprocket request failed");
         return body;
+    }
+
+    private static Map<String, Object> errorBodyWithDetail(Throwable e) {
+        String detail = safeMsg(e, "unknown");
+        Map<String, Object> body = errorBody(detail);
+        body.put("shipping_error_detail", detail);
+        body.put("error_type", e.getClass().getSimpleName());
+        return body;
+    }
+
+    private static String safeMsg(Throwable e, String fallback) {
+        Throwable cur = e;
+        while (cur != null) {
+            if (cur.getMessage() != null && !cur.getMessage().isBlank()
+                    && !"null".equalsIgnoreCase(cur.getMessage().trim())) {
+                return cur.getMessage();
+            }
+            cur = cur.getCause();
+        }
+        return e != null ? e.getClass().getSimpleName() : fallback;
     }
 }

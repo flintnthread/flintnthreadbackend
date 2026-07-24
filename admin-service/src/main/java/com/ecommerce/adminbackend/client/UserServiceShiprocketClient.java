@@ -44,7 +44,9 @@ public class UserServiceShiprocketClient {
     private Map<String, Object> post(String path, String action, Long orderId) {
         if (internalServiceKey == null || internalServiceKey.isBlank()) {
             throw new IllegalStateException(
-                    "app.internal-service-key is not configured on admin-service"
+                    "app.internal-service-key is not configured on admin-service. "
+                            + "Set INTERNAL_SERVICE_KEY in /etc/flintnthread/application.properties "
+                            + "(same value on user-service)."
             );
         }
         String base = userServiceUrl == null ? "http://127.0.0.1:8080" : userServiceUrl.trim();
@@ -58,36 +60,50 @@ public class UserServiceShiprocketClient {
                     .timeout(Duration.ofSeconds(90))
                     .header("X-Internal-Service-Key", internalServiceKey)
                     .header("Accept", "application/json")
-                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{}"))
                     .build();
             log.info("Admin Shiprocket {} orderId={} url={}", action, orderId, url);
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            Map<String, Object> body = parseBody(response.body());
+            String raw = response.body() != null ? response.body() : "";
+            Map<String, Object> body = parseBody(raw);
             log.info(
                     "Admin Shiprocket {} response orderId={} status={} body={}",
                     action,
                     orderId,
                     response.statusCode(),
-                    response.body()
+                    raw.length() > 2000 ? raw.substring(0, 2000) : raw
             );
-            if (response.statusCode() >= 400) {
-                String message = extractMessage(body, response.body());
-                if (message != null && message.toLowerCase().contains("unknown column")) {
-                    throw new IllegalStateException(
-                            "user-service error: " + message
-                    );
-                }
-                throw new IllegalStateException(message);
+            if (response.statusCode() == 403) {
+                throw new IllegalStateException(
+                        "user-service rejected internal key (HTTP 403). "
+                                + "Set the same INTERNAL_SERVICE_KEY on admin-service and user-service."
+                );
             }
-            if (body.containsKey("success") && Boolean.FALSE.equals(body.get("success"))) {
-                throw new IllegalStateException(extractMessage(body, response.body()));
+            if (response.statusCode() == 404) {
+                throw new IllegalStateException(
+                        "user-service Shiprocket endpoint not found (HTTP 404). "
+                                + "Redeploy user-service so /api/internal/shiprocket/orders/{id}/" + action + " exists."
+                );
+            }
+            if (response.statusCode() >= 400) {
+                String message = extractMessage(body, raw);
+                throw new IllegalStateException(
+                        "user-service HTTP " + response.statusCode() + ": " + message
+                );
+            }
+            if (body.containsKey("success") && Boolean.FALSE.equals(asBoolean(body.get("success")))) {
+                throw new IllegalStateException(extractMessage(body, raw));
             }
             return body;
         } catch (IllegalStateException e) {
             throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Shiprocket " + action + " interrupted", e);
         } catch (Exception e) {
             throw new IllegalStateException(
-                    "Shiprocket " + action + " failed: " + e.getMessage(),
+                    "Shiprocket " + action + " failed: " + rootMessage(e),
                     e
             );
         }
@@ -101,7 +117,7 @@ public class UserServiceShiprocketClient {
             return objectMapper.readValue(raw, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             Map<String, Object> fallback = new LinkedHashMap<>();
-            fallback.put("message", raw);
+            fallback.put("message", raw.length() > 500 ? raw.substring(0, 500) : raw);
             return fallback;
         }
     }
@@ -109,14 +125,43 @@ public class UserServiceShiprocketClient {
     private static String extractMessage(Map<String, Object> body, String raw) {
         if (body != null) {
             Object detail = body.get("shipping_error_detail");
-            if (detail != null && !String.valueOf(detail).isBlank()) {
+            if (detail != null && !String.valueOf(detail).isBlank()
+                    && !"null".equalsIgnoreCase(String.valueOf(detail))) {
                 return String.valueOf(detail);
             }
             Object message = body.get("message");
-            if (message != null && !String.valueOf(message).isBlank()) {
+            if (message != null && !String.valueOf(message).isBlank()
+                    && !"null".equalsIgnoreCase(String.valueOf(message))) {
                 return String.valueOf(message);
             }
         }
-        return raw != null && !raw.isBlank() ? raw : "Shiprocket request failed";
+        if (raw != null && !raw.isBlank()) {
+            return raw.length() > 500 ? raw.substring(0, 500) : raw;
+        }
+        return "Shiprocket request failed (empty response from user-service)";
+    }
+
+    private static Boolean asBoolean(Object value) {
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value == null) {
+            return null;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static String rootMessage(Throwable e) {
+        Throwable cur = e;
+        String fallback = e.getClass().getSimpleName();
+        while (cur != null) {
+            if (cur.getMessage() != null && !cur.getMessage().isBlank()
+                    && !"null".equalsIgnoreCase(cur.getMessage().trim())) {
+                return cur.getMessage();
+            }
+            fallback = cur.getClass().getSimpleName();
+            cur = cur.getCause();
+        }
+        return fallback;
     }
 }
