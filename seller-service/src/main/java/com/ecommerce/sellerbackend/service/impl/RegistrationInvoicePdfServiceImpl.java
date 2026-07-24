@@ -24,8 +24,8 @@ import java.util.Locale;
 public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdfService {
 
     private static final String FOOTER_NOTE =
-            "This is a computer-generated invoice and does not require a physical signature or stamp. "
-                    + "It serves as proof of payment for your annual seller registration subscription on Flint & Thread.";
+            "This is a auto-generated invoice and does not require a signature or stamp. "
+                    + "This is your annual seller registration subscription on Flint & Thread.";
 
     @Value("${invoice.seller.name:Flint & Thread (India) Pvt. Ltd.}")
     private String companyName;
@@ -82,7 +82,6 @@ public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdf
         Font headingFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
         Font bodyFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
         Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 9, Color.DARK_GRAY);
-        Font totalFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18, new Color(249, 115, 22));
 
         addHeader(document, bodyFont, headingFont, invoiceNumber, orderId, paidAtText, paymentId);
 
@@ -128,14 +127,12 @@ public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdf
         table.addCell(bodyCell("IGST @ 18%"));
         table.addCell(bodyCell("1"));
         table.addCell(bodyCell("Rs " + formatMoney(igst)));
+        table.addCell(totalCell("TOTAL PAID"));
+        table.addCell(totalCell("1"));
+        table.addCell(totalCell("Rs " + formatMoney(totalAmount)));
         document.add(table);
         document.add(spacer(12f));
 
-        document.add(new Paragraph("Registration Fee (per annum): Rs " + formatMoney(registrationFee), headingFont));
-        document.add(new Paragraph("CGST (9%): Rs " + formatMoney(cgst), bodyFont));
-        document.add(new Paragraph("SGST (9%): Rs " + formatMoney(sgst), bodyFont));
-        document.add(new Paragraph("IGST (18%): Rs " + formatMoney(igst), bodyFont));
-        document.add(new Paragraph("TOTAL PAID: Rs " + formatMoney(totalAmount), totalFont));
         document.add(new Paragraph("Status: PAID", headingFont));
         document.add(spacer(14f));
 
@@ -278,6 +275,14 @@ public class RegistrationInvoicePdfServiceImpl implements RegistrationInvoicePdf
 
     private PdfPCell bodyCell(String text) {
         Font font = FontFactory.getFont(FontFactory.HELVETICA, 10);
+        PdfPCell cell = new PdfPCell(new Paragraph(text, font));
+        cell.setPadding(7f);
+        cell.setBorder(Rectangle.BOX);
+        return cell;
+    }
+
+    private PdfPCell totalCell(String text) {
+        Font font = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Color.BLACK);
         PdfPCell cell = new PdfPCell(new Paragraph(text, font));
         cell.setPadding(7f);
         cell.setBorder(Rectangle.BOX);
