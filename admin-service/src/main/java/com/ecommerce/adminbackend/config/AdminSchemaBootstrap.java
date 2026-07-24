@@ -8,6 +8,9 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+/**
+ * Ensures admin-owned support tables exist. Does not alter the shared {@code orders} table.
+ */
 @Component
 @RequiredArgsConstructor
 public class AdminSchemaBootstrap implements ApplicationRunner {
@@ -20,7 +23,6 @@ public class AdminSchemaBootstrap implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         ensureSellerPayoutRequestsTable();
         ensureSellerSupportTables();
-        ensureOrderShiprocketDocumentColumns();
     }
 
     private void ensureSellerPayoutRequestsTable() {
@@ -89,22 +91,6 @@ public class AdminSchemaBootstrap implements ApplicationRunner {
             log.info("seller_support_tickets / seller_support_messages tables are ready");
         } catch (Exception ex) {
             log.warn("Could not ensure seller support ticket tables: {}", ex.getMessage());
-        }
-    }
-
-    private void ensureOrderShiprocketDocumentColumns() {
-        String[] statements = {
-                "ALTER TABLE orders MODIFY COLUMN shiprocket_status VARCHAR(500) NULL",
-                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_label_url VARCHAR(1000) NULL",
-                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_invoice_url VARCHAR(1000) NULL",
-                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_manifest_url VARCHAR(1000) NULL",
-        };
-        for (String sql : statements) {
-            try {
-                jdbcTemplate.execute(sql);
-            } catch (Exception ex) {
-                log.warn("Order Shiprocket column bootstrap skipped ({}): {}", sql, ex.getMessage());
-            }
         }
     }
 }

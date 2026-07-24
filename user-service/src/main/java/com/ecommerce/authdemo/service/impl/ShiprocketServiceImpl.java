@@ -369,10 +369,7 @@ import java.util.Locale;
                     shiprocketStatus
             );
 
-            if (awb != null && !awb.isBlank()) {
-                attachShiprocketDocuments(order);
-                orderRepository.save(order);
-            } else {
+            if (awb == null || awb.isBlank()) {
                 log.warn(
                         "Shiprocket shipment created without AWB orderNumber={} shipmentId={} — admin can Sync/Push again or assign courier in Shiprocket",
                         order.getOrderNumber(),
@@ -442,88 +439,6 @@ import java.util.Locale;
                         e.getMessage(),
                         e
                 );
-                return null;
-            }
-        }
-
-        /**
-         * Best-effort label / invoice / manifest generation after AWB is available.
-         * Failures are logged and do not roll back shipment creation.
-         */
-        private void attachShiprocketDocuments(Order order) {
-            if (order == null) {
-                return;
-            }
-            try {
-                if (!isBlank(order.getShiprocketShipmentId())
-                        && order.getShiprocketShipmentId().trim().matches("^\\d+$")) {
-                    String labelUrl = postDocumentUrl(
-                            "/courier/generate/label",
-                            Map.of("shipment_id", List.of(Integer.parseInt(order.getShiprocketShipmentId().trim()))),
-                            "label_url", "label_created"
-                    );
-                    if (!isBlank(labelUrl)) {
-                        order.setShiprocketLabelUrl(labelUrl);
-                    }
-
-                    String manifestUrl = postDocumentUrl(
-                            "/manifests/generate",
-                            Map.of("shipment_id", List.of(Integer.parseInt(order.getShiprocketShipmentId().trim()))),
-                            "manifest_url", "manifest_url"
-                    );
-                    if (!isBlank(manifestUrl)) {
-                        order.setShiprocketManifestUrl(manifestUrl);
-                    }
-                }
-                if (!isBlank(order.getShiprocketOrderId())
-                        && order.getShiprocketOrderId().trim().matches("^\\d+$")) {
-                    String invoiceUrl = postDocumentUrl(
-                            "/orders/print/invoice",
-                            Map.of("ids", List.of(Integer.parseInt(order.getShiprocketOrderId().trim()))),
-                            "invoice_url", "invoice_url"
-                    );
-                    if (!isBlank(invoiceUrl)) {
-                        order.setShiprocketInvoiceUrl(invoiceUrl);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn(
-                        "Shiprocket document generation failed orderNumber={}: {}",
-                        order.getOrderNumber(),
-                        e.getMessage()
-                );
-            }
-        }
-
-        @SuppressWarnings("unchecked")
-        private String postDocumentUrl(
-                String path,
-                Map<String, Object> payload,
-                String... urlKeys
-        ) {
-            try {
-                String token = getToken();
-                HttpHeaders headers = new HttpHeaders();
-                headers.setBearerAuth(token);
-                headers.setContentType(MediaType.APPLICATION_JSON);
-                HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-                log.info("Shiprocket document request path={} payload={}", path, payload);
-                ResponseEntity<Map> response =
-                        restTemplate.postForEntity(apiBaseUrl + path, request, Map.class);
-                Map<String, Object> body = response.getBody();
-                log.info("Shiprocket document response path={} body={}", path, body);
-                if (body == null) {
-                    return null;
-                }
-                for (String key : urlKeys) {
-                    String found = findFirstDeep(body, key);
-                    if (!isBlank(found) && found.startsWith("http")) {
-                        return found;
-                    }
-                }
-                return findFirstDeep(body, "label_url", "invoice_url", "manifest_url", "pdf_url", "url");
-            } catch (Exception e) {
-                log.warn("Shiprocket document API {} failed: {}", path, e.getMessage());
                 return null;
             }
         }
@@ -942,14 +857,6 @@ import java.util.Locale;
 
                 applyRemoteShiprocketFields(order, remote);
                 order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
-
-                if (!isBlank(order.getShiprocketAwbCode())
-                        && (isBlank(order.getShiprocketLabelUrl())
-                        || isBlank(order.getShiprocketInvoiceUrl())
-                        || isBlank(order.getShiprocketManifestUrl()))) {
-                    attachShiprocketDocuments(order);
-                }
-
                 orderRepository.save(order);
 
                 if (!isBlank(order.getShiprocketAwbCode())

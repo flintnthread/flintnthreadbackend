@@ -2,6 +2,7 @@ package com.ecommerce.adminbackend.exception;
 
 import com.ecommerce.adminbackend.logging.LogFactory;
 import org.slf4j.Logger;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -11,6 +12,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -68,10 +70,42 @@ public class GlobalExceptionHandler {
         return ResponseEntity.notFound().build();
     }
 
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<Map<String, String>> handleDataAccess(DataAccessException ex) {
+        log.error("Admin data access error", ex);
+        String detail = rootSqlMessage(ex);
+        String message = detail != null && !detail.isBlank()
+                ? detail
+                : "Database error while loading data. Please try again.";
+        // Keep response readable for admins (Unknown column / table issues).
+        if (message.length() > 400) {
+            message = message.substring(0, 400);
+        }
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("message", message));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleUnexpected(Exception ex) {
         log.error("Unexpected admin API error", ex);
+        String detail = rootSqlMessage(ex);
+        if (detail != null && !detail.isBlank()) {
+            String message = detail.length() > 400 ? detail.substring(0, 400) : detail;
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", message));
+        }
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("message", "Something went wrong. Please try again."));
+    }
+
+    private static String rootSqlMessage(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            if (cur instanceof SQLException sqlEx && sqlEx.getMessage() != null) {
+                return sqlEx.getMessage();
+            }
+            cur = cur.getCause();
+        }
+        return ex.getMessage();
     }
 }

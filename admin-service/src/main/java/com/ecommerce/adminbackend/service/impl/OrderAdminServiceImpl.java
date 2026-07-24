@@ -598,9 +598,6 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         detail.put("shiprocketTrackingUrl", order.getShiprocketTrackingUrl());
         detail.put("shiprocketPushedAt", toUtcIso(order.getShiprocketPushedAt()));
         detail.put("shiprocketSyncedAt", toUtcIso(order.getShiprocketSyncedAt()));
-        detail.put("shiprocketLabelUrl", order.getShiprocketLabelUrl());
-        detail.put("shiprocketInvoiceUrl", order.getShiprocketInvoiceUrl());
-        detail.put("shiprocketManifestUrl", order.getShiprocketManifestUrl());
         detail.put("shiprocketDashboardUrl", shiprocketDashboardUrl);
         detail.put("shiprocket", toShiprocketDetail(order));
         detail.put("createdAt", toUtcIso(order.getCreatedAt()));
@@ -621,9 +618,6 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         shiprocket.put("pickupStatus", resolvePickupStatus(order.getShiprocketStatus()));
         shiprocket.put("trackingStatus", order.getShiprocketStatus());
         shiprocket.put("trackingUrl", order.getShiprocketTrackingUrl());
-        shiprocket.put("labelUrl", order.getShiprocketLabelUrl());
-        shiprocket.put("invoiceUrl", order.getShiprocketInvoiceUrl());
-        shiprocket.put("manifestUrl", order.getShiprocketManifestUrl());
         shiprocket.put("pushedAt", toUtcIso(order.getShiprocketPushedAt()));
         shiprocket.put("syncedAt", toUtcIso(order.getShiprocketSyncedAt()));
         shiprocket.put("dashboardUrl", shiprocketDashboardUrl);

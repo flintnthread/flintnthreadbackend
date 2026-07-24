@@ -50,7 +50,8 @@ public class Order {
     @Column(name = "order_status")
     private String orderStatus;
 
-    @Column(name = "cancel_reason")
+    /** Not present on live orders table — kept for in-memory use only. */
+    @Transient
     private String cancelReason;
 
     @Column(name = "shipping_name")
@@ -77,8 +78,8 @@ public class Order {
     @Column(name = "shipping_country")
     private String shippingCountry;
 
-
-    @Column(name = "address_id")
+    /** Not present on live orders table — kept for in-memory use only. */
+    @Transient
     private Long addressId;
 
     @Column(name = "shiprocket_order_id")
@@ -169,20 +170,14 @@ public class Order {
     @Column(name = "shiprocket_tracking_url")
     private String shiprocketTrackingUrl;
 
-    @Column(name = "shiprocket_status", length = 500)
+    @Column(name = "shiprocket_status", length = 50)
     private String shiprocketStatus;
 
-    @Column(name = "shiprocket_label_url", length = 1000)
-    private String shiprocketLabelUrl;
-
-    @Column(name = "shiprocket_invoice_url", length = 1000)
-    private String shiprocketInvoiceUrl;
-
-    @Column(name = "shiprocket_manifest_url", length = 1000)
-    private String shiprocketManifestUrl;
-
-    /** Set when place order applied the inviter 10% referral reward to this order. */
-    @Column(name = "referral_inviter_discount_applied")
+    /**
+     * Not present on live orders table — kept for in-memory / builder use only.
+     * Do not ALTER the database for this field.
+     */
+    @Transient
     private Boolean referralInviterDiscountApplied = false;
 
 }

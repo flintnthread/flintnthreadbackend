@@ -152,7 +152,7 @@ public class Order {
     @Column(name = "shiprocket_courier_name", length = 100)
     private String shiprocketCourierName;
 
-    @Column(name = "shiprocket_status", length = 500)
+    @Column(name = "shiprocket_status", length = 50)
     private String shiprocketStatus;
 
     @Column(name = "shiprocket_tracking_url", columnDefinition = "TEXT")
@@ -163,15 +163,6 @@ public class Order {
 
     @Column(name = "shiprocket_synced_at")
     private LocalDateTime shiprocketSyncedAt;
-
-    @Column(name = "shiprocket_label_url", length = 1000)
-    private String shiprocketLabelUrl;
-
-    @Column(name = "shiprocket_invoice_url", length = 1000)
-    private String shiprocketInvoiceUrl;
-
-    @Column(name = "shiprocket_manifest_url", length = 1000)
-    private String shiprocketManifestUrl;
 
     @Column(name = "referral_discount_percent", precision = 5, scale = 2)
     private BigDecimal referralDiscountPercent;
