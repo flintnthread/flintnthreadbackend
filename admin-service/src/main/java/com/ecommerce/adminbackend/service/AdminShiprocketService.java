@@ -193,19 +193,13 @@ public class AdminShiprocketService {
                 && !String.valueOf(body.get("awb_code")).isBlank()
                 ? String.valueOf(body.get("awb_code"))
                 : null;
-        String courier = body.get("courier_name") != null ? String.valueOf(body.get("courier_name")) : null;
+        String courier = body.get("courier_name") != null
+                && !"null".equalsIgnoreCase(String.valueOf(body.get("courier_name")))
+                && !String.valueOf(body.get("courier_name")).isBlank()
+                ? String.valueOf(body.get("courier_name"))
+                : null;
 
-        if (isBlank(awb) && !isBlank(shipmentId) && shipmentId.matches("^\\d+$")) {
-            Map<String, Object> assigned = tryAssignAwb(shipmentId);
-            if (assigned != null) {
-                if (!isBlank(stringVal(assigned.get("awb_code")))) {
-                    awb = stringVal(assigned.get("awb_code"));
-                }
-                if (!isBlank(stringVal(assigned.get("courier_name")))) {
-                    courier = stringVal(assigned.get("courier_name"));
-                }
-            }
-        }
+        // Do not call /courier/assign/awb — courier is assigned manually in Shiprocket.
 
         String trackingUrl = !isBlank(awb) ? "https://shiprocket.co/tracking/" + awb : null;
         String status = !isBlank(awb) ? "awb_assigned" : "new";
@@ -213,7 +207,7 @@ public class AdminShiprocketService {
         order.setShiprocketOrderId(shiprocketOrderId);
         order.setShiprocketShipmentId(shipmentId);
         order.setShiprocketAwbCode(awb);
-        order.setShiprocketCourierName(!isBlank(courier) ? courier : "Shiprocket");
+        order.setShiprocketCourierName(courier);
         order.setShiprocketTrackingUrl(trackingUrl);
         order.setShiprocketStatus(status);
         order.setShiprocketPushedAt(LocalDateTime.now());
@@ -222,42 +216,9 @@ public class AdminShiprocketService {
 
         Map<String, Object> out = resultMap(order);
         out.put("message", !isBlank(awb)
-                ? "Shipment created and AWB assigned"
-                : "Shipment created on Shiprocket; AWB pending courier assignment");
+                ? "Shipment created on Shiprocket"
+                : "Shipment created on Shiprocket. Assign courier in Shiprocket, then Sync Now.");
         return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> tryAssignAwb(String shipmentId) {
-        try {
-            String token = getToken();
-            HttpHeaders headers = authHeaders(token);
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("shipment_id", List.of(Integer.parseInt(shipmentId.trim())));
-            ResponseEntity<Map> response = restTemplate.postForEntity(
-                    apiBaseUrl + "/courier/assign/awb",
-                    new HttpEntity<>(payload, headers),
-                    Map.class
-            );
-            Map<String, Object> body = response.getBody();
-            log.info("Shiprocket assign AWB response shipmentId={} body={}", shipmentId, body);
-            if (body == null) {
-                return null;
-            }
-            Map<String, Object> extracted = new HashMap<>();
-            String awb = firstString(body, "awb_code", "awb", "awbCode");
-            String courier = firstString(body, "courier_name", "courier", "sr_courier_name");
-            if (!isBlank(awb)) {
-                extracted.put("awb_code", awb);
-            }
-            if (!isBlank(courier)) {
-                extracted.put("courier_name", courier);
-            }
-            return extracted.isEmpty() ? null : extracted;
-        } catch (Exception e) {
-            log.warn("Shiprocket AWB assign failed shipmentId={}: {}", shipmentId, e.getMessage());
-            return null;
-        }
     }
 
     private Map<String, Object> buildPayload(Order order) {
