@@ -1341,7 +1341,16 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
+        // Already linked: sync AWB if missing instead of creating a duplicate.
         if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
+            if (order.getShiprocketAwbCode() == null || order.getShiprocketAwbCode().isBlank()
+                    || order.getShiprocketTrackingUrl() == null || order.getShiprocketTrackingUrl().isBlank()) {
+                log.info(
+                        "Shiprocket already linked for orderNumber={} without AWB — syncing",
+                        order.getOrderNumber()
+                );
+                return shiprocketService.syncShipmentDetails(order);
+            }
             return ShiprocketShipmentResult.builder()
                     .shipmentId(order.getShiprocketShipmentId())
                     .awbCode(order.getShiprocketAwbCode())
@@ -1349,6 +1358,8 @@ public class OrderServiceImpl implements OrderService {
                     .courierName(order.getShiprocketCourierName() != null
                             ? order.getShiprocketCourierName()
                             : "Shiprocket")
+                    .alreadyExists(true)
+                    .message("Shipment already exists on Shiprocket")
                     .build();
         }
 
@@ -1367,13 +1378,37 @@ public class OrderServiceImpl implements OrderService {
             );
         }
 
-        ShiprocketShipmentResult result = shiprocketService.createShipment(order);
-        log.info(
-                "Shiprocket push retry OK orderNumber={} shipmentId={}",
-                order.getOrderNumber(),
-                result.getShipmentId()
-        );
-        return result;
+        try {
+            ShiprocketShipmentResult result = shiprocketService.createShipment(order);
+            log.info(
+                    "Shiprocket push retry OK orderNumber={} shipmentId={} awb={}",
+                    order.getOrderNumber(),
+                    result.getShipmentId(),
+                    result.getAwbCode()
+            );
+            return result;
+        } catch (Exception e) {
+            try {
+                markShiprocketCreateFailed(order.getOrderNumber(), e.getMessage());
+            } catch (Exception ignore) {
+                // ignore secondary failure
+            }
+            throw e;
+        }
+    }
+
+    @Override
+    @Transactional
+    public ShiprocketShipmentResult syncOrderToShiprocket(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getShiprocketOrderId() == null || order.getShiprocketOrderId().isBlank()) {
+            throw new OrderException(
+                    "Order is not linked to Shiprocket yet. Use Push to Shiprocket first."
+            );
+        }
+        return shiprocketService.syncShipmentDetails(order);
     }
 
     private boolean isPaidPaymentStatus(String paymentStatus) {
@@ -1509,11 +1544,13 @@ public class OrderServiceImpl implements OrderService {
                                             "Order not found"
                                     ));
 
-            order.setShiprocketStatus(
-                    reason == null || reason.isBlank()
-                            ? "shipment_creation_failed"
-                            : ("failed: " + reason).substring(0, Math.min(50, ("failed: " + reason).length()))
-            );
+            String status = reason == null || reason.isBlank()
+                    ? "shipment_creation_failed"
+                    : ("failed: " + reason);
+            if (status.length() > 500) {
+                status = status.substring(0, 500);
+            }
+            order.setShiprocketStatus(status);
 
             orderRepository.save(order);
 

@@ -148,6 +148,8 @@ import java.util.Locale;
                         .courierName(order.getShiprocketCourierName() != null
                                 ? order.getShiprocketCourierName()
                                 : "Shiprocket")
+                        .alreadyExists(true)
+                        .message("Shipment already exists on Shiprocket")
                         .build();
             }
 
@@ -332,10 +334,14 @@ import java.util.Locale;
             if ((awb == null || awb.isBlank()) && shipmentId != null && !shipmentId.isBlank()) {
                 Map<String, Object> assigned = tryAssignAwb(shipmentId);
                 if (assigned != null) {
-                    if (assigned.get("awb_code") != null) {
+                    if (assigned.get("awb_code") != null
+                            && !"null".equalsIgnoreCase(String.valueOf(assigned.get("awb_code")))
+                            && !String.valueOf(assigned.get("awb_code")).isBlank()) {
                         awb = String.valueOf(assigned.get("awb_code"));
                     }
-                    if (assigned.get("courier_name") != null) {
+                    if (assigned.get("courier_name") != null
+                            && !"null".equalsIgnoreCase(String.valueOf(assigned.get("courier_name")))
+                            && !String.valueOf(assigned.get("courier_name")).isBlank()) {
                         courierName = String.valueOf(assigned.get("courier_name"));
                     }
                 }
@@ -363,12 +369,26 @@ import java.util.Locale;
                     shiprocketStatus
             );
 
+            if (awb != null && !awb.isBlank()) {
+                attachShiprocketDocuments(order);
+                orderRepository.save(order);
+            } else {
+                log.warn(
+                        "Shiprocket shipment created without AWB orderNumber={} shipmentId={} — admin can Sync/Push again or assign courier in Shiprocket",
+                        order.getOrderNumber(),
+                        shipmentId
+                );
+            }
+
             return ShiprocketShipmentResult
                     .builder()
                     .shipmentId(shipmentId)
                     .awbCode(awb)
                     .trackingUrl(trackingUrl)
                     .courierName(order.getShiprocketCourierName())
+                    .message(awb != null
+                            ? "Shipment created and AWB assigned"
+                            : "Shipment created on Shiprocket; AWB pending courier assignment")
                     .build();
         }
 
@@ -381,28 +401,129 @@ import java.util.Locale;
                 headers.setBearerAuth(token);
                 headers.setContentType(MediaType.APPLICATION_JSON);
                 Map<String, Object> payload = new HashMap<>();
-                payload.put("shipment_id", List.of(Integer.parseInt(shipmentId.trim())));
+                // Shiprocket expects shipment_id as an array of ids.
+                int sid = Integer.parseInt(shipmentId.trim());
+                payload.put("shipment_id", List.of(sid));
                 HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+                log.info("Shiprocket assign AWB request shipment_id={}", sid);
                 ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
                 Map<String, Object> body = response.getBody();
+                log.info("Shiprocket assign AWB response for shipment {}: {}", shipmentId, body);
                 if (body == null) {
                     return null;
                 }
-                Object responseData = body.get("response");
-                if (responseData instanceof Map<?, ?> dataMap) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> casted = (Map<String, Object>) dataMap;
-                    Object awbAssign = casted.get("data");
-                    if (awbAssign instanceof Map<?, ?> assignMap) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> assign = (Map<String, Object>) assignMap;
-                        return assign;
+
+                Map<String, Object> extracted = new HashMap<>();
+                String awb = findFirstDeep(body, "awb_code", "awb", "awbCode");
+                String courier = findFirstDeep(body, "courier_name", "courier", "sr_courier_name");
+                if (!isBlank(awb) && !"null".equalsIgnoreCase(awb)) {
+                    extracted.put("awb_code", awb);
+                }
+                if (!isBlank(courier) && !"null".equalsIgnoreCase(courier)) {
+                    extracted.put("courier_name", courier);
+                }
+
+                Object assignStatus = body.get("awb_assign_status");
+                if (extracted.isEmpty() && assignStatus != null
+                        && !"1".equals(String.valueOf(assignStatus))
+                        && !"200".equals(String.valueOf(assignStatus))) {
+                    Object message = body.get("message");
+                    log.warn(
+                            "Shiprocket AWB assign not successful for shipment {}: {}",
+                            shipmentId,
+                            message != null ? message : body
+                    );
+                }
+                return extracted.isEmpty() ? null : extracted;
+            } catch (Exception e) {
+                log.warn(
+                        "Shiprocket AWB assign failed for shipment {}: {}",
+                        shipmentId,
+                        e.getMessage(),
+                        e
+                );
+                return null;
+            }
+        }
+
+        /**
+         * Best-effort label / invoice / manifest generation after AWB is available.
+         * Failures are logged and do not roll back shipment creation.
+         */
+        private void attachShiprocketDocuments(Order order) {
+            if (order == null) {
+                return;
+            }
+            try {
+                if (!isBlank(order.getShiprocketShipmentId())
+                        && order.getShiprocketShipmentId().trim().matches("^\\d+$")) {
+                    String labelUrl = postDocumentUrl(
+                            "/courier/generate/label",
+                            Map.of("shipment_id", List.of(Integer.parseInt(order.getShiprocketShipmentId().trim()))),
+                            "label_url", "label_created"
+                    );
+                    if (!isBlank(labelUrl)) {
+                        order.setShiprocketLabelUrl(labelUrl);
+                    }
+
+                    String manifestUrl = postDocumentUrl(
+                            "/manifests/generate",
+                            Map.of("shipment_id", List.of(Integer.parseInt(order.getShiprocketShipmentId().trim()))),
+                            "manifest_url", "manifest_url"
+                    );
+                    if (!isBlank(manifestUrl)) {
+                        order.setShiprocketManifestUrl(manifestUrl);
                     }
                 }
-                log.info("Shiprocket assign AWB response for shipment {}: {}", shipmentId, body);
-                return body;
+                if (!isBlank(order.getShiprocketOrderId())
+                        && order.getShiprocketOrderId().trim().matches("^\\d+$")) {
+                    String invoiceUrl = postDocumentUrl(
+                            "/orders/print/invoice",
+                            Map.of("ids", List.of(Integer.parseInt(order.getShiprocketOrderId().trim()))),
+                            "invoice_url", "invoice_url"
+                    );
+                    if (!isBlank(invoiceUrl)) {
+                        order.setShiprocketInvoiceUrl(invoiceUrl);
+                    }
+                }
             } catch (Exception e) {
-                log.warn("Shiprocket AWB assign failed for shipment {}: {}", shipmentId, e.getMessage());
+                log.warn(
+                        "Shiprocket document generation failed orderNumber={}: {}",
+                        order.getOrderNumber(),
+                        e.getMessage()
+                );
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        private String postDocumentUrl(
+                String path,
+                Map<String, Object> payload,
+                String... urlKeys
+        ) {
+            try {
+                String token = getToken();
+                HttpHeaders headers = new HttpHeaders();
+                headers.setBearerAuth(token);
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+                log.info("Shiprocket document request path={} payload={}", path, payload);
+                ResponseEntity<Map> response =
+                        restTemplate.postForEntity(apiBaseUrl + path, request, Map.class);
+                Map<String, Object> body = response.getBody();
+                log.info("Shiprocket document response path={} body={}", path, body);
+                if (body == null) {
+                    return null;
+                }
+                for (String key : urlKeys) {
+                    String found = findFirstDeep(body, key);
+                    if (!isBlank(found) && found.startsWith("http")) {
+                        return found;
+                    }
+                }
+                return findFirstDeep(body, "label_url", "invoice_url", "manifest_url", "pdf_url", "url");
+            } catch (Exception e) {
+                log.warn("Shiprocket document API {} failed: {}", path, e.getMessage());
                 return null;
             }
         }
@@ -821,6 +942,14 @@ import java.util.Locale;
 
                 applyRemoteShiprocketFields(order, remote);
                 order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
+
+                if (!isBlank(order.getShiprocketAwbCode())
+                        && (isBlank(order.getShiprocketLabelUrl())
+                        || isBlank(order.getShiprocketInvoiceUrl())
+                        || isBlank(order.getShiprocketManifestUrl()))) {
+                    attachShiprocketDocuments(order);
+                }
+
                 orderRepository.save(order);
 
                 if (!isBlank(order.getShiprocketAwbCode())

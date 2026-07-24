@@ -63,6 +63,9 @@ public interface OrderService {
     /** Retry Shiprocket create for a paid/COD order that was not linked yet. */
     ShiprocketShipmentResult pushOrderToShiprocket(Long orderId);
 
+    /** Pull latest AWB/courier/tracking from Shiprocket for an already-linked order. */
+    ShiprocketShipmentResult syncOrderToShiprocket(Long orderId);
+
     void updateShipment(String orderNumber, String awb, String courier, String trackingUrl, String shiprocketStatus);
 
     void markShiprocketCreateFailed(String orderNumber, String reason);

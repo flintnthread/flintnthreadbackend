@@ -169,8 +169,17 @@ public class Order {
     @Column(name = "shiprocket_tracking_url")
     private String shiprocketTrackingUrl;
 
-    @Column(name = "shiprocket_status")
+    @Column(name = "shiprocket_status", length = 500)
     private String shiprocketStatus;
+
+    @Column(name = "shiprocket_label_url", length = 1000)
+    private String shiprocketLabelUrl;
+
+    @Column(name = "shiprocket_invoice_url", length = 1000)
+    private String shiprocketInvoiceUrl;
+
+    @Column(name = "shiprocket_manifest_url", length = 1000)
+    private String shiprocketManifestUrl;
 
     /** Set when place order applied the inviter 10% referral reward to this order. */
     @Column(name = "referral_inviter_discount_applied")

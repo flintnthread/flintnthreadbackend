@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -104,5 +105,15 @@ public class OrderAdminController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"shipping-label-" + id + ".pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdf);
+    }
+
+    @PostMapping("/{id}/shiprocket/push")
+    public Map<String, Object> pushToShiprocket(@PathVariable Long id) {
+        return orderAdminService.pushToShiprocket(id);
+    }
+
+    @PostMapping("/{id}/shiprocket/sync")
+    public Map<String, Object> syncFromShiprocket(@PathVariable Long id) {
+        return orderAdminService.syncFromShiprocket(id);
     }
 }

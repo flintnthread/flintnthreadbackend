@@ -26,6 +26,10 @@ public class OrderSchemaBootstrap {
                 "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_courier_name VARCHAR(150) NULL",
                 "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_tracking_url VARCHAR(500) NULL",
                 "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_status VARCHAR(100) NULL",
+                "ALTER TABLE orders MODIFY COLUMN shiprocket_status VARCHAR(500) NULL",
+                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_label_url VARCHAR(1000) NULL",
+                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_invoice_url VARCHAR(1000) NULL",
+                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS shiprocket_manifest_url VARCHAR(1000) NULL",
                 "ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount DECIMAL(10, 2) NULL",
         };
 
