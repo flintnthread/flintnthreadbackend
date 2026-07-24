@@ -417,15 +417,15 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             response.put("message", remote.getOrDefault("message", "Shiprocket shipment created"));
             response.put("shiprocket", remote.get("shiprocket"));
             response.put("alreadyExists", false);
-            response.put("order", getOrder(id));
+            try {
+                response.put("order", getOrder(id));
+            } catch (Exception reloadEx) {
+                log.warn("Shiprocket push OK but order reload failed orderId={}: {}", id, reloadEx.getMessage());
+            }
             return response;
         } catch (Exception e) {
             log.error("Admin Shiprocket push failed orderId={}: {}", id, e.getMessage(), e);
-            // Do not mark order as shipped — only surface the exact error for retry.
-            throw new IllegalStateException(
-                    e.getMessage() != null ? e.getMessage() : "Shiprocket push failed",
-                    e
-            );
+            throw new IllegalStateException(friendlyShiprocketError(e), e);
         }
     }
 
@@ -444,15 +444,37 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             response.put("success", true);
             response.put("message", remote.getOrDefault("message", "Shiprocket shipment synced"));
             response.put("shiprocket", remote.get("shiprocket"));
-            response.put("order", getOrder(id));
+            response.put("alreadyExists", false);
+            try {
+                response.put("order", getOrder(id));
+            } catch (Exception reloadEx) {
+                log.warn("Shiprocket sync OK but order reload failed orderId={}: {}", id, reloadEx.getMessage());
+            }
             return response;
         } catch (Exception e) {
             log.error("Admin Shiprocket sync failed orderId={}: {}", id, e.getMessage(), e);
-            throw new IllegalStateException(
-                    e.getMessage() != null ? e.getMessage() : "Shiprocket sync failed",
-                    e
-            );
+            throw new IllegalStateException(friendlyShiprocketError(e), e);
         }
+    }
+
+    private static String friendlyShiprocketError(Throwable e) {
+        String raw = e.getMessage() != null ? e.getMessage() : "";
+        String lower = raw.toLowerCase(Locale.ENGLISH);
+        if (lower.contains("unknown column") && lower.contains("shiprocket_")) {
+            return "Admin service is running an outdated build that expects removed Shiprocket DB columns. "
+                    + "Redeploy/restart admin-service (same Order mapping as user-service).";
+        }
+        if (raw.isBlank()) {
+            return "Shiprocket request failed";
+        }
+        // Prefer the root SQL message when present, but keep it short for the UI.
+        int unknown = lower.indexOf("unknown column");
+        if (unknown >= 0) {
+            int end = raw.indexOf('\n', unknown);
+            String snippet = end > unknown ? raw.substring(unknown, end) : raw.substring(unknown);
+            return snippet.length() > 180 ? snippet.substring(0, 180) : snippet;
+        }
+        return raw.length() > 300 ? raw.substring(0, 300) : raw;
     }
 
     private void validateShiprocketReady(Order order, Long orderId) {
