@@ -1,6 +1,5 @@
 package com.ecommerce.adminbackend.service.impl;
 
-import com.ecommerce.adminbackend.client.UserServiceShiprocketClient;
 import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.config.InvoiceSettings;
 import com.ecommerce.adminbackend.entity.Color;
@@ -21,6 +20,7 @@ import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
 import com.ecommerce.adminbackend.repository.SizeRepository;
+import com.ecommerce.adminbackend.service.AdminShiprocketService;
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.OrderAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
@@ -78,7 +78,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private final MediaUrlHelper mediaUrlHelper;
     private final InvoiceSettings invoiceSettings;
     private final MailService mailService;
-    private final UserServiceShiprocketClient userServiceShiprocketClient;
+    private final AdminShiprocketService adminShiprocketService;
 
     @Value("${shiprocket.dashboard.url:https://app.shiprocket.in/seller/home}")
     private String shiprocketDashboardUrl;
@@ -411,12 +411,13 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         }
 
         try {
-            Map<String, Object> remote = userServiceShiprocketClient.pushOrder(id);
+            // Direct Shiprocket API from admin (does not require user-service to be running).
+            Map<String, Object> shiprocket = adminShiprocketService.createOrSyncShipment(order);
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("success", true);
-            response.put("message", remote.getOrDefault("message", "Shiprocket shipment created"));
-            response.put("shiprocket", remote.get("shiprocket"));
-            response.put("alreadyExists", false);
+            response.put("message", shiprocket.getOrDefault("message", "Shiprocket shipment created"));
+            response.put("shiprocket", shiprocket);
+            response.put("alreadyExists", Boolean.TRUE.equals(shiprocket.get("already_exists")));
             try {
                 response.put("order", getOrder(id));
             } catch (Exception reloadEx) {
@@ -439,11 +440,11 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             );
         }
         try {
-            Map<String, Object> remote = userServiceShiprocketClient.syncOrder(id);
+            Map<String, Object> shiprocket = adminShiprocketService.syncShipment(order);
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("success", true);
-            response.put("message", remote.getOrDefault("message", "Shiprocket shipment synced"));
-            response.put("shiprocket", remote.get("shiprocket"));
+            response.put("message", shiprocket.getOrDefault("message", "Shiprocket shipment synced"));
+            response.put("shiprocket", shiprocket);
             response.put("alreadyExists", false);
             try {
                 response.put("order", getOrder(id));
@@ -471,16 +472,16 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
                     && (column.toLowerCase(Locale.ENGLISH).contains("invoice")
                     || column.toLowerCase(Locale.ENGLISH).contains("label")
                     || column.toLowerCase(Locale.ENGLISH).contains("manifest"))) {
-                return "Push failed because a service is still selecting removed column '"
+                return "Push failed because admin-backend is still selecting removed column '"
                         + column
-                        + "'. Rebuild and restart flintnthread.service (user) and admin-backend.service.";
+                        + "'. Rebuild and restart admin-backend.service with the latest code.";
             }
             return "Database column missing: " + column
                     + ". Code must match existing orders columns only.";
         }
 
         if (raw.isBlank() || "null".equalsIgnoreCase(raw.trim())) {
-            return "Shiprocket push failed (no error detail). Check user-service logs for order push.";
+            return "Shiprocket push failed (no error detail). Check admin-backend logs and Shiprocket credentials in Platform Settings.";
         }
         return raw.length() > 400 ? raw.substring(0, 400) : raw;
     }
