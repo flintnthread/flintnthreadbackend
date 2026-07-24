@@ -249,7 +249,7 @@ public class OrderServiceImpl implements OrderService {
             try {
                 long paidOrders = orderRepository.countByUserIdAndPaymentStatus(userId, "paid");
                 boolean noReferralPricingOrderYet =
-                        !orderRepository.existsByUserIdAndReferralInviterDiscountAppliedTrue(userId);
+                        !referralService.hasRedeemedInviterDiscount(userId);
 
                 if (noReferralPricingOrderYet) {
                     BigDecimal discountPercent = referralService

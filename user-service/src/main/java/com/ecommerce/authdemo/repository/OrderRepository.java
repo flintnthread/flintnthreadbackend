@@ -118,8 +118,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     long countByUserIdAndDiscountAmountGreaterThan(Long userId, Double minDiscountAmount);
 
-    boolean existsByUserIdAndReferralInviterDiscountAppliedTrue(Long userId);
-
     @Modifying
     @Transactional
     @Query("""
