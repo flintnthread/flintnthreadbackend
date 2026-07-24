@@ -72,6 +72,11 @@ public class UserServiceShiprocketClient {
             );
             if (response.statusCode() >= 400) {
                 String message = extractMessage(body, response.body());
+                if (message != null && message.toLowerCase().contains("unknown column")) {
+                    throw new IllegalStateException(
+                            "user-service error: " + message
+                    );
+                }
                 throw new IllegalStateException(message);
             }
             if (body.containsKey("success") && Boolean.FALSE.equals(body.get("success"))) {

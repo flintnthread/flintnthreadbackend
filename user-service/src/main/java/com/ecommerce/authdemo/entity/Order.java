@@ -170,7 +170,7 @@ public class Order {
     @Column(name = "shiprocket_tracking_url")
     private String shiprocketTrackingUrl;
 
-    @Column(name = "shiprocket_status", length = 50)
+    @Column(name = "shiprocket_status", length = 500)
     private String shiprocketStatus;
 
     /**

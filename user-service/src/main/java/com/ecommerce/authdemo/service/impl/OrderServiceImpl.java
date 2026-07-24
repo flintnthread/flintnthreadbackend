@@ -1547,9 +1547,9 @@ public class OrderServiceImpl implements OrderService {
             String status = reason == null || reason.isBlank()
                     ? "shipment_creation_failed"
                     : ("failed: " + reason);
-            // orders.shiprocket_status is VARCHAR(50) in the live DB
-            if (status.length() > 50) {
-                status = status.substring(0, 50);
+            // orders.shiprocket_status is VARCHAR(500) on live DB
+            if (status.length() > 500) {
+                status = status.substring(0, 500);
             }
             order.setShiprocketStatus(status);
 

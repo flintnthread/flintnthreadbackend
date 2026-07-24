@@ -460,19 +460,28 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private static String friendlyShiprocketError(Throwable e) {
         String raw = e.getMessage() != null ? e.getMessage() : "";
         String lower = raw.toLowerCase(Locale.ENGLISH);
-        if (lower.contains("unknown column") && lower.contains("shiprocket_")) {
-            return "Admin service is running an outdated build that expects removed Shiprocket DB columns. "
-                    + "Redeploy/restart admin-service (same Order mapping as user-service).";
+
+        // Extract exact missing column if present, e.g. Unknown column 'o1_0.shiprocket_invoice_url'
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("unknown column ['`]?(?:[\\w]+\\.)?([\\w]+)['`]?", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(raw);
+        if (m.find()) {
+            String column = m.group(1);
+            if (column.toLowerCase(Locale.ENGLISH).startsWith("shiprocket_")
+                    && (column.toLowerCase(Locale.ENGLISH).contains("invoice")
+                    || column.toLowerCase(Locale.ENGLISH).contains("label")
+                    || column.toLowerCase(Locale.ENGLISH).contains("manifest"))) {
+                return "Push failed because a service is still selecting removed column '"
+                        + column
+                        + "'. Redeploy/restart user-service AND admin-service (both Order entities must match the live DB — no "
+                        + column + "). Do not add this column.";
+            }
+            return "Database column missing: " + column
+                    + ". Code must match existing orders columns only.";
         }
+
         if (raw.isBlank()) {
             return "Shiprocket request failed";
-        }
-        // Prefer the root SQL message when present, but keep it short for the UI.
-        int unknown = lower.indexOf("unknown column");
-        if (unknown >= 0) {
-            int end = raw.indexOf('\n', unknown);
-            String snippet = end > unknown ? raw.substring(unknown, end) : raw.substring(unknown);
-            return snippet.length() > 180 ? snippet.substring(0, 180) : snippet;
         }
         return raw.length() > 300 ? raw.substring(0, 300) : raw;
     }
