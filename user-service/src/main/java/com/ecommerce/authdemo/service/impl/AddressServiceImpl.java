@@ -5,7 +5,6 @@ import com.ecommerce.authdemo.dto.AddressRequest;
 import com.ecommerce.authdemo.entity.Address;
 import com.ecommerce.authdemo.entity.User;
 import com.ecommerce.authdemo.repository.AddressRepository;
-import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.service.AddressService;
 import com.ecommerce.authdemo.util.SecurityUtil;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +23,6 @@ public class AddressServiceImpl implements AddressService {
 
 
     private final AddressRepository addressRepository;
-    private final OrderRepository orderRepository;
     private final SecurityUtil securityUtil;
 
     private Long getUserId() {
@@ -392,9 +390,7 @@ address.setPhone(phone);
 
         boolean wasDefault = Boolean.TRUE.equals(address.getIsDefault());
 
-        // Detach from orders first so FK / address_id references do not block delete
-        orderRepository.clearAddressId(Long.valueOf(id));
-
+        // orders.address_id is not on live schema (@Transient only) — nothing to detach
         addressRepository.delete(address);
         addressRepository.flush();
 
@@ -435,7 +431,7 @@ address.setPhone(phone);
     @Transactional
     public void deleteAllForCurrentUser() {
         Long userId = getUserId();
-        orderRepository.clearAddressIdsForUser(userId);
+        // orders.address_id is not on live schema — no order detach needed
         addressRepository.deleteByUserId(userId);
     }
 

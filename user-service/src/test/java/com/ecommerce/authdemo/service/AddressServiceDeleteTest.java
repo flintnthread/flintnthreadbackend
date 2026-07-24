@@ -3,7 +3,6 @@ package com.ecommerce.authdemo.service;
 import com.ecommerce.authdemo.entity.Address;
 import com.ecommerce.authdemo.repository.AddressRepository;
 import com.ecommerce.authdemo.repository.DeliveryPincodeRepository;
-import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.service.impl.AddressServiceImpl;
 import com.ecommerce.authdemo.util.SecurityUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,8 +28,6 @@ class AddressServiceDeleteTest {
     @Mock
     private AddressRepository addressRepository;
     @Mock
-    private OrderRepository orderRepository;
-    @Mock
     private SecurityUtil securityUtil;
     @Mock
     private DeliveryPincodeRepository deliveryPincodeRepository;
@@ -46,7 +43,7 @@ class AddressServiceDeleteTest {
     }
 
     @Test
-    void deleteAddress_clearsOrderRefsThenDeletes() {
+    void deleteAddress_deletesAddress() {
         Address address = Address.builder()
                 .id(55)
                 .userId(USER_ID)
@@ -58,7 +55,6 @@ class AddressServiceDeleteTest {
 
         addressService.deleteAddress(55);
 
-        verify(orderRepository).clearAddressId(55L);
         verify(addressRepository).delete(address);
         verify(addressRepository).flush();
     }
@@ -84,7 +80,6 @@ class AddressServiceDeleteTest {
 
         addressService.deleteAddress(55);
 
-        verify(orderRepository).clearAddressId(55L);
         verify(addressRepository).delete(toDelete);
         verify(addressRepository).flush();
 

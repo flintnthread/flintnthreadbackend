@@ -13,16 +13,6 @@ import java.util.Optional;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Transactional
-    @Query("UPDATE Order o SET o.addressId = NULL WHERE o.userId = :userId")
-    void clearAddressIdsForUser(@Param("userId") Long userId);
-
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Transactional
-    @Query("UPDATE Order o SET o.addressId = NULL WHERE o.addressId = :addressId")
-    void clearAddressId(@Param("addressId") Long addressId);
-
     List<Order> findByUserIdOrderByCreatedAtDesc(Long userId);
 
     List<Order> findByUserIdAndOrderStatusOrderByCreatedAtDesc(Long userId, String status);
