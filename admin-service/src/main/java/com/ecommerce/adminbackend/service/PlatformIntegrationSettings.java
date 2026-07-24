@@ -43,7 +43,7 @@ public class PlatformIntegrationSettings {
     @Value("${shiprocket.password:}")
     private String defaultShiprocketPassword;
 
-    @Value("${shiprocket.pickup-location:ASVI HOME FOODS}")
+    @Value("${shiprocket.pickup-location:work}")
     private String defaultShiprocketPickupLocation;
 
     public String getSendGridApiKey() {
