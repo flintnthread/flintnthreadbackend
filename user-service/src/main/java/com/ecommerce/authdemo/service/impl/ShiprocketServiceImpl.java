@@ -57,10 +57,6 @@ import java.util.Locale;
         @Value("${shiprocket.api.base-url}")
         private String apiBaseUrl;
 
-        /** Optional map: sellerId:PickupNickname,sellerId:AnotherNickname */
-        @Value("${shiprocket.pickup-location-by-seller:}")
-        private String pickupLocationBySeller;
-
         @Override
         public String getToken() {
 
@@ -183,7 +179,8 @@ import java.util.Locale;
         }
 
         /**
-         * Create on Shiprocket. If pickup nickname is wrong, retry once with configured default (work).
+         * Create on Shiprocket. Never fall back to ASVI/platform default —
+         * pickup must be the seller business name. If missing on Shiprocket, register it once then retry.
          */
         private Map<String, Object> postCreateAdhocWithPickupFallback(
                 Order order,
@@ -192,9 +189,6 @@ import java.util.Locale;
             try {
                 return postCreateAdhoc(order, payload);
             } catch (RuntimeException first) {
-                String configured = defaultPickupLocation();
-                Object usedPickup = payload.get("pickup_location");
-                String used = usedPickup != null ? String.valueOf(usedPickup) : "";
                 String detail = first.getMessage() != null ? first.getMessage() : "";
                 if (first instanceof HttpClientErrorException httpEx) {
                     String apiBody = httpEx.getResponseBodyAsString();
@@ -202,26 +196,51 @@ import java.util.Locale;
                         detail = detail + " " + apiBody;
                     }
                 }
-                String msg = detail.toLowerCase();
+                String msg = detail.toLowerCase(Locale.ENGLISH);
                 boolean pickupIssue = msg.contains("pickup")
-                        || msg.contains("location")
-                        || msg.contains("warehouse")
-                        || msg.contains("invalid pickup");
-                boolean phoneIssue = msg.contains("phone");
-
-                if (phoneIssue || !pickupIssue || configured.equalsIgnoreCase(used)) {
+                        || msg.contains("wrong pickup")
+                        || msg.contains("warehouse");
+                if (!pickupIssue) {
                     throw first;
                 }
 
+                Object usedPickup = payload.get("pickup_location");
+                String used = usedPickup != null ? String.valueOf(usedPickup) : "";
                 log.warn(
-                        "Shiprocket create failed with pickup={} for orderNumber={} — retrying with pickup={}",
+                        "Shiprocket rejected pickup={} for orderNumber={} — ensuring seller pickup exists and retrying once",
                         used,
-                        order.getOrderNumber(),
-                        configured
+                        order.getOrderNumber()
                 );
-                payload.put("pickup_location", configured);
+
+                Long sellerId = findPrimarySellerId(order);
+                if (sellerId != null) {
+                    sellerRepository.findById(sellerId).ifPresent(seller ->
+                            ensureSellerPickupRegistered(seller, used));
+                }
+                payload.put("pickup_location", used);
                 return postCreateAdhoc(order, payload);
             }
+        }
+
+        private Long findPrimarySellerId(Order order) {
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+            if (items == null) {
+                return null;
+            }
+            for (OrderItem item : items) {
+                if (item.getSellerId() != null) {
+                    return item.getSellerId();
+                }
+                if (item.getProductId() != null) {
+                    Long sid = productRepository.findById(item.getProductId())
+                            .map(Product::getSellerId)
+                            .orElse(null);
+                    if (sid != null) {
+                        return sid;
+                    }
+                }
+            }
+            return null;
         }
 
         private Map<String, Object> postCreateAdhoc(
@@ -558,96 +577,194 @@ import java.util.Locale;
         }
 
         /**
-         * Shiprocket pickup_location must match a nickname registered in Shiprocket
-         * (Settings → Pickup Addresses).
-         * Prefer seller business / branch name from DB; only fall back to ASVI HOME FOODS
-         * (or Admin Platform Settings default) when the seller has no usable pickup name.
-         * If Shiprocket rejects the seller nickname, {@link #postCreateAdhocWithPickupFallback}
-         * retries with the platform default.
+         * Shiprocket pickup_location = seller business name only.
+         * Never use ASVI HOME FOODS / platform default for seller orders.
+         * Registers the seller warehouse as that pickup nickname when missing.
          */
-        private String defaultPickupLocation() {
-            String configured = integrationSettings.getShiprocketPickupLocation();
-            return configured != null && !configured.isBlank()
-                    ? configured.trim()
-                    : "ASVI HOME FOODS";
-        }
-
         private String resolvePickupLocation(Long sellerId) {
-            String fallback = defaultPickupLocation();
-
-            // Optional explicit map: sellerId:PickupNickname
-            String fromMap = resolvePickupFromSellerMap(sellerId);
-            if (fromMap != null) {
-                return fromMap;
-            }
-
-            String fromSeller = resolvePickupFromSellerProfile(sellerId);
-            if (fromSeller != null) {
-                log.info(
-                        "Shiprocket pickup from seller profile sellerId={} pickup={}",
-                        sellerId,
-                        fromSeller
+            if (sellerId == null) {
+                throw new RuntimeException(
+                        "Order has no seller. Cannot set Shiprocket pickup from seller business address."
                 );
-                return fromSeller;
             }
+            Seller seller = sellerRepository.findById(sellerId)
+                    .orElseThrow(() -> new RuntimeException(
+                            "Seller not found for id=" + sellerId
+                    ));
 
+            String nickname = sellerBusinessPickupNickname(seller);
+            ensureSellerPickupRegistered(seller, nickname);
             log.info(
-                    "Shiprocket pickup falling back to platform default for sellerId={} pickup={}",
+                    "Shiprocket pickup from seller business name sellerId={} pickup={}",
                     sellerId,
-                    fallback
+                    nickname
             );
-            return fallback;
+            return nickname;
         }
 
-        private String resolvePickupFromSellerMap(Long sellerId) {
-            if (sellerId == null || pickupLocationBySeller == null || pickupLocationBySeller.isBlank()) {
+        private static String sellerBusinessPickupNickname(Seller seller) {
+            String business = trimToNull(seller.getBusinessName());
+            if (business == null) {
+                throw new RuntimeException(
+                        "Seller business name is required for Shiprocket pickup. "
+                                + "Update the seller profile business name first."
+                );
+            }
+            String nickname = business.replaceAll("\\s+", " ").trim();
+            if (nickname.length() > 36) {
+                nickname = nickname.substring(0, 36).trim();
+            }
+            return nickname;
+        }
+
+        private void ensureSellerPickupRegistered(Seller seller, String pickupNickname) {
+            if (isBlank(pickupNickname)) {
+                return;
+            }
+            String token = getToken();
+            if (pickupExists(token, pickupNickname)) {
+                return;
+            }
+
+            String address = firstNonBlank(seller.getWarehouseAddress(), seller.getAddress());
+            if (isBlank(address)) {
+                throw new RuntimeException(
+                        "Seller '" + pickupNickname
+                                + "' has no warehouse/business address for Shiprocket pickup."
+                );
+            }
+            String city = firstNonBlank(seller.getWarehouseCity(), seller.getCity());
+            String state = firstNonBlank(seller.getWarehouseState(), seller.getState());
+            String country = firstNonBlank(seller.getWarehouseCountry(), seller.getCountry(), "India");
+            String pin = seller.getPincode() != null
+                    ? seller.getPincode().replaceAll("[^0-9]", "")
+                    : "";
+            if (isBlank(city) || isBlank(state) || pin.length() != 6) {
+                throw new RuntimeException(
+                        "Seller '" + pickupNickname
+                                + "' needs city, state and 6-digit pincode for Shiprocket pickup."
+                );
+            }
+
+            String phoneDigits = seller.getMobileNumber() != null
+                    ? seller.getMobileNumber().replaceAll("[^0-9]", "")
+                    : "";
+            if (phoneDigits.startsWith("91") && phoneDigits.length() > 10) {
+                phoneDigits = phoneDigits.substring(phoneDigits.length() - 10);
+            }
+            if (phoneDigits.length() != 10) {
+                throw new RuntimeException(
+                        "Seller '" + pickupNickname + "' needs a valid mobile for Shiprocket pickup."
+                );
+            }
+
+            Map<String, Object> addPickup = new LinkedHashMap<>();
+            addPickup.put("pickup_location", pickupNickname);
+            addPickup.put("name", pickupNickname.length() > 50
+                    ? pickupNickname.substring(0, 50) : pickupNickname);
+            addPickup.put("email",
+                    !isBlank(seller.getEmail()) ? seller.getEmail().trim() : "support@flintnthread.in");
+            addPickup.put("phone", phoneDigits);
+            addPickup.put("address", address.trim());
+            if (!isBlank(seller.getWarehouseArea())) {
+                addPickup.put("address_2", seller.getWarehouseArea().trim());
+            }
+            addPickup.put("city", city.trim());
+            addPickup.put("state", state.trim());
+            addPickup.put("country", country.trim());
+            addPickup.put("pin_code", pin);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            try {
+                ResponseEntity<Map> response = restTemplate.postForEntity(
+                        apiBaseUrl + "/settings/company/addpickup",
+                        new HttpEntity<>(addPickup, headers),
+                        Map.class
+                );
+                log.info("Shiprocket addpickup nickname={} body={}", pickupNickname, response.getBody());
+            } catch (HttpClientErrorException e) {
+                String apiBody = e.getResponseBodyAsString();
+                String lower = (apiBody != null ? apiBody : e.getMessage()).toLowerCase(Locale.ENGLISH);
+                if (lower.contains("already") || lower.contains("exist")) {
+                    return;
+                }
+                throw new RuntimeException(
+                        "Could not register seller pickup '" + pickupNickname
+                                + "' in Shiprocket: " + (apiBody != null && !apiBody.isBlank()
+                                ? apiBody : e.getMessage()),
+                        e
+                );
+            }
+        }
+
+        private boolean pickupExists(String token, String pickupNickname) {
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setBearerAuth(token);
+                headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+                ResponseEntity<Map> response = restTemplate.exchange(
+                        apiBaseUrl + "/settings/company/pickup",
+                        HttpMethod.GET,
+                        new HttpEntity<>(headers),
+                        Map.class
+                );
+                Map body = response.getBody();
+                List<?> locations = extractPickupList(body);
+                for (Object row : locations) {
+                    if (!(row instanceof Map<?, ?> map)) {
+                        continue;
+                    }
+                    Object nameObj = map.get("pickup_location");
+                    if (nameObj == null) {
+                        nameObj = map.get("pickup_location_name");
+                    }
+                    if (nameObj != null
+                            && String.valueOf(nameObj).trim().equalsIgnoreCase(pickupNickname.trim())) {
+                        return true;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Shiprocket list pickup failed: {}", e.getMessage());
+            }
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        private static List<?> extractPickupList(Map body) {
+            if (body == null || body.isEmpty()) {
+                return List.of();
+            }
+            Object data = body.get("data");
+            if (data instanceof Map<?, ?> nested) {
+                Object inner = nested.get("data");
+                if (inner instanceof List<?> list) {
+                    return list;
+                }
+                if (nested.get("shipping_address") instanceof List<?> list) {
+                    return list;
+                }
+            }
+            if (data instanceof List<?> list) {
+                return list;
+            }
+            if (body.get("shipping_address") instanceof List<?> list) {
+                return list;
+            }
+            return List.of();
+        }
+
+        private static String firstNonBlank(String... values) {
+            if (values == null) {
                 return null;
             }
-
-            for (String part : pickupLocationBySeller.split(",")) {
-                String entry = part.trim();
-                if (entry.isEmpty()) {
-                    continue;
-                }
-                int colon = entry.indexOf(':');
-                if (colon <= 0 || colon >= entry.length() - 1) {
-                    continue;
-                }
-                String idPart = entry.substring(0, colon).trim();
-                String namePart = entry.substring(colon + 1).trim();
-                try {
-                    if (Long.parseLong(idPart) == sellerId && !namePart.isBlank()) {
-                        return namePart;
-                    }
-                } catch (NumberFormatException ignored) {
-                    // skip malformed mapping
+            for (String v : values) {
+                if (v != null && !v.isBlank()) {
+                    return v.trim();
                 }
             }
             return null;
-        }
-
-        /**
-         * Use seller's registered pickup nickname: business name first, then branch name.
-         * Returns null when missing so caller can fall back to ASVI HOME FOODS.
-         */
-        private String resolvePickupFromSellerProfile(Long sellerId) {
-            if (sellerId == null) {
-                return null;
-            }
-            return sellerRepository.findById(sellerId)
-                    .map(seller -> {
-                        String business = trimToNull(seller.getBusinessName());
-                        if (business != null) {
-                            return business;
-                        }
-                        String branch = trimToNull(seller.getBranchName());
-                        if (branch != null) {
-                            return branch;
-                        }
-                        // Warehouse street text is NOT a Shiprocket pickup nickname — skip it.
-                        return null;
-                    })
-                    .orElse(null);
         }
 
         private static String trimToNull(String value) {
