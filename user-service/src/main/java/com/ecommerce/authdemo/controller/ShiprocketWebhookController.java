@@ -1,6 +1,8 @@
 package com.ecommerce.authdemo.controller;
 
+import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.service.ShiprocketService;
+import com.ecommerce.authdemo.service.ShiprocketWebhookService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,8 @@ import java.util.Map;
 public class ShiprocketWebhookController {
 
     private final ShiprocketService shiprocketService;
+    private final ShiprocketWebhookService shiprocketWebhookService;
+    private final OrderRepository orderRepository;
 
     @PostMapping("/webhook")
     public ResponseEntity<Map<String, Object>> receiveWebhook(
@@ -32,6 +36,8 @@ public class ShiprocketWebhookController {
                 ));
             }
 
+            shiprocketWebhookService.handleWebhook(payload);
+            // Legacy flat webhook handler (awb + status only)
             shiprocketService.handleWebhook(payload);
 
             Map<String, Object> ok = new HashMap<>();
@@ -69,6 +75,56 @@ public class ShiprocketWebhookController {
             return ResponseEntity.internalServerError().body(Map.of(
                     "success", false,
                     "message", "Failed to track shipment"
+            ));
+        }
+    }
+
+    /**
+     * Pull AWB + tracking URL from Shiprocket into local {@code orders} row
+     * (fixes Ship Now done in Shiprocket UI when webhook did not update DB).
+     */
+    @PostMapping("/sync-order/{orderId}")
+    public ResponseEntity<Map<String, Object>> syncOrderShipment(@PathVariable Long orderId) {
+        log.info("[SHIPROCKET:API] HTTP POST /api/shiprocket/sync-order/{}", orderId);
+        try {
+            if (orderId == null || orderId <= 0) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Valid order ID is required"
+                ));
+            }
+            var order = orderRepository.findById(orderId)
+                    .orElse(null);
+            if (order == null) {
+                return ResponseEntity.status(404).body(Map.of(
+                        "success", false,
+                        "message", "Order not found"
+                ));
+            }
+
+            var result = shiprocketService.syncShipmentDetails(order);
+            Map<String, Object> data = new HashMap<>();
+            data.put("orderId", order.getId());
+            data.put("orderNumber", order.getOrderNumber());
+            data.put("shiprocketOrderId", order.getShiprocketOrderId());
+            data.put("shiprocketShipmentId", order.getShiprocketShipmentId());
+            data.put("shiprocketAwbCode", result != null ? result.getAwbCode() : order.getShiprocketAwbCode());
+            data.put("shiprocketTrackingUrl",
+                    result != null ? result.getTrackingUrl() : order.getShiprocketTrackingUrl());
+            data.put("shiprocketCourierName",
+                    result != null ? result.getCourierName() : order.getShiprocketCourierName());
+            data.put("orderStatus", order.getOrderStatus());
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Shiprocket shipment synced",
+                    "data", data
+            ));
+        } catch (Exception e) {
+            log.error("[SHIPROCKET:API] sync-order FAILED orderId={} msg={}", orderId, e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", e.getMessage() != null ? e.getMessage() : "Failed to sync shipment"
             ));
         }
     }

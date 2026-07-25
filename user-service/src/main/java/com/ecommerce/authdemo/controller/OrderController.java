@@ -281,20 +281,23 @@ public class OrderController {
         } catch (ResourceNotFoundException e) {
             return ResponseEntity.status(404).body(Map.of(
                     "success", false,
-                    "message", e.getMessage()
+                    "message", e.getMessage() != null ? e.getMessage() : "Order not found"
             ));
         } catch (OrderException e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "message", e.getMessage()
+                    "message", e.getMessage() != null ? e.getMessage() : "Invalid order"
             ));
         } catch (Exception e) {
             log.error("[ORDER:API] push-shiprocket FAILED orderId={}", orderId, e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "Shiprocket push failed",
-                    "shipping_error_detail", e.getMessage() != null ? e.getMessage() : "unknown"
-            ));
+            String detail = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : e.getClass().getSimpleName();
+            Map<String, Object> err = new java.util.LinkedHashMap<>();
+            err.put("success", false);
+            err.put("message", detail);
+            err.put("shipping_error_detail", detail);
+            return ResponseEntity.internalServerError().body(err);
         }
     }
 

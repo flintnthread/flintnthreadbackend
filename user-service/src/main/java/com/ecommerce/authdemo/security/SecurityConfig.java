@@ -47,7 +47,9 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/auth/send-otp",
                                 "/auth/verify-otp",
+                                "/auth/login",
                                 "/auth/signup/**",
+                                "/auth/forgot-password/**",
                                 "/api/auth/**"
                         ).permitAll()
 
@@ -215,6 +217,10 @@ public class SecurityConfig {
                         // SHIPROCKET WEBHOOK (PUBLIC CALLBACK)
                         // --------------------------------
                         .requestMatchers(HttpMethod.POST, "/api/shiprocket/webhook", "/api/shiprocket/webhook/**")
+                        .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/internal/shiprocket/**")
+                        .permitAll()
+                        .requestMatchers("/api/internal/ai/**")
                         .permitAll()
 
                         // --------------------------------

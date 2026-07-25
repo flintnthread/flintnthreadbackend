@@ -15,10 +15,18 @@ public interface AdsOrderRepository extends JpaRepository<AdsOrder, Integer> {
 
     @Query("""
             SELECT o FROM AdsOrder o
-            WHERE (:search IS NULL OR :search = '' OR
+            WHERE (:userId IS NULL OR o.userId = :userId)
+              AND (:search IS NULL OR :search = '' OR
                    LOWER(o.orderId) LIKE LOWER(CONCAT('%', :search, '%')) OR
                    LOWER(o.adName) LIKE LOWER(CONCAT('%', :search, '%')) OR
-                   LOWER(COALESCE(o.adType, '')) LIKE LOWER(CONCAT('%', :search, '%')))
+                   LOWER(COALESCE(o.adType, '')) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                   o.userId IN (
+                       SELECT u.id FROM AdsUser u WHERE
+                           LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                           LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                           LOWER(COALESCE(u.phone, '')) LIKE LOWER(CONCAT('%', :search, '%')) OR
+                           LOWER(COALESCE(u.company, '')) LIKE LOWER(CONCAT('%', :search, '%'))
+                   ))
               AND (:status IS NULL OR :status = '' OR LOWER(o.status) = LOWER(:status))
               AND (:billingType IS NULL OR :billingType = '' OR LOWER(o.billingType) = LOWER(:billingType))
             ORDER BY o.id DESC
@@ -27,6 +35,7 @@ public interface AdsOrderRepository extends JpaRepository<AdsOrder, Integer> {
             @Param("search") String search,
             @Param("status") String status,
             @Param("billingType") String billingType,
+            @Param("userId") Integer userId,
             Pageable pageable);
 
     long countByUserId(Integer userId);

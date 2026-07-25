@@ -9,6 +9,7 @@ import com.ecommerce.authdemo.entity.AdminUser;
 import com.ecommerce.authdemo.entity.Otp;
 import com.ecommerce.authdemo.entity.Seller;
 import com.ecommerce.authdemo.entity.User;
+import com.ecommerce.authdemo.exception.EmailSendException;
 import com.ecommerce.authdemo.exception.InvalidIdentifierException;
 import com.ecommerce.authdemo.exception.InvalidMobileException;
 import com.ecommerce.authdemo.exception.OtpExpiredException;
@@ -23,6 +24,7 @@ import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.repository.UserRepository;
 import com.ecommerce.authdemo.security.JwtUtil;
 import com.ecommerce.authdemo.service.AuthService;
+import com.ecommerce.authdemo.service.EmailService;
 import com.ecommerce.authdemo.service.ReferralService;
 import com.ecommerce.authdemo.service.SmsService;
 import com.ecommerce.authdemo.service.WalletService;
@@ -66,6 +68,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtUtil jwtUtil;
     private final OtpUtil otpUtil;
     private final SmsService smsService;
+    private final EmailService emailService;
     private final ReferralService referralService;
     private final WalletService walletService;
 
@@ -98,23 +101,23 @@ public class AuthServiceImpl implements AuthService {
                     .build();
         }
 
-        // Email only: OTP to linked phone, or ask client to add a phone
+        // Email only: send OTP to the email inbox (not SMS)
         if (email != null) {
             Optional<User> userOpt = userRepository.findByEmail(email);
             if (userOpt.isPresent() && hasLinkedPhone(userOpt.get())) {
+                createAndSendEmailOtp(email);
                 String linkedPhone = userOpt.get().getContactNumber().trim();
-                createAndSendSmsOtp(email, linkedPhone);
                 return OtpResponseDTO.builder()
                         .success(true)
-                        .message("OTP sent successfully via SMS")
-                        .deliveryChannel("SMS")
+                        .message("OTP sent successfully via EMAIL")
+                        .deliveryChannel("EMAIL")
                         .nextStep(OtpResponseDTO.NEXT_VERIFY_OTP)
                         .email(email)
                         .maskedPhone(maskPhone(linkedPhone))
                         .build();
             }
 
-            // New email registration OR existing email without phone
+            // New email / email without phone — collect mobile first (signup handles email OTP)
             return OtpResponseDTO.builder()
                     .success(true)
                     .message("Add a mobile number to continue")
@@ -361,6 +364,30 @@ public class AuthServiceImpl implements AuthService {
         }
         throw new PhoneAlreadyLinkedException(
                 "This mobile number is already linked to another account");
+    }
+
+    private void createAndSendEmailOtp(String email) {
+        enforceResendCooldown(email);
+
+        String otp = otpUtil.generateOtp();
+        otpRepository.deleteByIdentifier(email);
+
+        Otp entity = new Otp();
+        entity.setIdentifier(email);
+        entity.setOtp(otp);
+        entity.setAttempts(0);
+        entity.setExpiryTime(LocalDateTime.now().plusMinutes(5));
+        otpRepository.saveAndFlush(entity);
+
+        try {
+            emailService.sendOtpEmail(email, otp);
+            log.info("Email OTP sent to {}", email);
+        } catch (EmailSendException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to send email OTP to {}: {}", email, e.getMessage(), e);
+            throw new EmailSendException("Unable to send OTP to email. Please try again.");
+        }
     }
 
     private void createAndSendSmsOtp(String otpIdentifier, String smsMobile) {

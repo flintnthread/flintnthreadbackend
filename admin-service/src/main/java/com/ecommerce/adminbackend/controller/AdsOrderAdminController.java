@@ -23,9 +23,10 @@ public class AdsOrderAdminController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String billingType,
+            @RequestParam(required = false) Integer userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(search, status, billingType, page, size);
+        return service.list(search, status, billingType, userId, page, size);
     }
 
     @GetMapping("/stats")

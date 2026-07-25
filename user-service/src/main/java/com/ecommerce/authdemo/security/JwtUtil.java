@@ -208,4 +208,71 @@ public class JwtUtil {
         }
     }
 
+    /** Short-lived proof that signup phone OTP was verified (30 minutes). */
+    public String generateSignupPhoneToken(String email, String mobile) {
+        return Jwts.builder()
+                .setSubject(email.trim().toLowerCase())
+                .claim("purpose", "SIGNUP_PHONE_VERIFIED")
+                .claim("mobile", mobile.trim())
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 1000L * 60 * 30))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean isValidSignupPhoneToken(String token, String email, String mobile) {
+        if (token == null || token.isBlank()
+                || email == null || email.isBlank()
+                || mobile == null || mobile.isBlank()) {
+            return false;
+        }
+        try {
+            Claims claims = extractClaims(token);
+            String purpose = claims.get("purpose", String.class);
+            String subject = claims.getSubject();
+            String tokenMobile = claims.get("mobile", String.class);
+            return "SIGNUP_PHONE_VERIFIED".equals(purpose)
+                    && email.trim().equalsIgnoreCase(subject)
+                    && mobile.trim().equals(tokenMobile)
+                    && !isTokenExpired(token);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Short-lived proof for forgot-password reset (15 minutes). */
+    public String generatePasswordResetToken(String identifier, Long userId) {
+        return Jwts.builder()
+                .setSubject(identifier.trim().toLowerCase())
+                .claim("purpose", "PASSWORD_RESET")
+                .claim("userId", userId)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 1000L * 60 * 15))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public Long validatePasswordResetToken(String token, String identifier) {
+        if (token == null || token.isBlank() || identifier == null || identifier.isBlank()) {
+            return null;
+        }
+        try {
+            Claims claims = extractClaims(token);
+            String purpose = claims.get("purpose", String.class);
+            String subject = claims.getSubject();
+            if (!"PASSWORD_RESET".equals(purpose)
+                    || !identifier.trim().equalsIgnoreCase(subject)
+                    || isTokenExpired(token)) {
+                return null;
+            }
+            Object raw = claims.get("userId");
+            if (raw instanceof Number n) {
+                return n.longValue();
+            }
+            return Long.parseLong(String.valueOf(raw));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
 }

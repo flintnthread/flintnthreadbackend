@@ -42,8 +42,26 @@ public class Seller {
     @Column(name = "address", columnDefinition = "TEXT")
     private String address;
 
+    @Column(name = "city")
+    private String city;
+
+    @Column(name = "country")
+    private String country;
+
     @Column(name = "warehouse_address", columnDefinition = "TEXT")
     private String warehouseAddress;
+
+    @Column(name = "warehouse_city", length = 100)
+    private String warehouseCity;
+
+    @Column(name = "warehouse_state", length = 100)
+    private String warehouseState;
+
+    @Column(name = "warehouse_country", length = 100)
+    private String warehouseCountry;
+
+    @Column(name = "warehouse_area", length = 100)
+    private String warehouseArea;
 
     @Column(name = "state")
     private String state;

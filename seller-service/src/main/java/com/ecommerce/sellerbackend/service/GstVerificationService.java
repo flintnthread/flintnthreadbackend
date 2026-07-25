@@ -156,7 +156,7 @@ public class GstVerificationService {
     }
 
     private GstVerifyResponse duplicateGstResponse(String gst) {
-        Optional<SellerGstDetails> saved = sellerGstDetailsRepository.findByGstin(gst);
+        Optional<SellerGstDetails> saved = sellerGstDetailsRepository.findByGstinIgnoreCase(gst);
         if (saved.isPresent()) {
             return fromSavedDetails(saved.get());
         }
@@ -201,7 +201,9 @@ public class GstVerificationService {
 
     private GstVerifyResponse withAlreadyExists(GstVerifyResponse source, boolean alreadyExists) {
         return GstVerifyResponse.builder()
-                .verified(source.isVerified())
+                // Duplicate GST must never be treated as verified — otherwise the app
+                // shows a green "Verified" state and Continue then fails.
+                .verified(alreadyExists ? false : source.isVerified())
                 .alreadyExists(alreadyExists)
                 .gstNumber(source.getGstNumber())
                 .message(alreadyExists ? DUPLICATE_GST_MESSAGE : source.getMessage())
@@ -236,9 +238,18 @@ public class GstVerificationService {
 
     public boolean isGstRegisteredToAnotherSeller(String gst, Long currentSellerId) {
         if (currentSellerId == null || currentSellerId <= 0) {
-            return sellerRepository.findFirstByGstNumberIgnoreCase(gst).isPresent();
+            return sellerRepository.findFirstByGstNumberIgnoreCase(gst).isPresent()
+                    || sellerGstDetailsRepository.existsByGstinIgnoreCase(gst);
         }
-        return sellerRepository.existsByGstNumberIgnoreCaseAndIdNot(gst, currentSellerId);
+        if (sellerRepository.existsByGstNumberIgnoreCaseAndIdNot(gst, currentSellerId)) {
+            return true;
+        }
+        Optional<SellerGstDetails> saved = sellerGstDetailsRepository.findByGstinIgnoreCase(gst);
+        if (saved.isEmpty() || saved.get().getSellerId() == null) {
+            return false;
+        }
+        // Same seller may already own this GSTIN from a prior Verify — that is not a duplicate.
+        return !saved.get().getSellerId().equals(currentSellerId.intValue());
     }
 
     private GstVerifyResponse gstNotFoundResponse(String gst) {

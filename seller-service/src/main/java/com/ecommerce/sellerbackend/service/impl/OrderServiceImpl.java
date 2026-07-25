@@ -1,5 +1,6 @@
 package com.ecommerce.sellerbackend.service.impl;
 
+import com.ecommerce.sellerbackend.client.UserServiceShiprocketClient;
 import com.ecommerce.sellerbackend.dto.order.OrderEmailLogDto;
 import com.ecommerce.sellerbackend.dto.order.OrderExchangeDto;
 import com.ecommerce.sellerbackend.dto.order.OrderGstDto;
@@ -101,6 +102,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderReturnRepository orderReturnRepository;
     private final OrderReplacementRepository orderReplacementRepository;
     private final OrderExchangeRepository orderExchangeRepository;
+    private final UserServiceShiprocketClient userServiceShiprocketClient;
 
     @Value("${app.media.public-base-url:}")
     private String mediaBaseUrl;
@@ -262,7 +264,39 @@ public class OrderServiceImpl implements OrderService {
 
         recordStatusHistory(orderId, historyStatus, comment, sellerId, now);
 
+        maybePushToShiprocketAfterSellerConfirm(order, dbStatus);
+
         return toDetail(order, items);
+    }
+
+    /**
+     * Backup only: if payment-time auto-create failed, seller confirm retries push once.
+     * Primary flow is user-service auto-create after payment/COD (no courier assign).
+     */
+    private void maybePushToShiprocketAfterSellerConfirm(Order order, String newDbStatus) {
+        if (order == null || order.getId() == null) {
+            return;
+        }
+        if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
+            return;
+        }
+        String normalized = newDbStatus != null ? newDbStatus.trim().toLowerCase(Locale.ROOT) : "";
+        if (!"confirmed".equals(normalized) && !"processing".equals(normalized)) {
+            return;
+        }
+        String paymentStatus = order.getPaymentStatus() != null
+                ? order.getPaymentStatus().trim().toLowerCase(Locale.ROOT)
+                : "";
+        boolean paid = "paid".equals(paymentStatus)
+                || "success".equals(paymentStatus)
+                || "completed".equals(paymentStatus)
+                || "captured".equals(paymentStatus);
+        boolean cod = order.getPaymentMethod() != null
+                && order.getPaymentMethod().toLowerCase(Locale.ROOT).contains("cod");
+        if (!paid && !cod) {
+            return;
+        }
+        userServiceShiprocketClient.pushOrderAsync(order.getId());
     }
 
     private void recordStatusHistory(

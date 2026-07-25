@@ -40,19 +40,19 @@ public class ReferralSchemaInitializer {
             return;
         }
 
-        jdbcTemplate.execute(
-                "ALTER TABLE orders "
-                        + "ADD COLUMN referral_inviter_discount_applied BOOLEAN DEFAULT FALSE"
+        // Do not ALTER orders — column is absent on live DB; Order entity maps it as @Transient.
+        log.warn(
+                "[REFERRAL] orders.referral_inviter_discount_applied is not in the live DB; "
+                        + "skipping ADD COLUMN (entity uses @Transient)"
         );
-        log.info("[REFERRAL] Added orders.referral_inviter_discount_applied");
     }
 
     private void ensureUsersDiscountAvailableColumn() {
         if (!columnExists("users", "discount_available")) {
-            jdbcTemplate.execute(
-                    "ALTER TABLE users ADD COLUMN discount_available BOOLEAN DEFAULT FALSE"
+            log.warn(
+                    "[REFERRAL] users.discount_available is missing; skipping ADD COLUMN"
             );
-            log.info("[REFERRAL] Added users.discount_available");
+            return;
         }
 
         if (

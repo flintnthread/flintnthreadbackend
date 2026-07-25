@@ -8,8 +8,10 @@ import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.ProductVariantRepository;
+import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.service.PlatformIntegrationSettings;
 import com.ecommerce.authdemo.service.ShiprocketService;
+import com.ecommerce.authdemo.util.ShiprocketPickupSupport;
 
 import lombok.RequiredArgsConstructor;
 
@@ -21,12 +23,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.Locale;
 
     @Service
     @RequiredArgsConstructor
@@ -48,14 +52,12 @@ import java.util.*;
 
         private final ProductVariantRepository productVariantRepository;
 
+        private final SellerRepository sellerRepository;
+
         private final PlatformIntegrationSettings integrationSettings;
 
         @Value("${shiprocket.api.base-url}")
         private String apiBaseUrl;
-
-        /** Optional map: sellerId:PickupNickname,sellerId:AnotherNickname */
-        @Value("${shiprocket.pickup-location-by-seller:}")
-        private String pickupLocationBySeller;
 
         @Override
         public String getToken() {
@@ -117,6 +119,7 @@ import java.util.*;
         }
 
         @Override
+        @Transactional
         public ShiprocketShipmentResult createShipment(
                 Order order
         ) {
@@ -125,21 +128,49 @@ import java.util.*;
                 throw new IllegalArgumentException("Order is required for Shiprocket shipment.");
             }
 
-            // Idempotent: never create a duplicate Shiprocket order for the same FNT order.
+            // Already courier-assigned: sync only.
             if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
-                log.info(
-                        "Shiprocket already linked for orderNumber={} shiprocketOrderId={} — skipping create",
+                if (!isBlank(order.getShiprocketAwbCode())) {
+                    log.info(
+                            "Shiprocket already linked for orderNumber={} shiprocketOrderId={} — syncing instead of create",
+                            order.getOrderNumber(),
+                            order.getShiprocketOrderId()
+                    );
+                    if (isBlank(order.getShiprocketTrackingUrl())) {
+                        return syncShipmentDetails(order);
+                    }
+                    return ShiprocketShipmentResult.builder()
+                            .shipmentId(order.getShiprocketShipmentId())
+                            .awbCode(order.getShiprocketAwbCode())
+                            .trackingUrl(order.getShiprocketTrackingUrl())
+                            .courierName(order.getShiprocketCourierName() != null
+                                    ? order.getShiprocketCourierName()
+                                    : "Shiprocket")
+                            .alreadyExists(true)
+                            .message("Shipment already exists on Shiprocket")
+                            .build();
+                }
+
+                // Incomplete prior push (often old Ashvi/work pickup) — cancel + recreate with seller pickup.
+                log.warn(
+                        "Replacing incomplete Shiprocket shipment orderNumber={} oldSrOrderId={}",
                         order.getOrderNumber(),
                         order.getShiprocketOrderId()
                 );
-                return ShiprocketShipmentResult.builder()
-                        .shipmentId(order.getShiprocketShipmentId())
-                        .awbCode(order.getShiprocketAwbCode())
-                        .trackingUrl(order.getShiprocketTrackingUrl())
-                        .courierName(order.getShiprocketCourierName() != null
-                                ? order.getShiprocketCourierName()
-                                : "Shiprocket")
-                        .build();
+                try {
+                    cancelShipment(order.getShiprocketOrderId());
+                } catch (Exception cancelEx) {
+                    log.warn("Shiprocket cancel before recreate failed: {}", cancelEx.getMessage());
+                }
+                order.setShiprocketOrderId(null);
+                order.setShiprocketShipmentId(null);
+                order.setShiprocketAwbCode(null);
+                order.setShiprocketCourierName(null);
+                order.setShiprocketTrackingUrl(null);
+                order.setShiprocketStatus(null);
+                order.setShiprocketPushedAt(null);
+                order.setShiprocketSyncedAt(null);
+                orderRepository.save(order);
             }
 
             try {
@@ -172,7 +203,8 @@ import java.util.*;
         }
 
         /**
-         * Create on Shiprocket. If pickup nickname is wrong, retry once with configured default (work).
+         * Create on Shiprocket. Never fall back to ASVI/platform default —
+         * pickup must be the seller business name. If missing on Shiprocket, register it once then retry.
          */
         private Map<String, Object> postCreateAdhocWithPickupFallback(
                 Order order,
@@ -181,9 +213,6 @@ import java.util.*;
             try {
                 return postCreateAdhoc(order, payload);
             } catch (RuntimeException first) {
-                String configured = defaultPickupLocation();
-                Object usedPickup = payload.get("pickup_location");
-                String used = usedPickup != null ? String.valueOf(usedPickup) : "";
                 String detail = first.getMessage() != null ? first.getMessage() : "";
                 if (first instanceof HttpClientErrorException httpEx) {
                     String apiBody = httpEx.getResponseBodyAsString();
@@ -191,26 +220,51 @@ import java.util.*;
                         detail = detail + " " + apiBody;
                     }
                 }
-                String msg = detail.toLowerCase();
+                String msg = detail.toLowerCase(Locale.ENGLISH);
                 boolean pickupIssue = msg.contains("pickup")
-                        || msg.contains("location")
-                        || msg.contains("warehouse")
-                        || msg.contains("invalid pickup");
-                boolean phoneIssue = msg.contains("phone");
-
-                if (phoneIssue || !pickupIssue || configured.equalsIgnoreCase(used)) {
+                        || msg.contains("wrong pickup")
+                        || msg.contains("warehouse");
+                if (!pickupIssue) {
                     throw first;
                 }
 
+                Object usedPickup = payload.get("pickup_location");
+                String used = usedPickup != null ? String.valueOf(usedPickup) : "";
                 log.warn(
-                        "Shiprocket create failed with pickup={} for orderNumber={} — retrying with pickup={}",
+                        "Shiprocket rejected pickup={} for orderNumber={} — ensuring seller pickup exists and retrying once",
                         used,
-                        order.getOrderNumber(),
-                        configured
+                        order.getOrderNumber()
                 );
-                payload.put("pickup_location", configured);
+
+                Long sellerId = findPrimarySellerId(order);
+                if (sellerId != null) {
+                    sellerRepository.findById(sellerId).ifPresent(seller ->
+                            ensureSellerPickupRegistered(seller, used));
+                }
+                payload.put("pickup_location", used);
                 return postCreateAdhoc(order, payload);
             }
+        }
+
+        private Long findPrimarySellerId(Order order) {
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+            if (items == null) {
+                return null;
+            }
+            for (OrderItem item : items) {
+                if (item.getSellerId() != null) {
+                    return item.getSellerId();
+                }
+                if (item.getProductId() != null) {
+                    Long sid = productRepository.findById(item.getProductId())
+                            .map(Product::getSellerId)
+                            .orElse(null);
+                    if (sid != null) {
+                        return sid;
+                    }
+                }
+            }
+            return null;
         }
 
         private Map<String, Object> postCreateAdhoc(
@@ -316,14 +370,23 @@ import java.util.*;
                             ? String.valueOf(body.get("awb_code"))
                             : null;
 
+            String courierName = body.get("courier_name") != null
+                    && !"null".equalsIgnoreCase(String.valueOf(body.get("courier_name")))
+                    && !String.valueOf(body.get("courier_name")).isBlank()
+                    ? String.valueOf(body.get("courier_name"))
+                    : null;
+
+            // Do not call /courier/assign/awb — courier is assigned manually in Shiprocket.
+
             String trackingUrl = awb != null
                     ? "https://shiprocket.co/tracking/" + awb
                     : null;
 
-            String shiprocketStatus = awb != null ? "awb_assigned" : "new";
+            // Shipment exists on Shiprocket; courier/AWB assigned later in Shiprocket dashboard.
+            String shiprocketStatus = awb != null ? "awb_assigned" : "awaiting_courier";
 
             order.setShiprocketAwbCode(awb);
-            order.setShiprocketCourierName("Shiprocket");
+            order.setShiprocketCourierName(courierName);
             order.setShiprocketTrackingUrl(trackingUrl);
             order.setShiprocketStatus(shiprocketStatus);
 
@@ -332,17 +395,28 @@ import java.util.*;
             orderRepository.updateShipment(
                     order.getOrderNumber(),
                     awb,
-                    "Shiprocket",
+                    order.getShiprocketCourierName(),
                     trackingUrl,
                     shiprocketStatus
             );
+
+            if (awb == null || awb.isBlank()) {
+                log.info(
+                        "Shiprocket shipment created without AWB orderNumber={} shipmentId={} — assign courier in Shiprocket, then Sync",
+                        order.getOrderNumber(),
+                        shipmentId
+                );
+            }
 
             return ShiprocketShipmentResult
                     .builder()
                     .shipmentId(shipmentId)
                     .awbCode(awb)
                     .trackingUrl(trackingUrl)
-                    .courierName("Shiprocket")
+                    .courierName(order.getShiprocketCourierName())
+                    .message(awb != null
+                            ? "Shipment created on Shiprocket"
+                            : "Shipment created on Shiprocket. Assign courier in Shiprocket, then Sync Now.")
                     .build();
         }
 
@@ -377,8 +451,17 @@ import java.util.*;
             for (OrderItem item : items) {
                 enrichOrderItemFromCatalog(item);
 
-                if (primarySellerId == null && item.getSellerId() != null) {
-                    primarySellerId = item.getSellerId();
+                if (primarySellerId == null) {
+                    Long productSellerId = null;
+                    if (item.getProductId() != null) {
+                        productSellerId = productRepository.findById(item.getProductId())
+                                .map(Product::getSellerId)
+                                .orElse(null);
+                    }
+                    primarySellerId = ShiprocketPickupSupport.resolveSellerId(
+                            productSellerId,
+                            item.getSellerId()
+                    );
                 }
 
                 Map<String, Object> line =
@@ -448,19 +531,10 @@ import java.util.*;
                     resolvePickupLocation(primarySellerId)
             );
 
-            // Split customer name into first and last name for Shiprocket
-            String fullName = order.getShippingName();
-            String firstName = fullName != null && !fullName.isBlank() ? fullName.trim() : "Customer";
-            String lastName = "Customer";
-
-            if (fullName != null && fullName.trim().contains(" ")) {
-                String[] nameParts = fullName.trim().split("\\s+", 2);
-                firstName = nameParts[0];
-                lastName = nameParts.length > 1 ? nameParts[1] : "Customer";
-            }
-
-            payload.put("billing_customer_name", firstName);
-            payload.put("billing_last_name", lastName);
+            // Customer name for Shiprocket: use the real name only — never append "Customer".
+            String[] nameParts = splitCustomerName(order.getShippingName());
+            payload.put("billing_customer_name", nameParts[0]);
+            payload.put("billing_last_name", nameParts[1]);
             // Shiprocket requires a valid 10-digit Indian mobile (6–9…). Invalid phones → HTTP 422.
             payload.put("billing_phone", normalizeIndianMobile(order.getShippingPhone()));
             payload.put("billing_email", order.getShippingEmail() != null ? order.getShippingEmail() : "support@flintnthread.in");
@@ -537,44 +611,219 @@ import java.util.*;
         }
 
         /**
-         * Shiprocket pickup_location must match a nickname registered in Shiprocket
-         * (Settings → Pickup Addresses), e.g. "ASVI HOME FOODS".
-         * Prefer: per-seller map → configured default from Admin Platform Settings.
+         * Shiprocket pickup_location = unique nickname for the product's seller warehouse.
+         * Never uses Ashvi / ASVI / work platform defaults.
          */
-        private String defaultPickupLocation() {
-            String configured = integrationSettings.getShiprocketPickupLocation();
-            return configured != null && !configured.isBlank()
-                    ? configured.trim()
-                    : "ASVI HOME FOODS";
+        private String resolvePickupLocation(Long sellerId) {
+            if (sellerId == null) {
+                throw new RuntimeException(
+                        "Order has no seller. Cannot set Shiprocket pickup from seller warehouse."
+                );
+            }
+            Seller seller = sellerRepository.findById(sellerId)
+                    .orElseThrow(() -> new RuntimeException(
+                            "Seller not found for id=" + sellerId
+                    ));
+
+            String nickname = sellerBusinessPickupNickname(seller);
+            ensureSellerPickupRegistered(seller, nickname);
+            log.info(
+                    "Shiprocket pickup from product seller sellerId={} businessName={} pickup={}",
+                    sellerId,
+                    seller.getBusinessName(),
+                    nickname
+            );
+            return nickname;
         }
 
-        private String resolvePickupLocation(Long sellerId) {
-            String configured = defaultPickupLocation();
+        private static String sellerBusinessPickupNickname(Seller seller) {
+            if (seller == null || seller.getId() == null) {
+                throw new RuntimeException("Seller is required for Shiprocket pickup.");
+            }
+            return ShiprocketPickupSupport.pickupNickname(seller.getId(), seller.getBusinessName());
+        }
 
-            if (sellerId == null || pickupLocationBySeller == null || pickupLocationBySeller.isBlank()) {
-                return configured;
+        private void ensureSellerPickupRegistered(Seller seller, String pickupNickname) {
+            if (isBlank(pickupNickname)) {
+                return;
+            }
+            String token = getToken();
+            if (pickupExists(token, pickupNickname)) {
+                return;
             }
 
-            for (String part : pickupLocationBySeller.split(",")) {
-                String entry = part.trim();
-                if (entry.isEmpty()) {
-                    continue;
+            String address = firstNonBlank(seller.getWarehouseAddress(), seller.getAddress());
+            if (isBlank(address)) {
+                throw new RuntimeException(
+                        "Seller '" + pickupNickname
+                                + "' has no warehouse/business address for Shiprocket pickup."
+                );
+            }
+            String city = firstNonBlank(seller.getWarehouseCity(), seller.getCity());
+            String state = firstNonBlank(seller.getWarehouseState(), seller.getState());
+            String country = firstNonBlank(seller.getWarehouseCountry(), seller.getCountry(), "India");
+            String pin = ShiprocketPickupSupport.resolvePincode(
+                    seller.getPincode(),
+                    seller.getWarehouseAddress(),
+                    seller.getAddress()
+            );
+            if (isBlank(city) || isBlank(state) || pin.length() != 6) {
+                throw new RuntimeException(
+                        "Seller '" + pickupNickname
+                                + "' needs city, state and 6-digit pincode for Shiprocket pickup."
+                );
+            }
+
+            String phoneDigits = seller.getMobileNumber() != null
+                    ? seller.getMobileNumber().replaceAll("[^0-9]", "")
+                    : "";
+            if (phoneDigits.startsWith("91") && phoneDigits.length() > 10) {
+                phoneDigits = phoneDigits.substring(phoneDigits.length() - 10);
+            }
+            if (phoneDigits.length() != 10) {
+                throw new RuntimeException(
+                        "Seller '" + pickupNickname + "' needs a valid mobile for Shiprocket pickup."
+                );
+            }
+
+            Map<String, Object> addPickup = new LinkedHashMap<>();
+            addPickup.put("pickup_location", pickupNickname);
+            String contactName = firstNonBlank(seller.getBusinessName(), seller.getFirstName(), "Seller");
+            addPickup.put("name", contactName.length() > 50
+                    ? contactName.substring(0, 50) : contactName);
+            addPickup.put("email",
+                    !isBlank(seller.getEmail()) ? seller.getEmail().trim() : "support@flintnthread.in");
+            addPickup.put("phone", phoneDigits);
+            addPickup.put("address", address.trim());
+            if (!isBlank(seller.getWarehouseArea())) {
+                addPickup.put("address_2", seller.getWarehouseArea().trim());
+            }
+            addPickup.put("city", city.trim());
+            addPickup.put("state", state.trim());
+            addPickup.put("country", country.trim());
+            addPickup.put("pin_code", pin);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            try {
+                ResponseEntity<Map> response = restTemplate.postForEntity(
+                        apiBaseUrl + "/settings/company/addpickup",
+                        new HttpEntity<>(addPickup, headers),
+                        Map.class
+                );
+                log.info("Shiprocket addpickup nickname={} body={}", pickupNickname, response.getBody());
+            } catch (HttpClientErrorException e) {
+                String apiBody = e.getResponseBodyAsString();
+                String lower = (apiBody != null ? apiBody : e.getMessage()).toLowerCase(Locale.ENGLISH);
+                if (lower.contains("already") || lower.contains("exist")) {
+                    return;
                 }
-                int colon = entry.indexOf(':');
-                if (colon <= 0 || colon >= entry.length() - 1) {
-                    continue;
-                }
-                String idPart = entry.substring(0, colon).trim();
-                String namePart = entry.substring(colon + 1).trim();
-                try {
-                    if (Long.parseLong(idPart) == sellerId && !namePart.isBlank()) {
-                        return namePart;
+                throw new RuntimeException(
+                        "Could not register seller pickup '" + pickupNickname
+                                + "' in Shiprocket: " + (apiBody != null && !apiBody.isBlank()
+                                ? apiBody : e.getMessage()),
+                        e
+                );
+            }
+        }
+
+        private boolean pickupExists(String token, String pickupNickname) {
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setBearerAuth(token);
+                headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+                ResponseEntity<Map> response = restTemplate.exchange(
+                        apiBaseUrl + "/settings/company/pickup",
+                        HttpMethod.GET,
+                        new HttpEntity<>(headers),
+                        Map.class
+                );
+                Map body = response.getBody();
+                List<?> locations = extractPickupList(body);
+                for (Object row : locations) {
+                    if (!(row instanceof Map<?, ?> map)) {
+                        continue;
                     }
-                } catch (NumberFormatException ignored) {
-                    // skip malformed mapping
+                    Object nameObj = map.get("pickup_location");
+                    if (nameObj == null) {
+                        nameObj = map.get("pickup_location_name");
+                    }
+                    if (nameObj != null
+                            && String.valueOf(nameObj).trim().equalsIgnoreCase(pickupNickname.trim())) {
+                        return true;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Shiprocket list pickup failed: {}", e.getMessage());
+            }
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        private static List<?> extractPickupList(Map body) {
+            if (body == null || body.isEmpty()) {
+                return List.of();
+            }
+            Object data = body.get("data");
+            if (data instanceof Map<?, ?> nested) {
+                Object inner = nested.get("data");
+                if (inner instanceof List<?> list) {
+                    return list;
+                }
+                if (nested.get("shipping_address") instanceof List<?> list) {
+                    return list;
                 }
             }
-            return configured;
+            if (data instanceof List<?> list) {
+                return list;
+            }
+            if (body.get("shipping_address") instanceof List<?> list) {
+                return list;
+            }
+            return List.of();
+        }
+
+        private static String firstNonBlank(String... values) {
+            if (values == null) {
+                return null;
+            }
+            for (String v : values) {
+                if (v != null && !v.isBlank()) {
+                    return v.trim();
+                }
+            }
+            return null;
+        }
+
+        private static String trimToNull(String value) {
+            if (value == null) {
+                return null;
+            }
+            String trimmed = value.trim();
+            return trimmed.isEmpty() ? null : trimmed;
+        }
+
+        /**
+         * @return [firstName, lastName] — lastName may be empty; never forced to "Customer".
+         */
+        private static String[] splitCustomerName(String fullName) {
+            if (fullName == null || fullName.isBlank()) {
+                return new String[]{"Customer", ""};
+            }
+            String trimmed = fullName.trim().replaceAll("\\s+", " ");
+            // Strip a trailing "customer" label if it was previously appended.
+            if (trimmed.toLowerCase(Locale.ROOT).endsWith(" customer")) {
+                trimmed = trimmed.substring(0, trimmed.length() - " customer".length()).trim();
+            }
+            int space = trimmed.indexOf(' ');
+            if (space > 0) {
+                return new String[]{
+                        trimmed.substring(0, space),
+                        trimmed.substring(space + 1)
+                };
+            }
+            return new String[]{trimmed, ""};
         }
 
         /**
@@ -663,6 +912,502 @@ import java.util.*;
 
 
         @Override
+        @Transactional
+        public ShiprocketShipmentResult syncShipmentDetails(Order order) {
+            if (order == null || order.getId() == null) {
+                throw new IllegalArgumentException("Order is required for Shiprocket sync.");
+            }
+
+            try {
+                Map<String, Object> remote = fetchShiprocketOrderPayload(order);
+                if (remote == null || remote.isEmpty()) {
+                    log.warn(
+                            "Shiprocket sync found no remote order for orderNumber={}",
+                            order.getOrderNumber()
+                    );
+                    return ShiprocketShipmentResult.builder()
+                            .shipmentId(order.getShiprocketShipmentId())
+                            .awbCode(order.getShiprocketAwbCode())
+                            .trackingUrl(order.getShiprocketTrackingUrl())
+                            .courierName(order.getShiprocketCourierName() != null
+                                    ? order.getShiprocketCourierName()
+                                    : "Shiprocket")
+                            .build();
+                }
+
+                applyRemoteShiprocketFields(order, remote);
+                order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
+                orderRepository.save(order);
+
+                if (!isBlank(order.getShiprocketAwbCode())
+                        || !isBlank(order.getShiprocketTrackingUrl())) {
+                    orderRepository.updateShipment(
+                            order.getOrderNumber(),
+                            order.getShiprocketAwbCode(),
+                            order.getShiprocketCourierName(),
+                            order.getShiprocketTrackingUrl(),
+                            order.getShiprocketStatus() != null
+                                    ? order.getShiprocketStatus()
+                                    : "awb_assigned"
+                    );
+                }
+
+                log.info(
+                        "Shiprocket sync saved orderNumber={} awb={} trackingUrl={} status={}",
+                        order.getOrderNumber(),
+                        order.getShiprocketAwbCode(),
+                        order.getShiprocketTrackingUrl(),
+                        order.getOrderStatus()
+                );
+
+                return ShiprocketShipmentResult.builder()
+                        .shipmentId(order.getShiprocketShipmentId())
+                        .awbCode(order.getShiprocketAwbCode())
+                        .trackingUrl(order.getShiprocketTrackingUrl())
+                        .courierName(order.getShiprocketCourierName() != null
+                                ? order.getShiprocketCourierName()
+                                : "Shiprocket")
+                        .build();
+            } catch (Exception e) {
+                log.error(
+                        "Shiprocket sync failed orderNumber={}: {}",
+                        order.getOrderNumber(),
+                        e.getMessage(),
+                        e
+                );
+                throw new RuntimeException(
+                        "Shiprocket sync failed: " + e.getMessage(),
+                        e
+                );
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> fetchShiprocketOrderPayload(Order order) {
+            String token = getToken();
+            Map<String, Object> merged = new HashMap<>();
+
+            // 1) Track-by-shipment — most reliable AWB source after dashboard "Ship Now".
+            if (!isBlank(order.getShiprocketShipmentId())
+                    && order.getShiprocketShipmentId().trim().matches("^\\d+$")) {
+                Map<String, Object> trackBody = getShiprocketJson(
+                        token,
+                        "/courier/track/shipment/" + order.getShiprocketShipmentId().trim()
+                );
+                mergeShiprocketTrackPayload(merged, trackBody);
+
+                Map<String, Object> shipmentBody = unwrapDataMap(getShiprocketJson(
+                        token,
+                        "/shipments/" + order.getShiprocketShipmentId().trim()
+                ));
+                if (shipmentBody != null) {
+                    merged.putAll(shipmentBody);
+                }
+            }
+
+            // 2) Full order show by Shiprocket order id.
+            if (!isBlank(order.getShiprocketOrderId())
+                    && order.getShiprocketOrderId().trim().matches("^\\d+$")) {
+                Map<String, Object> orderBody = unwrapDataMap(getShiprocketJson(
+                        token,
+                        "/orders/show/" + order.getShiprocketOrderId().trim()
+                ));
+                if (orderBody != null && !orderBody.isEmpty()) {
+                    // Order payload wins for ids/status; keep any AWB already found from track.
+                    String existingAwb = findFirstDeep(merged, "awb", "awb_code", "awbCode");
+                    String existingCourier = findFirstDeep(
+                            merged,
+                            "courier_name",
+                            "courier",
+                            "sr_courier_name"
+                    );
+                    String existingTrackUrl = findFirstDeep(
+                            merged,
+                            "tracking_url",
+                            "track_url",
+                            "trackingUrl"
+                    );
+                    merged.putAll(orderBody);
+                    if (!isBlank(existingAwb) && isBlank(findFirstDeep(merged, "awb", "awb_code", "awbCode"))) {
+                        merged.put("awb", existingAwb);
+                    }
+                    if (!isBlank(existingCourier)
+                            && isBlank(findFirstDeep(merged, "courier_name", "courier", "sr_courier_name"))) {
+                        merged.put("courier_name", existingCourier);
+                    }
+                    if (!isBlank(existingTrackUrl)
+                            && isBlank(findFirstDeep(merged, "tracking_url", "track_url", "trackingUrl"))) {
+                        merged.put("tracking_url", existingTrackUrl);
+                    }
+                }
+            }
+
+            // 3) Search by channel order number (FNT…).
+            if (isBlank(findFirstDeep(merged, "awb", "awb_code", "awbCode"))
+                    && !isBlank(order.getOrderNumber())) {
+                Map<String, Object> search = getShiprocketJson(
+                        token,
+                        "/orders?search=" + java.net.URLEncoder.encode(
+                                order.getOrderNumber().trim(),
+                                java.nio.charset.StandardCharsets.UTF_8
+                        )
+                );
+                Map<String, Object> matched =
+                        pickMatchingOrderFromSearch(search, order.getOrderNumber().trim());
+                if (matched != null && !matched.isEmpty()) {
+                    merged.putAll(matched);
+                }
+            }
+
+            if (merged.isEmpty()) {
+                return null;
+            }
+            log.info(
+                    "Shiprocket sync payload ready orderNumber={} hasAwb={} keys={}",
+                    order.getOrderNumber(),
+                    !isBlank(findFirstDeep(merged, "awb", "awb_code", "awbCode")),
+                    merged.keySet()
+            );
+            return merged;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void mergeShiprocketTrackPayload(
+                Map<String, Object> target,
+                Map<String, Object> trackBody
+        ) {
+            if (trackBody == null || trackBody.isEmpty()) {
+                return;
+            }
+            Object trackingData = trackBody.get("tracking_data");
+            if (!(trackingData instanceof Map<?, ?>)) {
+                // Some responses nest under data.tracking_data
+                Object data = trackBody.get("data");
+                if (data instanceof Map<?, ?> dataMap) {
+                    trackingData = dataMap.get("tracking_data");
+                    if (trackingData == null) {
+                        target.putAll((Map<String, Object>) dataMap);
+                    }
+                }
+            }
+            if (!(trackingData instanceof Map<?, ?> tdMap)) {
+                String awb = findFirstDeep(trackBody, "awb", "awb_code", "awbCode");
+                if (!isBlank(awb)) {
+                    target.put("awb", awb);
+                }
+                return;
+            }
+            Map<String, Object> td = (Map<String, Object>) tdMap;
+            String trackUrl = firstNonBlank(td, "track_url", "tracking_url", "trackingUrl");
+            if (!isBlank(trackUrl)) {
+                target.put("tracking_url", trackUrl.trim());
+            }
+            String status = firstNonBlank(td, "shipment_status", "track_status", "status");
+            if (!isBlank(status)) {
+                target.put("status", status.trim());
+            }
+            Object shipmentTrack = td.get("shipment_track");
+            if (shipmentTrack instanceof List<?> list && !list.isEmpty()
+                    && list.get(0) instanceof Map<?, ?> firstMap) {
+                Map<String, Object> first = (Map<String, Object>) firstMap;
+                String awb = firstNonBlank(first, "awb_code", "awb", "awbCode");
+                if (!isBlank(awb)) {
+                    target.put("awb", awb.trim());
+                }
+                String courier = firstNonBlank(
+                        first,
+                        "courier_name",
+                        "courier",
+                        "sr_courier_name",
+                        "courierName"
+                );
+                if (!isBlank(courier)) {
+                    target.put("courier_name", courier.trim());
+                }
+                if (isBlank(status)) {
+                    String st = firstNonBlank(first, "current_status", "status");
+                    if (!isBlank(st)) {
+                        target.put("status", st.trim());
+                    }
+                }
+            } else {
+                String awb = findFirstDeep(td, "awb", "awb_code", "awbCode");
+                if (!isBlank(awb)) {
+                    target.put("awb", awb);
+                }
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> getShiprocketJson(String token, String pathAndQuery) {
+            String url = apiBaseUrl + pathAndQuery;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+            headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+            HttpEntity<Void> request = new HttpEntity<>(headers);
+            try {
+                ResponseEntity<Map> response = restTemplate.exchange(
+                        url,
+                        HttpMethod.GET,
+                        request,
+                        Map.class
+                );
+                return response.getBody() != null ? response.getBody() : Map.of();
+            } catch (HttpClientErrorException | HttpServerErrorException e) {
+                log.warn(
+                        "Shiprocket GET {} failed status={} body={}",
+                        pathAndQuery,
+                        e.getStatusCode(),
+                        e.getResponseBodyAsString()
+                );
+                return Map.of();
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> unwrapDataMap(Map<String, Object> body) {
+            if (body == null || body.isEmpty()) {
+                return null;
+            }
+            Object data = body.get("data");
+            if (data instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+            if (data == null && (body.containsKey("id") || body.containsKey("channel_order_id"))) {
+                return body;
+            }
+            return null;
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> pickMatchingOrderFromSearch(
+                Map<String, Object> searchBody,
+                String channelOrderId
+        ) {
+            if (searchBody == null || searchBody.isEmpty()) {
+                return null;
+            }
+            Object data = searchBody.get("data");
+            List<Map<String, Object>> rows = new ArrayList<>();
+            if (data instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        rows.add((Map<String, Object>) map);
+                    }
+                }
+            } else if (data instanceof Map<?, ?> nested) {
+                Object inner = ((Map<?, ?>) nested).get("data");
+                if (inner instanceof List<?> list) {
+                    for (Object item : list) {
+                        if (item instanceof Map<?, ?> map) {
+                            rows.add((Map<String, Object>) map);
+                        }
+                    }
+                } else {
+                    rows.add((Map<String, Object>) nested);
+                }
+            }
+
+            for (Map<String, Object> row : rows) {
+                String channel = firstNonBlank(row, "channel_order_id", "channelOrderId");
+                if (channelOrderId.equalsIgnoreCase(channel != null ? channel : "")) {
+                    return row;
+                }
+            }
+            if (rows.size() == 1) {
+                return rows.get(0);
+            }
+            return null;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void applyRemoteShiprocketFields(Order order, Map<String, Object> remote) {
+            String srOrderId = firstNonBlank(remote, "id", "order_id", "orderId");
+            if (!isBlank(srOrderId) && srOrderId.matches("^\\d+$")) {
+                order.setShiprocketOrderId(srOrderId.trim());
+            }
+
+            String shipmentId = firstNonBlank(remote, "shipment_id", "shipmentId");
+            String awb = firstNonBlank(remote, "awb_code", "awb", "awbCode");
+            String courier = firstNonBlank(
+                    remote,
+                    "courier_name",
+                    "courierName",
+                    "courier",
+                    "courier_company_name",
+                    "sr_courier_name"
+            );
+            String status = firstNonBlank(
+                    remote,
+                    "status",
+                    "current_status",
+                    "shipment_status",
+                    "status_code"
+            );
+            String trackingUrl = firstNonBlank(
+                    remote,
+                    "tracking_url",
+                    "trackingUrl",
+                    "track_url",
+                    "trackUrl"
+            );
+
+            Object shipmentsObj = remote.get("shipments");
+            if (shipmentsObj instanceof List<?> shipments && !shipments.isEmpty()) {
+                for (Object item : shipments) {
+                    if (!(item instanceof Map<?, ?> shipmentMap)) {
+                        continue;
+                    }
+                    Map<String, Object> shipment = (Map<String, Object>) shipmentMap;
+                    if (isBlank(shipmentId)) {
+                        shipmentId = firstNonBlank(shipment, "id", "shipment_id", "shipmentId");
+                    }
+                    if (isBlank(awb)) {
+                        awb = firstNonBlank(shipment, "awb", "awb_code", "awbCode");
+                    }
+                    if (isBlank(courier)) {
+                        courier = firstNonBlank(
+                                shipment,
+                                "courier",
+                                "courier_name",
+                                "courierName",
+                                "sr_courier_name"
+                        );
+                    }
+                    if (isBlank(status)) {
+                        status = firstNonBlank(
+                                shipment,
+                                "status",
+                                "current_status",
+                                "shipment_status"
+                        );
+                    }
+                    if (isBlank(trackingUrl)) {
+                        trackingUrl = firstNonBlank(
+                                shipment,
+                                "tracking_url",
+                                "track_url",
+                                "trackingUrl"
+                        );
+                    }
+                    if (!isBlank(awb)) {
+                        break;
+                    }
+                }
+            }
+
+            Object awbDataObj = remote.get("awb_data");
+            if (awbDataObj instanceof Map<?, ?> awbDataMap) {
+                Map<String, Object> awbData = (Map<String, Object>) awbDataMap;
+                if (isBlank(awb)) {
+                    awb = firstNonBlank(awbData, "awb", "awb_code", "awbCode");
+                }
+                if (isBlank(courier)) {
+                    courier = firstNonBlank(awbData, "courier_name", "courier", "courierName");
+                }
+            }
+
+            // Shiprocket nests AWB under varying keys — deep scan as last resort.
+            if (isBlank(awb)) {
+                awb = findFirstDeep(remote, "awb_code", "awb", "awbCode");
+            }
+            if (isBlank(courier)) {
+                courier = findFirstDeep(
+                        remote,
+                        "courier_name",
+                        "sr_courier_name",
+                        "courierName",
+                        "courier"
+                );
+            }
+            if (isBlank(trackingUrl)) {
+                trackingUrl = findFirstDeep(remote, "tracking_url", "track_url", "trackingUrl");
+            }
+            if (isBlank(shipmentId)) {
+                shipmentId = findFirstDeep(remote, "shipment_id", "shipmentId");
+            }
+
+            if (!isBlank(shipmentId)) {
+                order.setShiprocketShipmentId(shipmentId.trim());
+            }
+            if (!isBlank(awb)) {
+                // AWB can arrive as a number from JSON.
+                order.setShiprocketAwbCode(awb.trim().replaceAll("\\.0$", ""));
+            }
+            if (!isBlank(courier)) {
+                order.setShiprocketCourierName(courier.trim());
+            } else if (isBlank(order.getShiprocketCourierName()) && !isBlank(awb)) {
+                order.setShiprocketCourierName("Shiprocket");
+            }
+
+            String resolvedAwb = !isBlank(order.getShiprocketAwbCode())
+                    ? order.getShiprocketAwbCode().trim()
+                    : null;
+            String resolvedTracking = !isBlank(trackingUrl) ? trackingUrl.trim() : null;
+            if (isBlank(resolvedTracking) && !isBlank(resolvedAwb)) {
+                resolvedTracking = "https://shiprocket.co/tracking/" + resolvedAwb;
+            }
+            if (!isBlank(resolvedTracking)) {
+                order.setShiprocketTrackingUrl(resolvedTracking);
+            }
+
+            String mappedStatus = mapWebhookStatusToOrderStatus(status);
+            if (!isBlank(mappedStatus)) {
+                order.setShiprocketStatus(mappedStatus);
+                if (isEarlyFulfillmentStatus(order.getOrderStatus())
+                        || "awb_assigned".equalsIgnoreCase(mappedStatus)
+                        || "pickup_scheduled".equalsIgnoreCase(mappedStatus)
+                        || "picked_up".equalsIgnoreCase(mappedStatus)
+                        || "in_transit".equalsIgnoreCase(mappedStatus)
+                        || "out_for_delivery".equalsIgnoreCase(mappedStatus)
+                        || "delivered".equalsIgnoreCase(mappedStatus)) {
+                    order.setOrderStatus(mappedStatus);
+                }
+            } else if (!isBlank(resolvedAwb) && isEarlyFulfillmentStatus(order.getOrderStatus())) {
+                order.setShiprocketStatus("awb_assigned");
+                order.setOrderStatus("awb_assigned");
+            }
+
+            if (isBlank(resolvedAwb)) {
+                log.warn(
+                        "Shiprocket sync parsed order payload but AWB still empty. keys={} shipmentsType={}",
+                        remote.keySet(),
+                        remote.get("shipments") == null
+                                ? "null"
+                                : remote.get("shipments").getClass().getSimpleName()
+                );
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        private String findFirstDeep(Object node, String... keys) {
+            if (node == null || keys == null || keys.length == 0) {
+                return null;
+            }
+            if (node instanceof Map<?, ?> map) {
+                Map<String, Object> asMap = (Map<String, Object>) map;
+                String direct = firstNonBlank(asMap, keys);
+                if (!isBlank(direct)) {
+                    return direct;
+                }
+                for (Object value : asMap.values()) {
+                    String nested = findFirstDeep(value, keys);
+                    if (!isBlank(nested)) {
+                        return nested;
+                    }
+                }
+            } else if (node instanceof List<?> list) {
+                for (Object item : list) {
+                    String nested = findFirstDeep(item, keys);
+                    if (!isBlank(nested)) {
+                        return nested;
+                    }
+                }
+            }
+            return null;
+        }
+
+        @Override
         public String trackShipment(String awb) {
 
             try {
@@ -710,30 +1455,153 @@ import java.util.*;
         ) {
 
             try {
-
-                if (webhookData.containsKey("awb")
-                        && webhookData.containsKey("status")) {
-
-                    String awb =
-                            webhookData.get("awb")
-                                    .toString();
-
-                    String status =
-                            webhookData.get("status")
-                                    .toString();
-
-                    log.info(
-                            "Shiprocket Webhook AWB: {} Status: {}",
-                            awb,
-                            status
-                    );
-
-                    orderRepository
-                            .updateOrderStatusFromWebhook(
-                                    awb,
-                                    status
-                            );
+                if (webhookData == null || webhookData.isEmpty()) {
+                    log.warn("Shiprocket webhook ignored: empty payload");
+                    return;
                 }
+
+                Map<String, Object> event = unwrapWebhookEvent(webhookData);
+
+                String awb = firstNonBlank(
+                        event,
+                        "awb",
+                        "awb_code",
+                        "awbCode"
+                );
+                String channelOrderId = firstNonBlank(
+                        event,
+                        "channel_order_id",
+                        "channelOrderId",
+                        "order_number",
+                        "orderNumber"
+                );
+                String shiprocketOrderId = firstNonBlank(
+                        event,
+                        "sr_order_id",
+                        "srOrderId",
+                        "shiprocket_order_id",
+                        "shiprocketOrderId",
+                        "order_id",
+                        "orderId"
+                );
+                String shipmentId = firstNonBlank(
+                        event,
+                        "shipment_id",
+                        "shipmentId"
+                );
+                String courierName = firstNonBlank(
+                        event,
+                        "courier_name",
+                        "courierName",
+                        "courier"
+                );
+                String currentStatus = firstNonBlank(
+                        event,
+                        "current_status",
+                        "currentStatus",
+                        "shipment_status",
+                        "shipmentStatus",
+                        "status"
+                );
+                String trackingUrl = firstNonBlank(
+                        event,
+                        "tracking_url",
+                        "trackingUrl",
+                        "track_url",
+                        "trackUrl"
+                );
+
+                if (isBlank(awb)
+                        && isBlank(channelOrderId)
+                        && isBlank(shiprocketOrderId)
+                        && isBlank(currentStatus)) {
+                    log.warn(
+                            "Shiprocket webhook ignored: no awb/order identifiers. keys={}",
+                            event.keySet()
+                    );
+                    return;
+                }
+
+                Order order = resolveOrderFromWebhook(
+                        channelOrderId,
+                        shiprocketOrderId,
+                        awb
+                );
+
+                if (order == null) {
+                    log.warn(
+                            "Shiprocket webhook order not found channelOrderId={} srOrderId={} awb={}",
+                            channelOrderId,
+                            shiprocketOrderId,
+                            awb
+                    );
+                    return;
+                }
+
+                if (!isBlank(awb)) {
+                    order.setShiprocketAwbCode(awb.trim());
+                }
+                if (!isBlank(shiprocketOrderId)
+                        && !shiprocketOrderId.matches("(?i)^FNT\\d+")
+                        && !shiprocketOrderId.equalsIgnoreCase(
+                        String.valueOf(order.getId()))) {
+                    // Prefer Shiprocket's own id — skip when value is our channel order number.
+                    if (isBlank(order.getShiprocketOrderId())
+                            || !order.getShiprocketOrderId().equals(shiprocketOrderId.trim())) {
+                        // Only overwrite when channel id was not mistaken for sr id.
+                        if (isBlank(channelOrderId)
+                                || !shiprocketOrderId.trim().equalsIgnoreCase(channelOrderId.trim())) {
+                            order.setShiprocketOrderId(shiprocketOrderId.trim());
+                        }
+                    }
+                }
+                if (!isBlank(shipmentId)) {
+                    order.setShiprocketShipmentId(shipmentId.trim());
+                }
+                if (!isBlank(courierName)) {
+                    order.setShiprocketCourierName(courierName.trim());
+                } else if (isBlank(order.getShiprocketCourierName())) {
+                    order.setShiprocketCourierName("Shiprocket");
+                }
+
+                String resolvedAwb = !isBlank(order.getShiprocketAwbCode())
+                        ? order.getShiprocketAwbCode().trim()
+                        : null;
+                String resolvedTracking = !isBlank(trackingUrl)
+                        ? trackingUrl.trim()
+                        : null;
+                if (isBlank(resolvedTracking) && !isBlank(resolvedAwb)) {
+                    resolvedTracking = "https://shiprocket.co/tracking/" + resolvedAwb;
+                }
+                if (!isBlank(resolvedTracking)) {
+                    order.setShiprocketTrackingUrl(resolvedTracking);
+                }
+
+                String mappedStatus = mapWebhookStatusToOrderStatus(currentStatus);
+                if (!isBlank(mappedStatus)) {
+                    order.setShiprocketStatus(mappedStatus);
+                    order.setOrderStatus(mappedStatus);
+                } else if (!isBlank(resolvedAwb)
+                        && isBlank(order.getShiprocketStatus())) {
+                    order.setShiprocketStatus("awb_assigned");
+                    order.setOrderStatus("awb_assigned");
+                } else if (!isBlank(resolvedAwb)
+                        && !"awb_assigned".equalsIgnoreCase(order.getOrderStatus())
+                        && isEarlyFulfillmentStatus(order.getOrderStatus())) {
+                    order.setShiprocketStatus("awb_assigned");
+                    order.setOrderStatus("awb_assigned");
+                }
+
+                order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
+                orderRepository.save(order);
+
+                log.info(
+                        "Shiprocket webhook saved orderNumber={} awb={} trackingUrl={} status={}",
+                        order.getOrderNumber(),
+                        order.getShiprocketAwbCode(),
+                        order.getShiprocketTrackingUrl(),
+                        order.getOrderStatus()
+                );
 
             } catch (Exception e) {
 
@@ -742,6 +1610,127 @@ import java.util.*;
                         e
                 );
             }
+        }
+
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> unwrapWebhookEvent(Map<String, Object> payload) {
+            Object data = payload.get("data");
+            if (data instanceof Map<?, ?> nested) {
+                Map<String, Object> merged = new HashMap<>(payload);
+                merged.putAll((Map<String, Object>) nested);
+                return merged;
+            }
+            return payload;
+        }
+
+        private Order resolveOrderFromWebhook(
+                String channelOrderId,
+                String shiprocketOrderId,
+                String awb
+        ) {
+            if (!isBlank(channelOrderId)) {
+                Optional<Order> byNumber =
+                        orderRepository.findByOrderNumber(channelOrderId.trim());
+                if (byNumber.isPresent()) {
+                    return byNumber.get();
+                }
+            }
+
+            if (!isBlank(awb)) {
+                Optional<Order> byAwb =
+                        orderRepository.findByShiprocketAwbCode(awb.trim());
+                if (byAwb.isPresent()) {
+                    return byAwb.get();
+                }
+            }
+
+            if (!isBlank(shiprocketOrderId)) {
+                String srId = shiprocketOrderId.trim();
+                Optional<Order> bySr =
+                        orderRepository.findByShiprocketOrderId(srId);
+                if (bySr.isPresent()) {
+                    return bySr.get();
+                }
+                // Some payloads put our FNT order number in order_id.
+                Optional<Order> byNumber =
+                        orderRepository.findByOrderNumber(srId);
+                if (byNumber.isPresent()) {
+                    return byNumber.get();
+                }
+                if (srId.matches("^\\d+$")) {
+                    try {
+                        long id = Long.parseLong(srId);
+                        Optional<Order> byId = orderRepository.findById(id);
+                        if (byId.isPresent()) {
+                            return byId.get();
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private String mapWebhookStatusToOrderStatus(String sourceStatus) {
+            if (isBlank(sourceStatus)) {
+                return null;
+            }
+            String normalized = sourceStatus.trim()
+                    .toLowerCase(Locale.ROOT)
+                    .replace("-", "_")
+                    .replace(" ", "_");
+
+            return switch (normalized) {
+                case "new" -> "new";
+                case "confirmed" -> "confirmed";
+                case "processing" -> "processing";
+                case "packed" -> "packed";
+                case "awb_assigned", "awbassigned" -> "awb_assigned";
+                case "pickup_scheduled", "pickup_generated", "pickup_queued" -> "pickup_scheduled";
+                case "picked_up", "shipped" -> "picked_up";
+                case "in_transit", "intransit" -> "in_transit";
+                case "out_for_delivery", "ofd" -> "out_for_delivery";
+                case "delivered" -> "delivered";
+                case "cancelled", "canceled" -> "cancelled";
+                case "rto_initiated", "rto_in_transit" -> "rto_initiated";
+                case "rto_delivered" -> "rto_delivered";
+                case "return_initiated", "returned" -> "returned";
+                default -> null;
+            };
+        }
+
+        private boolean isEarlyFulfillmentStatus(String status) {
+            if (isBlank(status)) {
+                return true;
+            }
+            String s = status.trim().toLowerCase(Locale.ROOT);
+            return s.equals("new")
+                    || s.equals("confirmed")
+                    || s.equals("processing")
+                    || s.equals("packed")
+                    || s.equals("accepted");
+        }
+
+        private String firstNonBlank(Map<String, Object> source, String... keys) {
+            if (source == null || source.isEmpty() || keys == null) {
+                return null;
+            }
+            for (String key : keys) {
+                Object value = source.get(key);
+                if (value == null) {
+                    continue;
+                }
+                String asText = String.valueOf(value).trim();
+                if (!asText.isEmpty() && !"null".equalsIgnoreCase(asText)) {
+                    return asText;
+                }
+            }
+            return null;
+        }
+
+        private boolean isBlank(String value) {
+            return value == null || value.trim().isEmpty();
         }
 
         @Override
@@ -908,9 +1897,10 @@ import java.util.*;
                         )
 
                         .trackingUrl(
-                                order != null
+                                order != null && order.getShiprocketTrackingUrl() != null
+                                        && !order.getShiprocketTrackingUrl().isBlank()
                                         ? order.getShiprocketTrackingUrl()
-                                        : null
+                                        : "https://shiprocket.co/tracking/" + awb
                         )
 
                         .currentStatus(

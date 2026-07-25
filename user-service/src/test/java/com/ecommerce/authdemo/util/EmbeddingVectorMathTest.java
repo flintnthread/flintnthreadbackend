@@ -1,0 +1,38 @@
+package com.ecommerce.authdemo.util;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class EmbeddingVectorMathTest {
+
+    @Test
+    void parseCsv_and_cosine_identicalVectorsAreOne() {
+        double[] a = EmbeddingVectorMath.parseCsv("1,0,0");
+        double[] b = EmbeddingVectorMath.parseCsv("1, 0, 0");
+        assertEquals(1.0, EmbeddingVectorMath.cosineSimilarity(a, b), 1e-9);
+    }
+
+    @Test
+    void topSimilarProductIds_ranksClosestFirst() {
+        double[] query = EmbeddingVectorMath.parseCsv("1,0,0");
+        Map<Long, String> catalog = new LinkedHashMap<>();
+        catalog.put(10L, "0,1,0");
+        catalog.put(20L, "0.9,0.1,0");
+        catalog.put(30L, "1,0,0");
+
+        List<Long> ranked = EmbeddingVectorMath.topSimilarProductIds(query, catalog, 2);
+        assertEquals(List.of(30L, 20L), ranked);
+    }
+
+    @Test
+    void parseCsv_rejectsGarbage() {
+        assertEquals(0, EmbeddingVectorMath.parseCsv("1,abc,3").length);
+        assertTrue(EmbeddingVectorMath.topSimilarProductIds(new double[]{1}, Map.of(), 5).isEmpty());
+    }
+}

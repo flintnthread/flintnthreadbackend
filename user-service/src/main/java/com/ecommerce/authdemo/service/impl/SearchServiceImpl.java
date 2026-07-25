@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -309,7 +310,16 @@ public class SearchServiceImpl implements SearchService {
                 return new ApiResponse<>(false, "Image size should be less than 8MB", null);
             }
 
-            BufferedImage bufferedImage = ImageIO.read(image.getInputStream());
+            // Read once — MultipartFile streams can only be consumed reliably from a byte copy.
+            byte[] imageBytes = image.getBytes();
+            if (imageBytes.length == 0) {
+                return new ApiResponse<>(false, "Image file is required", null);
+            }
+            if (imageBytes.length > MAX_IMAGE_BYTES) {
+                return new ApiResponse<>(false, "Image size should be less than 8MB", null);
+            }
+
+            BufferedImage bufferedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
             if (bufferedImage == null) {
                 return new ApiResponse<>(false, "Could not read image file", null);
             }
@@ -317,7 +327,7 @@ public class SearchServiceImpl implements SearchService {
             List<Product> localMatches = findSimilarProductsByVisualSignature(image, bufferedImage);
 
             ApiResponse<SearchResponseDTO> aiResponse =
-                    aiImageSearchDecorator.performImageSearch(image, userId, sessionId);
+                    aiImageSearchDecorator.performImageSearchFromBytes(imageBytes, image.getOriginalFilename());
             List<Product> aiProducts = extractSearchProducts(aiResponse);
 
             List<Product> merged = mergeCameraSearchResults(bufferedImage, localMatches, aiProducts);
@@ -359,15 +369,11 @@ public class SearchServiceImpl implements SearchService {
         boolean accessoryPhoto = looksLikeAccessoryPhoto(bufferedImage);
         LinkedHashMap<Long, Product> merged = new LinkedHashMap<>();
 
+        // CLIP / vector matches are the primary ranking signal when available.
+        appendUniqueProducts(merged, aiProducts, accessoryPhoto, 20);
         appendUniqueProducts(
                 merged,
                 filterByVisualHashDistance(localMatches, uploadedHash, STRONG_VISUAL_HASH_DISTANCE),
-                accessoryPhoto,
-                20
-        );
-        appendUniqueProducts(
-                merged,
-                rankProductsByVisualHashOnly(aiProducts, uploadedHash, ACCEPTABLE_VISUAL_HASH_DISTANCE, 20),
                 accessoryPhoto,
                 20
         );
@@ -375,10 +381,6 @@ public class SearchServiceImpl implements SearchService {
 
         if (merged.isEmpty() && accessoryPhoto) {
             appendUniqueProducts(merged, fetchAccessoryProducts(), false, 20);
-        }
-
-        if (merged.isEmpty() && aiProducts != null && !aiProducts.isEmpty() && !accessoryPhoto) {
-            appendUniqueProducts(merged, aiProducts, false, 20);
         }
 
         return new ArrayList<>(merged.values());

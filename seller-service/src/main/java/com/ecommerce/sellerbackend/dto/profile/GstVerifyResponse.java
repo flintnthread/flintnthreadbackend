@@ -11,7 +11,8 @@ public class GstVerifyResponse {
     private final boolean verified;
     /** True when this GSTIN is already registered to another seller account. */
     @JsonProperty("alreadyExists")
-    private final boolean alreadyExists;
+    @Builder.Default
+    private final boolean alreadyExists = false;
     private final String gstNumber;
     private final String message;
     private final String businessName;

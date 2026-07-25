@@ -1,5 +1,6 @@
 package com.ecommerce.authdemo.controller;
 
+import com.ecommerce.authdemo.dto.PlaceOrderRequestDTO;
 import com.ecommerce.authdemo.entity.Order;
 import com.ecommerce.authdemo.service.OrderService;
 import com.ecommerce.authdemo.service.RazorpayService;
@@ -125,7 +126,8 @@ public class PaymentController {
     public ResponseEntity<?> verifyPayment(
             @RequestParam String orderId,
             @RequestParam String paymentId,
-            @RequestParam String signature) {
+            @RequestParam String signature,
+            @RequestBody(required = false) PlaceOrderRequestDTO placeOrderRequest) {
 
         logger.info("[PAYMENT] verify START razorpayOrderId={} paymentId={}", orderId, paymentId);
 
@@ -139,14 +141,16 @@ public class PaymentController {
 
                     if (success) {
                 try {
-                    logger.info("[PAYMENT] verify markOrderAsPaid START razorpayOrderId={}", orderId);
-                    Order paidOrder = orderService.markOrderAsPaid(orderId, paymentId);
-                    logger.info("[PAYMENT] verify markOrderAsPaid DONE orderNumber={}", paidOrder.getOrderNumber());
+                    logger.info("[PAYMENT] verify finalizeOrder START razorpayOrderId={}", orderId);
+                    Order paidOrder = orderService.finalizeOrderAfterPaymentVerified(
+                            orderId, paymentId, placeOrderRequest);
+                    logger.info("[PAYMENT] verify finalizeOrder DONE orderNumber={}", paidOrder.getOrderNumber());
 
                     response.put("orderId", paidOrder.getId());
                     response.put("order_number", paidOrder.getOrderNumber());
 
-                    // createShipment is scheduled async inside markOrderAsPaid (after commit).
+                    // Shiprocket create is scheduled async inside markOrderAsPaid (after commit).
+                    // Payment response never waits on Shiprocket.
                     boolean alreadyLinked = paidOrder.getShiprocketOrderId() != null
                             && !paidOrder.getShiprocketOrderId().isBlank();
                     response.put("shipping_initiated", alreadyLinked);
@@ -154,11 +158,11 @@ public class PaymentController {
                         response.put("shiprocket_order_id", paidOrder.getShiprocketOrderId());
                         response.put("shiprocket_shipment_id", paidOrder.getShiprocketShipmentId());
                     } else {
-                        // Payment success must not wait on Shiprocket (client timeout was 15s).
-                        response.put("shipping_initiated", false);
+                        response.put("shipping_initiated", true);
                         response.put(
                                 "shipping_note",
-                                "Shipment is being created in the background. Refresh order shortly if tracking is empty."
+                                "Order confirmed. Shipment is created automatically in the background. "
+                                        + "Tracking appears when courier is assigned in Shiprocket."
                         );
                     }
                 } catch (Exception markPaidError) {
@@ -210,7 +214,9 @@ public class PaymentController {
      * Server checks Razorpay order status directly.
      */
     @PostMapping("/confirm-paid")
-    public ResponseEntity<?> confirmPaid(@RequestParam String orderId) {
+    public ResponseEntity<?> confirmPaid(
+            @RequestParam String orderId,
+            @RequestBody(required = false) PlaceOrderRequestDTO placeOrderRequest) {
         logger.info("[PAYMENT] confirm-paid START razorpayOrderId={}", orderId);
         Map<String, Object> response = new HashMap<>();
         try {
@@ -222,7 +228,8 @@ public class PaymentController {
                 return ResponseEntity.ok(response);
             }
 
-            Order paidOrder = orderService.markOrderAsPaid(orderId, paymentId);
+            Order paidOrder = orderService.finalizeOrderAfterPaymentVerified(
+                    orderId, paymentId, placeOrderRequest);
             response.put("success", true);
             response.put("paid", true);
             response.put("message", "Payment successful");
@@ -230,7 +237,16 @@ public class PaymentController {
             response.put("order_number", paidOrder.getOrderNumber());
             boolean alreadyLinked = paidOrder.getShiprocketOrderId() != null
                     && !paidOrder.getShiprocketOrderId().isBlank();
-            response.put("shipping_initiated", alreadyLinked);
+            response.put("shipping_initiated", true);
+            if (alreadyLinked) {
+                response.put("shiprocket_order_id", paidOrder.getShiprocketOrderId());
+                response.put("shiprocket_shipment_id", paidOrder.getShiprocketShipmentId());
+            } else {
+                response.put(
+                        "shipping_note",
+                        "Shipment is being created automatically. Tracking updates when Shiprocket responds."
+                );
+            }
             logger.info("[PAYMENT] confirm-paid DONE orderNumber={}", paidOrder.getOrderNumber());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
