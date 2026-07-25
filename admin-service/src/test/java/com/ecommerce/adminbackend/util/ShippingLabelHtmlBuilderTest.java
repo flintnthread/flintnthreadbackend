@@ -65,9 +65,12 @@ class ShippingLabelHtmlBuilderTest {
 
         String html = ShippingLabelHtmlBuilder.build(label);
 
-        assertTrue(html.contains("SHIPPING LABEL"));
+        assertTrue(html.contains("SHIPPING LABEL FOR FLINT"));
         assertTrue(html.contains("Cotton Shirt"));
         assertTrue(html.contains("Test Customer"));
         assertTrue(html.contains("AWB123456"));
+        assertTrue(html.contains("GST:"));
+        assertTrue(html.contains("PRODUCT DETAILS"));
+        assertTrue(html.contains("RETURN ADDRESS"));
     }
 }
