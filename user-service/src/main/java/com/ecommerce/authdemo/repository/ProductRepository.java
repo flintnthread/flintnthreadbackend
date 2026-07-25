@@ -96,6 +96,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     List<Product> findTop60ByStatusOrderByCreatedAtDesc(String status);
 
+    @EntityGraph(attributePaths = {"images"})
     List<Product> findTop300ByStatusOrderByCreatedAtDesc(String status);
 
 

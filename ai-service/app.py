@@ -51,8 +51,12 @@ def generate_embedding():
         if not data or 'image' not in data:
             return jsonify({"error": "Image data is required"}), 400
         
+        raw_image = data['image']
+        if isinstance(raw_image, str) and ',' in raw_image and raw_image.strip().startswith('data:'):
+            raw_image = raw_image.split(',', 1)[1]
+        
         # Decode base64 image
-        image_data = base64.b64decode(data['image'])
+        image_data = base64.b64decode(raw_image)
         image = Image.open(io.BytesIO(image_data))
         
         # Ensure image is in RGB format
@@ -79,6 +83,19 @@ def generate_embedding():
         logger.error(f"Error generating embedding: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+
+def _parse_embedding(value):
+    """Accept CSV string or numeric list from Spring / clients."""
+    if value is None:
+        raise ValueError("embedding is required")
+    if isinstance(value, list):
+        return np.array([float(x) for x in value], dtype=float)
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.split(',') if p.strip()]
+        return np.array([float(x) for x in parts], dtype=float)
+    raise ValueError("embedding must be a CSV string or list of numbers")
+
+
 @app.route('/embeddings/similarity-search', methods=['POST'])
 def similarity_search():
     """Find similar products based on embedding similarity"""
@@ -88,11 +105,8 @@ def similarity_search():
         if not data or 'query_embedding' not in data:
             return jsonify({"error": "Query embedding is required"}), 400
         
-        query_embedding_str = data['query_embedding']
-        limit = data.get('limit', 20)
-        
-        # Convert string embedding back to numpy array
-        query_embedding = np.array([float(x) for x in query_embedding_str.split(',')])
+        query_embedding = _parse_embedding(data['query_embedding'])
+        limit = int(data.get('limit', 20) or 20)
         
         if len(product_embeddings) == 0:
             logger.warning("No product embeddings available for search")
@@ -101,7 +115,9 @@ def similarity_search():
         # Calculate similarities
         similarities = []
         for product_id, stored_embedding_str in product_embeddings.items():
-            stored_embedding = np.array([float(x) for x in stored_embedding_str.split(',')])
+            stored_embedding = _parse_embedding(stored_embedding_str)
+            if stored_embedding.shape != query_embedding.shape:
+                continue
             
             # Calculate cosine similarity
             similarity = cosine_similarity(
@@ -109,17 +125,18 @@ def similarity_search():
                 stored_embedding.reshape(1, -1)
             )[0][0]
             
-            similarities.append((product_id, similarity))
+            similarities.append((product_id, float(similarity)))
         
         # Sort by similarity and get top results
         similarities.sort(key=lambda x: x[1], reverse=True)
-        top_similar_ids = [int(pid) for pid, _ in similarities[:limit]]
+        top = similarities[:limit]
+        top_similar_ids = [int(pid) for pid, _ in top]
         
         logger.info(f"Found {len(top_similar_ids)} similar products")
         
         return jsonify({
             "similar_product_ids": top_similar_ids,
-            "similarities": [sim for _, sim in similarities[:limit]]
+            "similarities": [sim for _, sim in top]
         })
         
     except Exception as e:

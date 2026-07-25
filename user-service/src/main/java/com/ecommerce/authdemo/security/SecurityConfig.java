@@ -220,6 +220,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/internal/shiprocket/**")
                         .permitAll()
+                        .requestMatchers("/api/internal/ai/**")
+                        .permitAll()
 
                         // --------------------------------
                         // CONTACT US (PUBLIC SUBMIT)

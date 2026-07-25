@@ -11,6 +11,7 @@ import com.ecommerce.authdemo.repository.ProductVariantRepository;
 import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.service.PlatformIntegrationSettings;
 import com.ecommerce.authdemo.service.ShiprocketService;
+import com.ecommerce.authdemo.util.ShiprocketPickupSupport;
 
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
@@ -117,6 +119,7 @@ import java.util.Locale;
         }
 
         @Override
+        @Transactional
         public ShiprocketShipmentResult createShipment(
                 Order order
         ) {
@@ -125,28 +128,49 @@ import java.util.Locale;
                 throw new IllegalArgumentException("Order is required for Shiprocket shipment.");
             }
 
-            // Idempotent: never create a duplicate Shiprocket order for the same FNT order.
-            // If already linked but AWB missing (Ship Now done in Shiprocket UI), pull latest details.
+            // Already courier-assigned: sync only.
             if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
-                log.info(
-                        "Shiprocket already linked for orderNumber={} shiprocketOrderId={} — syncing instead of create",
+                if (!isBlank(order.getShiprocketAwbCode())) {
+                    log.info(
+                            "Shiprocket already linked for orderNumber={} shiprocketOrderId={} — syncing instead of create",
+                            order.getOrderNumber(),
+                            order.getShiprocketOrderId()
+                    );
+                    if (isBlank(order.getShiprocketTrackingUrl())) {
+                        return syncShipmentDetails(order);
+                    }
+                    return ShiprocketShipmentResult.builder()
+                            .shipmentId(order.getShiprocketShipmentId())
+                            .awbCode(order.getShiprocketAwbCode())
+                            .trackingUrl(order.getShiprocketTrackingUrl())
+                            .courierName(order.getShiprocketCourierName() != null
+                                    ? order.getShiprocketCourierName()
+                                    : "Shiprocket")
+                            .alreadyExists(true)
+                            .message("Shipment already exists on Shiprocket")
+                            .build();
+                }
+
+                // Incomplete prior push (often old Ashvi/work pickup) — cancel + recreate with seller pickup.
+                log.warn(
+                        "Replacing incomplete Shiprocket shipment orderNumber={} oldSrOrderId={}",
                         order.getOrderNumber(),
                         order.getShiprocketOrderId()
                 );
-                if (isBlank(order.getShiprocketAwbCode())
-                        || isBlank(order.getShiprocketTrackingUrl())) {
-                    return syncShipmentDetails(order);
+                try {
+                    cancelShipment(order.getShiprocketOrderId());
+                } catch (Exception cancelEx) {
+                    log.warn("Shiprocket cancel before recreate failed: {}", cancelEx.getMessage());
                 }
-                return ShiprocketShipmentResult.builder()
-                        .shipmentId(order.getShiprocketShipmentId())
-                        .awbCode(order.getShiprocketAwbCode())
-                        .trackingUrl(order.getShiprocketTrackingUrl())
-                        .courierName(order.getShiprocketCourierName() != null
-                                ? order.getShiprocketCourierName()
-                                : "Shiprocket")
-                        .alreadyExists(true)
-                        .message("Shipment already exists on Shiprocket")
-                        .build();
+                order.setShiprocketOrderId(null);
+                order.setShiprocketShipmentId(null);
+                order.setShiprocketAwbCode(null);
+                order.setShiprocketCourierName(null);
+                order.setShiprocketTrackingUrl(null);
+                order.setShiprocketStatus(null);
+                order.setShiprocketPushedAt(null);
+                order.setShiprocketSyncedAt(null);
+                orderRepository.save(order);
             }
 
             try {
@@ -358,7 +382,8 @@ import java.util.Locale;
                     ? "https://shiprocket.co/tracking/" + awb
                     : null;
 
-            String shiprocketStatus = awb != null ? "awb_assigned" : "new";
+            // Shipment exists on Shiprocket; courier/AWB assigned later in Shiprocket dashboard.
+            String shiprocketStatus = awb != null ? "awb_assigned" : "awaiting_courier";
 
             order.setShiprocketAwbCode(awb);
             order.setShiprocketCourierName(courierName);
@@ -426,8 +451,17 @@ import java.util.Locale;
             for (OrderItem item : items) {
                 enrichOrderItemFromCatalog(item);
 
-                if (primarySellerId == null && item.getSellerId() != null) {
-                    primarySellerId = item.getSellerId();
+                if (primarySellerId == null) {
+                    Long productSellerId = null;
+                    if (item.getProductId() != null) {
+                        productSellerId = productRepository.findById(item.getProductId())
+                                .map(Product::getSellerId)
+                                .orElse(null);
+                    }
+                    primarySellerId = ShiprocketPickupSupport.resolveSellerId(
+                            productSellerId,
+                            item.getSellerId()
+                    );
                 }
 
                 Map<String, Object> line =
@@ -577,14 +611,13 @@ import java.util.Locale;
         }
 
         /**
-         * Shiprocket pickup_location = seller business name only.
-         * Never use ASVI HOME FOODS / platform default for seller orders.
-         * Registers the seller warehouse as that pickup nickname when missing.
+         * Shiprocket pickup_location = unique nickname for the product's seller warehouse.
+         * Never uses Ashvi / ASVI / work platform defaults.
          */
         private String resolvePickupLocation(Long sellerId) {
             if (sellerId == null) {
                 throw new RuntimeException(
-                        "Order has no seller. Cannot set Shiprocket pickup from seller business address."
+                        "Order has no seller. Cannot set Shiprocket pickup from seller warehouse."
                 );
             }
             Seller seller = sellerRepository.findById(sellerId)
@@ -595,26 +628,19 @@ import java.util.Locale;
             String nickname = sellerBusinessPickupNickname(seller);
             ensureSellerPickupRegistered(seller, nickname);
             log.info(
-                    "Shiprocket pickup from seller business name sellerId={} pickup={}",
+                    "Shiprocket pickup from product seller sellerId={} businessName={} pickup={}",
                     sellerId,
+                    seller.getBusinessName(),
                     nickname
             );
             return nickname;
         }
 
         private static String sellerBusinessPickupNickname(Seller seller) {
-            String business = trimToNull(seller.getBusinessName());
-            if (business == null) {
-                throw new RuntimeException(
-                        "Seller business name is required for Shiprocket pickup. "
-                                + "Update the seller profile business name first."
-                );
+            if (seller == null || seller.getId() == null) {
+                throw new RuntimeException("Seller is required for Shiprocket pickup.");
             }
-            String nickname = business.replaceAll("\\s+", " ").trim();
-            if (nickname.length() > 36) {
-                nickname = nickname.substring(0, 36).trim();
-            }
-            return nickname;
+            return ShiprocketPickupSupport.pickupNickname(seller.getId(), seller.getBusinessName());
         }
 
         private void ensureSellerPickupRegistered(Seller seller, String pickupNickname) {
@@ -636,9 +662,11 @@ import java.util.Locale;
             String city = firstNonBlank(seller.getWarehouseCity(), seller.getCity());
             String state = firstNonBlank(seller.getWarehouseState(), seller.getState());
             String country = firstNonBlank(seller.getWarehouseCountry(), seller.getCountry(), "India");
-            String pin = seller.getPincode() != null
-                    ? seller.getPincode().replaceAll("[^0-9]", "")
-                    : "";
+            String pin = ShiprocketPickupSupport.resolvePincode(
+                    seller.getPincode(),
+                    seller.getWarehouseAddress(),
+                    seller.getAddress()
+            );
             if (isBlank(city) || isBlank(state) || pin.length() != 6) {
                 throw new RuntimeException(
                         "Seller '" + pickupNickname
@@ -660,8 +688,9 @@ import java.util.Locale;
 
             Map<String, Object> addPickup = new LinkedHashMap<>();
             addPickup.put("pickup_location", pickupNickname);
-            addPickup.put("name", pickupNickname.length() > 50
-                    ? pickupNickname.substring(0, 50) : pickupNickname);
+            String contactName = firstNonBlank(seller.getBusinessName(), seller.getFirstName(), "Seller");
+            addPickup.put("name", contactName.length() > 50
+                    ? contactName.substring(0, 50) : contactName);
             addPickup.put("email",
                     !isBlank(seller.getEmail()) ? seller.getEmail().trim() : "support@flintnthread.in");
             addPickup.put("phone", phoneDigits);
@@ -883,6 +912,7 @@ import java.util.Locale;
 
 
         @Override
+        @Transactional
         public ShiprocketShipmentResult syncShipmentDetails(Order order) {
             if (order == null || order.getId() == null) {
                 throw new IllegalArgumentException("Order is required for Shiprocket sync.");

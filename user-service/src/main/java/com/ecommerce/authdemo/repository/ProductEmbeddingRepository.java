@@ -1,6 +1,7 @@
 package com.ecommerce.authdemo.repository;
 
 import com.ecommerce.authdemo.entity.ProductEmbedding;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,8 +13,9 @@ import java.util.Optional;
 @Repository
 public interface ProductEmbeddingRepository extends JpaRepository<ProductEmbedding, Long> {
 
-    Optional<ProductEmbedding> findByProductIdAndIsActive(Long productId, Boolean isActive);
+    Optional<ProductEmbedding> findByProduct_IdAndIsActive(Long productId, Boolean isActive);
 
+    @EntityGraph(attributePaths = {"product"})
     List<ProductEmbedding> findByIsActive(Boolean isActive);
 
     @Query("SELECT pe.product.id FROM ProductEmbedding pe WHERE pe.isActive = true")

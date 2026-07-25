@@ -462,6 +462,13 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         String raw = rootMessage(e);
         String lower = raw.toLowerCase(Locale.ENGLISH);
 
+        if (lower.contains("warehouse") || lower.contains("pickup")) {
+            if (lower.contains("ashvi") || lower.contains("asvi") || lower.contains("\"work\"")) {
+                return "Shiprocket still has an old Ashvi/work pickup on this order. Retry Push after deploy — "
+                        + "it will recreate using the product seller warehouse (S{id}-Name).";
+            }
+        }
+
         // Extract exact missing column if present, e.g. Unknown column 'o1_0.shiprocket_invoice_url'
         java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile("unknown column ['`]?(?:[\\w]+\\.)?([\\w]+)['`]?", java.util.regex.Pattern.CASE_INSENSITIVE)
@@ -676,6 +683,12 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             return "pending";
         }
         String s = shiprocketStatus.toLowerCase(Locale.ENGLISH);
+        if (s.startsWith("pending")) {
+            return "pending_push";
+        }
+        if (s.contains("awaiting_courier")) {
+            return "awaiting_courier";
+        }
         if (s.contains("pickup") && (s.contains("schedul") || s.contains("generated"))) {
             return "scheduled";
         }

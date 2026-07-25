@@ -270,8 +270,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Create Shiprocket shipment only after seller confirms (Processing / Confirmed)
-     * and order is paid or COD. Payment alone must not trigger Shiprocket.
+     * Backup only: if payment-time auto-create failed, seller confirm retries push once.
+     * Primary flow is user-service auto-create after payment/COD (no courier assign).
      */
     private void maybePushToShiprocketAfterSellerConfirm(Order order, String newDbStatus) {
         if (order == null || order.getId() == null) {

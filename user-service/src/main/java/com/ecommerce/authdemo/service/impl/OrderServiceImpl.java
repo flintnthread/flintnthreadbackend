@@ -365,8 +365,11 @@ public class OrderServiceImpl implements OrderService {
                 clearCartSafely(userId);
             }
 
-            // Shiprocket is pushed only after seller confirms (via internal/seller API).
-            // Do not auto-push here — payment success alone must not create shipment.
+            // COD / already-paid (e.g. verified payment place): auto-push Shiprocket after commit.
+            // Online unpaid waits until markOrderAsPaid.
+            if (!pendingOnline) {
+                scheduleShiprocketAfterCommit(order);
+            }
 
             return buildOrderResponse(order, itemDTOList);
 
@@ -1133,9 +1136,9 @@ public class OrderServiceImpl implements OrderService {
             log.error("Error processing referral on order payment: {}", e.getMessage(), e);
         }
 
-        // Shiprocket push happens after seller confirms the order.
-
+        // Persist paid status first, then schedule Shiprocket after this transaction commits.
         order = orderRepository.save(order);
+        scheduleShiprocketAfterCommit(order);
         try {
             clearCartSafely(order.getUserId());
         } catch (Exception e) {
@@ -1269,11 +1272,21 @@ public class OrderServiceImpl implements OrderService {
         return saved;
     }
 
+    @Value("${shiprocket.auto-create-on-payment:true}")
+    private boolean shiprocketAutoCreateOnPayment;
+
     /**
      * Push to Shiprocket only after DB commit, off the request thread.
-     * Online unpaid orders are skipped until markOrderAsPaid.
+     * Customer never waits on Shiprocket — payment/order success is immediate.
+     * Creates shipment only (no courier/AWB assign). Courier is assigned in Shiprocket dashboard.
+     * On failure, order stays processing/paid; shiprocket_status=pending for admin retry.
      */
     private void scheduleShiprocketAfterCommit(Order order) {
+        if (!shiprocketAutoCreateOnPayment) {
+            log.info("Shiprocket auto-create disabled — skip order {}",
+                    order != null ? order.getOrderNumber() : null);
+            return;
+        }
         if (order == null || order.getId() == null) {
             return;
         }
@@ -1282,27 +1295,13 @@ public class OrderServiceImpl implements OrderService {
 
         Runnable push = () -> {
             try {
-                Order fresh = orderRepository.findById(orderId).orElse(null);
-                if (fresh == null) {
-                    return;
+                // Brief settle so payment commit is fully visible before Shiprocket call.
+                try {
+                    Thread.sleep(400);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
                 }
-                if (fresh.getShiprocketOrderId() != null && !fresh.getShiprocketOrderId().isBlank()) {
-                    return;
-                }
-                boolean isCod = isCodPaymentMethod(fresh.getPaymentMethod());
-                String paymentStatus = fresh.getPaymentStatus() != null
-                        ? fresh.getPaymentStatus().trim().toLowerCase()
-                        : "";
-                boolean paymentConfirmed = paymentStatus.equals("paid")
-                        || paymentStatus.equals("completed")
-                        || paymentStatus.equals("success")
-                        || paymentStatus.equals("captured");
-                if (!isCod && !paymentConfirmed) {
-                    log.info("Skipping Shiprocket for unpaid online order {}", orderNumber);
-                    return;
-                }
-                shiprocketService.createShipment(fresh);
-                log.info("Shiprocket shipment created for order {}", orderNumber);
+                createShiprocketForPaidOrder(orderId, orderNumber, true);
             } catch (Exception e) {
                 log.error(
                         "Shiprocket shipment creation failed for order {} reason {}",
@@ -1333,6 +1332,51 @@ public class OrderServiceImpl implements OrderService {
                 t.start();
             }
         });
+    }
+
+    /**
+     * @param allowOneRetry when true, retries once after a short delay on transient failure
+     */
+    private void createShiprocketForPaidOrder(Long orderId, String orderNumber, boolean allowOneRetry) {
+        Order fresh = orderRepository.findById(orderId).orElse(null);
+        if (fresh == null) {
+            return;
+        }
+        if (fresh.getShiprocketOrderId() != null && !fresh.getShiprocketOrderId().isBlank()) {
+            return;
+        }
+        boolean isCod = isCodPaymentMethod(fresh.getPaymentMethod());
+        String paymentStatus = fresh.getPaymentStatus() != null
+                ? fresh.getPaymentStatus().trim().toLowerCase()
+                : "";
+        boolean paymentConfirmed = paymentStatus.equals("paid")
+                || paymentStatus.equals("completed")
+                || paymentStatus.equals("success")
+                || paymentStatus.equals("captured");
+        if (!isCod && !paymentConfirmed) {
+            log.info("Skipping Shiprocket for unpaid online order {}", orderNumber);
+            return;
+        }
+        try {
+            shiprocketService.createShipment(fresh);
+            log.info("Shiprocket shipment created for order {}", orderNumber);
+        } catch (Exception e) {
+            if (allowOneRetry) {
+                log.warn(
+                        "Shiprocket create failed for order {} — retrying once in 3s: {}",
+                        orderNumber,
+                        e.getMessage()
+                );
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                createShiprocketForPaidOrder(orderId, orderNumber, false);
+                return;
+            }
+            throw e;
+        }
     }
 
     @Override
@@ -1545,8 +1589,8 @@ public class OrderServiceImpl implements OrderService {
                                     ));
 
             String status = reason == null || reason.isBlank()
-                    ? "shipment_creation_failed"
-                    : ("failed: " + reason);
+                    ? "pending"
+                    : ("pending: " + reason);
             // orders.shiprocket_status is VARCHAR(500) on live DB
             if (status.length() > 500) {
                 status = status.substring(0, 500);
