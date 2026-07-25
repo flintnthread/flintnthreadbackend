@@ -375,11 +375,21 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         Map<String, Object> label = new LinkedHashMap<>(generateInvoice(id));
         List<OrderItem> items = orderItemRepository.findByOrderId(id);
         appendListShippingMeta(label, order, items);
+        String awb = nullSafe(order.getShiprocketAwbCode());
+        if (isBlank(awb)) {
+            awb = nullSafe(order.getOrderNumber()).replaceAll("\\D", "");
+        }
+        if (isBlank(awb)) {
+            awb = String.valueOf(id);
+        }
         label.put("awbCode", nullSafe(order.getShiprocketAwbCode()));
         label.put("courierName", !isBlank(order.getShiprocketCourierName())
                 ? order.getShiprocketCourierName().trim()
                 : "Courier");
         label.put("trackingUrl", nullSafe(order.getShiprocketTrackingUrl()));
+        label.put("barcode", Map.of(
+                "value", awb,
+                "imageDataUrl", QrCodeGenerator.toBase64BarcodePngDataUrl(awb, 320, 56)));
         return label;
     }
 
