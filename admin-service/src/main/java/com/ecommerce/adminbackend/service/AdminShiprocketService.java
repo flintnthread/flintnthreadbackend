@@ -9,6 +9,7 @@ import com.ecommerce.adminbackend.repository.OrderItemRepository;
 import com.ecommerce.adminbackend.repository.OrderRepository;
 import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
+import com.ecommerce.adminbackend.service.shiprocket.ShiprocketOrderPricing;
 import com.ecommerce.adminbackend.service.shiprocket.ShiprocketPickupSupport;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -101,6 +102,9 @@ public class AdminShiprocketService {
             Map<String, Object> persisted = persistCreateResponse(order, body);
             persisted.put("pickup_location", payload.get("pickup_location"));
             persisted.put("pickup_seller_id", payload.get("_pickup_seller_id"));
+            persisted.put("pickup_address", payload.get("_pickup_address"));
+            persisted.put("pickup_city", payload.get("_pickup_city"));
+            persisted.put("pickup_pincode", payload.get("_pickup_pincode"));
             return persisted;
         } catch (HttpStatusCodeException e) {
             String apiBody = e.getResponseBodyAsString();
@@ -247,7 +251,7 @@ public class AdminShiprocketService {
             throw new IllegalStateException("No order items found for Shiprocket.");
         }
 
-        List<Map<String, Object>> orderItems = new ArrayList<>();
+        List<ShiprocketOrderPricing.LineInput> pricingLines = new ArrayList<>();
         double totalWeight = 0;
         double maxLength = 1;
         double maxWidth = 1;
@@ -275,19 +279,19 @@ public class AdminShiprocketService {
             String hsn = product != null && !isBlank(product.getHsnCode())
                     ? product.getHsnCode()
                     : "0000";
-
-            Map<String, Object> line = new LinkedHashMap<>();
-            line.put("name", name);
-            line.put("sku", sku);
-            line.put("units", item.getQuantity() != null ? item.getQuantity() : 1);
-            line.put("selling_price", item.getPrice() != null ? item.getPrice() : BigDecimal.ZERO);
-            line.put("hsn", hsn);
-            orderItems.add(line);
+            int qty = item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1;
+            pricingLines.add(new ShiprocketOrderPricing.LineInput(
+                    name,
+                    sku,
+                    hsn,
+                    qty,
+                    item.getPrice(),
+                    item.getTotal()
+            ));
 
             double weight = product != null && product.getProductWeight() != null
                     ? product.getProductWeight().doubleValue()
                     : 0.5;
-            int qty = item.getQuantity() != null ? item.getQuantity() : 1;
             totalWeight += weight * qty;
 
             if (product != null) {
@@ -303,21 +307,48 @@ public class AdminShiprocketService {
             }
         }
 
+        ShiprocketOrderPricing.PricedPayload priced = ShiprocketOrderPricing.build(
+                pricingLines,
+                order.getTotalAmount(),
+                order.getShippingAmount(),
+                order.getDiscountAmount(),
+                order.getReferralDiscountAmount()
+        );
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("order_id", order.getOrderNumber());
         payload.put("order_date", LocalDate.now().toString());
 
         Seller seller = requireSellerForPickup(primarySellerId);
         String pickupNickname = sellerBusinessPickupNickname(seller);
+        ShiprocketPickupSupport.SellerPickupAddress pickupAddr = ShiprocketPickupSupport.buildSellerPickupAddress(
+                seller.getWarehouseAddress(),
+                seller.getWarehouseArea(),
+                seller.getWarehouseCity(),
+                seller.getWarehouseState(),
+                seller.getWarehouseCountry(),
+                seller.getAddress(),
+                seller.getArea(),
+                seller.getCity(),
+                seller.getState(),
+                seller.getCountry(),
+                seller.getPincode()
+        );
         ensureSellerPickupRegistered(seller, pickupNickname);
         payload.put("pickup_location", pickupNickname);
         payload.put("_pickup_seller_id", seller.getId());
+        payload.put("_pickup_address", pickupAddr.street());
+        payload.put("_pickup_city", pickupAddr.city());
+        payload.put("_pickup_pincode", pickupAddr.pincode());
         log.info(
-                "Shiprocket pickup resolved orderId={} sellerId={} businessName={} pickup={}",
+                "Shiprocket pickup resolved orderId={} sellerId={} businessName={} pickup={} address={} city={} pin={}",
                 order.getId(),
                 seller.getId(),
                 seller.getBusinessName(),
-                pickupNickname
+                pickupNickname,
+                pickupAddr.street(),
+                pickupAddr.city(),
+                pickupAddr.pincode()
         );
 
         String[] nameParts = splitCustomerName(order.getShippingName());
@@ -351,10 +382,20 @@ public class AdminShiprocketService {
         payload.put("billing_pincode", pincode);
         payload.put("billing_country", "India");
         payload.put("shipping_is_billing", true);
-        payload.put("order_items", orderItems);
+        payload.put("order_items", priced.orderItems());
         payload.put("payment_method", isCod(order.getPaymentMethod()) ? "COD" : "Prepaid");
-        payload.put("sub_total", order.getTotalAmount() != null ? order.getTotalAmount() : 0);
-        payload.put("shipping_charges", order.getShippingAmount() != null ? order.getShippingAmount() : 0);
+        // sub_total = exact FNT order placing total; shipping_charges = 0 (already inside total).
+        payload.put("sub_total", priced.subTotal());
+        payload.put("shipping_charges", priced.shippingCharges());
+        payload.put("total_discount", priced.totalDiscount());
+        log.info(
+                "Shiprocket pricing orderNumber={} orderPlacingTotal={} shiprocketSubTotal={} shippingCharges={} discount={}",
+                order.getOrderNumber(),
+                priced.orderTotal(),
+                priced.subTotal(),
+                priced.shippingCharges(),
+                priced.totalDiscount()
+        );
         payload.put("length", Math.max(maxLength, 1));
         payload.put("breadth", Math.max(maxWidth, 1));
         payload.put("height", Math.max(maxHeight, 1));
@@ -441,41 +482,29 @@ public class AdminShiprocketService {
     }
 
     /**
-     * Ensure seller pickup exists on Shiprocket, created from the seller warehouse address.
+     * Ensure seller pickup exists on Shiprocket, created from the product seller warehouse address.
      */
     private void ensureSellerPickupRegistered(Seller seller, String pickupNickname) {
         String token = getToken();
-        if (pickupExists(token, pickupNickname)) {
-            log.info("Shiprocket pickup already exists nickname={}", pickupNickname);
-            return;
-        }
-
-        String address = firstNonBlank(
+        ShiprocketPickupSupport.SellerPickupAddress addr = ShiprocketPickupSupport.buildSellerPickupAddress(
                 seller.getWarehouseAddress(),
-                seller.getAddress()
+                seller.getWarehouseArea(),
+                seller.getWarehouseCity(),
+                seller.getWarehouseState(),
+                seller.getWarehouseCountry(),
+                seller.getAddress(),
+                seller.getArea(),
+                seller.getCity(),
+                seller.getState(),
+                seller.getCountry(),
+                seller.getPincode()
         );
-        if (isBlank(address)) {
-            throw new IllegalStateException(
-                    "Seller '" + pickupNickname
-                            + "' (id=" + seller.getId() + ") has no warehouse/business address. "
-                            + "Add warehouse address on the seller profile before Push to Shiprocket."
-            );
-        }
 
-        String city = firstNonBlank(seller.getWarehouseCity(), seller.getCity());
-        String state = firstNonBlank(seller.getWarehouseState(), seller.getState());
-        String country = firstNonBlank(seller.getWarehouseCountry(), seller.getCountry(), "India");
-        String pin = ShiprocketPickupSupport.resolvePincode(
-                seller.getPincode(),
-                seller.getWarehouseAddress(),
-                seller.getAddress()
-        );
-        if (isBlank(city) || isBlank(state) || pin.length() != 6) {
+        if (!addr.isComplete()) {
             throw new IllegalStateException(
-                    "Seller '" + pickupNickname
-                            + "' (id=" + seller.getId()
-                            + ") needs city, state and 6-digit pincode for Shiprocket pickup. "
-                            + "Update seller warehouse/business address."
+                    "Seller id=" + seller.getId()
+                            + " ('" + pickupNickname + "') needs a complete warehouse/business address "
+                            + "(street, city, state, 6-digit PIN) before Push to Shiprocket."
             );
         }
 
@@ -502,17 +531,26 @@ public class AdminShiprocketService {
         addPickup.put("name", contactName.length() > 50 ? contactName.substring(0, 50) : contactName);
         addPickup.put("email", email);
         addPickup.put("phone", phone);
-        addPickup.put("address", address.trim());
-        if (!isBlank(seller.getWarehouseArea()) || !isBlank(seller.getArea())) {
-            addPickup.put("address_2", firstNonBlank(seller.getWarehouseArea(), seller.getArea()));
+        addPickup.put("address", addr.street());
+        if (!isBlank(addr.address2())) {
+            addPickup.put("address_2", addr.address2());
         }
-        addPickup.put("city", city.trim());
-        addPickup.put("state", state.trim());
-        addPickup.put("country", country.trim());
-        addPickup.put("pin_code", pin);
+        addPickup.put("city", addr.city());
+        addPickup.put("state", addr.state());
+        addPickup.put("country", addr.country());
+        addPickup.put("pin_code", addr.pincode());
 
-        log.info("Registering Shiprocket pickup nickname={} sellerId={} city={} pin={}",
-                pickupNickname, seller.getId(), city, pin);
+        if (pickupExists(token, pickupNickname)) {
+            log.info(
+                    "Shiprocket pickup exists nickname={} sellerId={} — refreshing address city={} pin={}",
+                    pickupNickname, seller.getId(), addr.city(), addr.pincode()
+            );
+            tryUpdateSellerPickup(token, addPickup, pickupNickname);
+            return;
+        }
+
+        log.info("Registering Shiprocket pickup nickname={} sellerId={} street={} city={} pin={}",
+                pickupNickname, seller.getId(), addr.street(), addr.city(), addr.pincode());
         try {
             ResponseEntity<Map> response = restTemplate.postForEntity(
                     apiBaseUrl + "/settings/company/addpickup",
@@ -526,6 +564,7 @@ public class AdminShiprocketService {
             String lower = (apiBody != null ? apiBody : e.getMessage()).toLowerCase(Locale.ENGLISH);
             if (lower.contains("already") || lower.contains("exist")) {
                 log.info("Shiprocket pickup already present nickname={}", pickupNickname);
+                tryUpdateSellerPickup(token, addPickup, pickupNickname);
                 return;
             }
             throw new IllegalStateException(
@@ -540,6 +579,20 @@ public class AdminShiprocketService {
                     "Shiprocket pickup '" + pickupNickname
                             + "' was submitted but is not visible yet. Wait a moment and Retry Push."
             );
+        }
+    }
+
+    /** Best-effort refresh of seller warehouse address on an existing Shiprocket pickup nickname. */
+    private void tryUpdateSellerPickup(String token, Map<String, Object> addPickup, String pickupNickname) {
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    apiBaseUrl + "/settings/company/update/pickup-location",
+                    new HttpEntity<>(addPickup, authHeaders(token)),
+                    Map.class
+            );
+            log.info("Shiprocket update pickup nickname={} body={}", pickupNickname, response.getBody());
+        } catch (Exception e) {
+            log.warn("Shiprocket update pickup skipped nickname={}: {}", pickupNickname, e.getMessage());
         }
     }
 

@@ -11,6 +11,7 @@ import com.ecommerce.authdemo.repository.ProductVariantRepository;
 import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.service.PlatformIntegrationSettings;
 import com.ecommerce.authdemo.service.ShiprocketService;
+import com.ecommerce.authdemo.util.ShiprocketOrderPricing;
 import com.ecommerce.authdemo.util.ShiprocketPickupSupport;
 
 import lombok.RequiredArgsConstructor;
@@ -437,9 +438,7 @@ import java.util.Locale;
                 );
             }
 
-            List<Map<String, Object>>
-                    orderItems =
-                    new ArrayList<>();
+            List<ShiprocketOrderPricing.LineInput> pricingLines = new ArrayList<>();
 
             double totalWeight = 0;
 
@@ -464,46 +463,26 @@ import java.util.Locale;
                     );
                 }
 
-                Map<String, Object> line =
-                        new HashMap<>();
-
-                line.put(
-                        "name",
+                int qty = item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1;
+                pricingLines.add(new ShiprocketOrderPricing.LineInput(
                         item.getProductName() != null && !item.getProductName().isBlank()
                                 ? item.getProductName()
-                                : "Product"
-                );
-
-                line.put(
-                        "sku",
+                                : "Product",
                         item.getSku() != null && !item.getSku().isBlank()
                                 ? item.getSku()
-                                : "SKU-" + item.getProductId()
-                );
-
-                line.put(
-                        "units",
-                        item.getQuantity() != null ? item.getQuantity() : 1
-                );
-
-                line.put(
-                        "selling_price",
-                        item.getPrice() != null ? item.getPrice() : 0
-                );
-
-                line.put(
-                        "hsn",
+                                : "SKU-" + item.getProductId(),
                         item.getHsnCode() != null && !item.getHsnCode().isBlank()
                                 ? item.getHsnCode()
-                                : "0000"
-                );
-
-                orderItems.add(line);
+                                : "0000",
+                        qty,
+                        ShiprocketOrderPricing.toMoney(item.getPrice()),
+                        ShiprocketOrderPricing.toMoney(item.getTotal())
+                ));
 
                 double lineWeight = item.getChargeableWeight() != null
                         ? item.getChargeableWeight()
                         : (item.getWeight() != null ? item.getWeight() : 0.5);
-                totalWeight += lineWeight * (item.getQuantity() != null ? item.getQuantity() : 1);
+                totalWeight += lineWeight * qty;
 
                 if (item.getLengthCm() != null) {
                     maxLength = Math.max(maxLength, item.getLengthCm());
@@ -515,6 +494,14 @@ import java.util.Locale;
                     maxHeight = Math.max(maxHeight, item.getHeightCm());
                 }
             }
+
+            ShiprocketOrderPricing.PricedPayload priced = ShiprocketOrderPricing.build(
+                    pricingLines,
+                    ShiprocketOrderPricing.toMoney(order.getTotalAmount()),
+                    ShiprocketOrderPricing.toMoney(order.getShippingAmount()),
+                    ShiprocketOrderPricing.toMoney(order.getDiscountAmount()),
+                    null
+            );
 
             payload.put(
                     "order_id",
@@ -574,7 +561,7 @@ import java.util.Locale;
             payload.put("billing_country", "India");
             payload.put("shipping_is_billing", true);
 
-            payload.put("order_items", orderItems);
+            payload.put("order_items", priced.orderItems());
 
             payload.put(
                     "payment_method",
@@ -583,18 +570,17 @@ import java.util.Locale;
                             : "Prepaid"
             );
 
-            payload.put(
-                    "sub_total",
-                    order.getTotalAmount() != null
-                            ? order.getTotalAmount()
-                            : 0
-            );
-
-            payload.put(
-                    "shipping_charges",
-                    order.getShippingAmount() != null
-                            ? order.getShippingAmount()
-                            : 0
+            // sub_total = exact FNT order placing total; shipping_charges = 0 (already inside total).
+            payload.put("sub_total", priced.subTotal().doubleValue());
+            payload.put("shipping_charges", priced.shippingCharges().doubleValue());
+            payload.put("total_discount", priced.totalDiscount().doubleValue());
+            log.info(
+                    "Shiprocket pricing orderNumber={} orderPlacingTotal={} shiprocketSubTotal={} shippingCharges={} discount={}",
+                    order.getOrderNumber(),
+                    priced.orderTotal(),
+                    priced.subTotal(),
+                    priced.shippingCharges(),
+                    priced.totalDiscount()
             );
 
             payload.put("length", Math.max(maxLength, 1));
@@ -648,29 +634,25 @@ import java.util.Locale;
                 return;
             }
             String token = getToken();
-            if (pickupExists(token, pickupNickname)) {
-                return;
-            }
-
-            String address = firstNonBlank(seller.getWarehouseAddress(), seller.getAddress());
-            if (isBlank(address)) {
-                throw new RuntimeException(
-                        "Seller '" + pickupNickname
-                                + "' has no warehouse/business address for Shiprocket pickup."
-                );
-            }
-            String city = firstNonBlank(seller.getWarehouseCity(), seller.getCity());
-            String state = firstNonBlank(seller.getWarehouseState(), seller.getState());
-            String country = firstNonBlank(seller.getWarehouseCountry(), seller.getCountry(), "India");
-            String pin = ShiprocketPickupSupport.resolvePincode(
-                    seller.getPincode(),
+            ShiprocketPickupSupport.SellerPickupAddress addr = ShiprocketPickupSupport.buildSellerPickupAddress(
                     seller.getWarehouseAddress(),
-                    seller.getAddress()
+                    seller.getWarehouseArea(),
+                    seller.getWarehouseCity(),
+                    seller.getWarehouseState(),
+                    seller.getWarehouseCountry(),
+                    seller.getAddress(),
+                    null,
+                    seller.getCity(),
+                    seller.getState(),
+                    seller.getCountry(),
+                    seller.getPincode()
             );
-            if (isBlank(city) || isBlank(state) || pin.length() != 6) {
+
+            if (!addr.isComplete()) {
                 throw new RuntimeException(
-                        "Seller '" + pickupNickname
-                                + "' needs city, state and 6-digit pincode for Shiprocket pickup."
+                        "Seller id=" + seller.getId()
+                                + " ('" + pickupNickname + "') needs a complete warehouse/business address "
+                                + "(street, city, state, 6-digit PIN) for Shiprocket pickup."
                 );
             }
 
@@ -694,25 +676,45 @@ import java.util.Locale;
             addPickup.put("email",
                     !isBlank(seller.getEmail()) ? seller.getEmail().trim() : "support@flintnthread.in");
             addPickup.put("phone", phoneDigits);
-            addPickup.put("address", address.trim());
-            if (!isBlank(seller.getWarehouseArea())) {
-                addPickup.put("address_2", seller.getWarehouseArea().trim());
+            addPickup.put("address", addr.street());
+            if (!isBlank(addr.address2())) {
+                addPickup.put("address_2", addr.address2());
             }
-            addPickup.put("city", city.trim());
-            addPickup.put("state", state.trim());
-            addPickup.put("country", country.trim());
-            addPickup.put("pin_code", pin);
+            addPickup.put("city", addr.city());
+            addPickup.put("state", addr.state());
+            addPickup.put("country", addr.country());
+            addPickup.put("pin_code", addr.pincode());
 
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(token);
             headers.setContentType(MediaType.APPLICATION_JSON);
+
+            if (pickupExists(token, pickupNickname)) {
+                log.info(
+                        "Shiprocket pickup exists nickname={} sellerId={} — refreshing address city={} pin={}",
+                        pickupNickname, seller.getId(), addr.city(), addr.pincode()
+                );
+                try {
+                    restTemplate.postForEntity(
+                            apiBaseUrl + "/settings/company/update/pickup-location",
+                            new HttpEntity<>(addPickup, headers),
+                            Map.class
+                    );
+                } catch (Exception updateEx) {
+                    log.warn("Shiprocket update pickup skipped nickname={}: {}",
+                            pickupNickname, updateEx.getMessage());
+                }
+                return;
+            }
+
             try {
                 ResponseEntity<Map> response = restTemplate.postForEntity(
                         apiBaseUrl + "/settings/company/addpickup",
                         new HttpEntity<>(addPickup, headers),
                         Map.class
                 );
-                log.info("Shiprocket addpickup nickname={} body={}", pickupNickname, response.getBody());
+                log.info("Shiprocket addpickup nickname={} street={} city={} pin={} body={}",
+                        pickupNickname, addr.street(), addr.city(), addr.pincode(), response.getBody());
             } catch (HttpClientErrorException e) {
                 String apiBody = e.getResponseBodyAsString();
                 String lower = (apiBody != null ? apiBody : e.getMessage()).toLowerCase(Locale.ENGLISH);

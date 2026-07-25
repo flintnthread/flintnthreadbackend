@@ -29,16 +29,41 @@ class ShiprocketPickupSupportTest {
     }
 
     @Test
-    void resolvePincode_fromWarehousePinLabel() {
+    void buildSellerPickupAddress_usesWarehouseNotBusinessPin() {
+        var addr = ShiprocketPickupSupport.buildSellerPickupAddress(
+                "F302 Perfect Towers Miyapur\nLandmark: Near Ambedkar\nPIN:500049",
+                "Hafeezpet",
+                "Hyderabad",
+                "Telangana",
+                "India",
+                "Old Business Street",
+                "Old Area",
+                "Secunderabad",
+                "Telangana",
+                "India",
+                "500003"
+        );
+
+        assertEquals("F302 Perfect Towers Miyapur", addr.street());
+        assertTrue(addr.address2().contains("Hafeezpet"));
+        assertTrue(addr.address2().contains("Near Ambedkar"));
+        assertEquals("Hyderabad", addr.city());
+        assertEquals("Telangana", addr.state());
+        assertEquals("500049", addr.pincode());
+        assertTrue(addr.isComplete());
+    }
+
+    @Test
+    void resolvePincode_prefersWarehousePinLabel() {
         assertEquals("500049", ShiprocketPickupSupport.resolvePincode(
-                null,
+                "500003",
                 "F302 Perfect Towers\nPIN:500049",
                 null
         ));
         assertEquals("500081", ShiprocketPickupSupport.resolvePincode(
                 "500081",
-                "Somewhere PIN:111111",
-                null
+                null,
+                "Somewhere"
         ));
     }
 }

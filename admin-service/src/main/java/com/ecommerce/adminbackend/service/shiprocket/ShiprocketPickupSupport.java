@@ -5,7 +5,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Pure helpers for Shiprocket seller pickup nicknames / warehouse PIN.
+ * Pure helpers for Shiprocket seller pickup nicknames / warehouse address.
  * Pickup must always be the product's seller — never platform Ashvi/ASVI/work defaults.
  */
 public final class ShiprocketPickupSupport {
@@ -44,7 +44,8 @@ public final class ShiprocketPickupSupport {
         }
         int remaining = 36 - prefix.length();
         if (remaining < 1) {
-            return ("S" + sellerId).length() <= 36 ? ("S" + sellerId) : ("S" + sellerId).substring(0, 36);
+            String fallback = "S" + sellerId;
+            return fallback.length() <= 36 ? fallback : fallback.substring(0, 36);
         }
         if (biz.length() > remaining) {
             biz = biz.substring(0, remaining).replaceAll("[-_]+$", "").trim();
@@ -77,20 +78,116 @@ public final class ShiprocketPickupSupport {
                 || n.equals("ashvi");
     }
 
-    public static String resolvePincode(String sellerPincode, String warehouseAddress, String businessAddress) {
-        String fromSeller = digitsOnly(sellerPincode);
-        if (fromSeller.length() == 6) {
-            return fromSeller;
+    /**
+     * Build Shiprocket pickup address from the product seller profile.
+     * Prefers warehouse fields; falls back to business address only when warehouse is missing.
+     */
+    public static SellerPickupAddress buildSellerPickupAddress(
+            String warehouseAddressRaw,
+            String warehouseArea,
+            String warehouseCity,
+            String warehouseState,
+            String warehouseCountry,
+            String businessAddress,
+            String businessArea,
+            String businessCity,
+            String businessState,
+            String businessCountry,
+            String businessPincode
+    ) {
+        boolean hasWarehouse = hasText(warehouseAddressRaw)
+                || hasText(warehouseCity)
+                || hasText(warehouseState);
+
+        String street;
+        String landmark;
+        String area;
+        String city;
+        String state;
+        String country;
+        String pin;
+
+        if (hasWarehouse) {
+            street = extractWarehouseStreet(warehouseAddressRaw);
+            landmark = extractWarehouseLandmark(warehouseAddressRaw);
+            area = trimToNull(warehouseArea);
+            city = firstNonBlank(warehouseCity, businessCity);
+            state = firstNonBlank(warehouseState, businessState);
+            country = firstNonBlank(warehouseCountry, businessCountry, "India");
+            // Warehouse PIN first — never prefer business PIN over warehouse.
+            pin = firstSixDigitPin(
+                    extractPin(warehouseAddressRaw),
+                    digitsOnly(businessPincode),
+                    extractPin(businessAddress)
+            );
+            if (!hasText(street)) {
+                street = extractWarehouseStreet(businessAddress);
+            }
+            if (!hasText(street)) {
+                street = trimToNull(businessAddress);
+            }
+        } else {
+            street = extractWarehouseStreet(businessAddress);
+            if (!hasText(street)) {
+                street = trimToNull(businessAddress);
+            }
+            landmark = extractWarehouseLandmark(businessAddress);
+            area = trimToNull(businessArea);
+            city = trimToNull(businessCity);
+            state = trimToNull(businessState);
+            country = firstNonBlank(businessCountry, "India");
+            pin = firstSixDigitPin(
+                    digitsOnly(businessPincode),
+                    extractPin(businessAddress)
+            );
         }
-        String fromWarehouse = extractPin(warehouseAddress);
-        if (fromWarehouse.length() == 6) {
-            return fromWarehouse;
+
+        if (hasText(landmark) && !hasText(area)) {
+            area = landmark;
+            landmark = null;
+        } else if (hasText(landmark) && hasText(area) && !area.equalsIgnoreCase(landmark)) {
+            area = area + ", " + landmark;
         }
-        String fromBusiness = extractPin(businessAddress);
-        if (fromBusiness.length() == 6) {
-            return fromBusiness;
+
+        return new SellerPickupAddress(
+                trimToNull(street),
+                trimToNull(area),
+                trimToNull(city),
+                trimToNull(state),
+                trimToNull(country),
+                pin != null ? pin : ""
+        );
+    }
+
+    public static String extractWarehouseStreet(String warehouseAddress) {
+        if (warehouseAddress == null || warehouseAddress.isBlank()) {
+            return null;
         }
-        return fromSeller;
+        int landmarkIdx = indexOfIgnoreCase(warehouseAddress, "\nLandmark:");
+        int pinIdx = indexOfIgnoreCase(warehouseAddress, "\nPIN:");
+        int end = warehouseAddress.length();
+        if (landmarkIdx >= 0) {
+            end = Math.min(end, landmarkIdx);
+        }
+        if (pinIdx >= 0) {
+            end = Math.min(end, pinIdx);
+        }
+        String street = warehouseAddress.substring(0, end).trim();
+        return street.isEmpty() ? null : street.replace('\n', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    public static String extractWarehouseLandmark(String warehouseAddress) {
+        if (warehouseAddress == null) {
+            return null;
+        }
+        for (String line : warehouseAddress.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.regionMatches(true, 0, "Landmark:", 0, "Landmark:".length())) {
+                String value = trimmed.substring("Landmark:".length()).trim();
+                return value.isEmpty() ? null : value;
+            }
+        }
+        return null;
     }
 
     public static String extractPin(String text) {
@@ -109,6 +206,57 @@ public final class ShiprocketPickupSupport {
         return last;
     }
 
+    /** @deprecated use {@link #buildSellerPickupAddress} — kept for older call sites/tests */
+    public static String resolvePincode(String sellerPincode, String warehouseAddress, String businessAddress) {
+        return firstSixDigitPin(
+                extractPin(warehouseAddress),
+                digitsOnly(sellerPincode),
+                extractPin(businessAddress)
+        );
+    }
+
+    public record SellerPickupAddress(
+            String street,
+            String address2,
+            String city,
+            String state,
+            String country,
+            String pincode
+    ) {
+        public boolean isComplete() {
+            return hasText(street)
+                    && hasText(city)
+                    && hasText(state)
+                    && pincode != null
+                    && pincode.length() == 6;
+        }
+    }
+
+    private static String firstSixDigitPin(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            String digits = digitsOnly(value);
+            if (digits.length() == 6) {
+                return digits;
+            }
+        }
+        return "";
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (hasText(value)) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
     private static String sanitizeBusiness(String businessName) {
         if (businessName == null) {
             return "";
@@ -125,5 +273,21 @@ public final class ShiprocketPickupSupport {
             return "";
         }
         return value.replaceAll("[^0-9]", "");
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static int indexOfIgnoreCase(String haystack, String needle) {
+        return haystack.toLowerCase(Locale.ENGLISH).indexOf(needle.toLowerCase(Locale.ENGLISH));
     }
 }
