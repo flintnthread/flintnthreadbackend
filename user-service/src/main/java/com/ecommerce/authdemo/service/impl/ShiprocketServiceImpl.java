@@ -1,5 +1,6 @@
 package com.ecommerce.authdemo.service.impl;
 
+import com.ecommerce.authdemo.dto.Enum.OrderStatus;
 import com.ecommerce.authdemo.dto.OrderTrackingDTO;
 import com.ecommerce.authdemo.dto.OrderTrackingResponseDTO;
 import com.ecommerce.authdemo.dto.ShiprocketShipmentResult;
@@ -31,6 +32,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Locale;
 
@@ -1033,13 +1035,13 @@ import java.util.Locale;
             }
             String normalized = status.trim().toLowerCase(Locale.ENGLISH).replace("-", "_").replace(" ", "_");
             return switch (normalized) {
-                case "new" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.CREATED;
+                case "new" -> OrderStatus.CREATED;
                 case "confirmed", "processing", "packed", "awb_assigned", "pickup_scheduled", "picked_up", "in_transit" 
-                    -> com.ecommerce.authdemo.dto.Enum.OrderStatus.CONFIRMED;
-                case "out_for_delivery" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.OUT_FOR_DELIVERY;
-                case "delivered" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.DELIVERED;
-                case "cancelled", "rto_initiated", "rto_delivered" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.CANCELLED;
-                case "returned" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.RETURNED;
+                    -> OrderStatus.CONFIRMED;
+                case "out_for_delivery" -> OrderStatus.OUT_FOR_DELIVERY;
+                case "delivered" -> OrderStatus.DELIVERED;
+                case "cancelled", "rto_initiated", "rto_delivered" -> OrderStatus.CANCELLED;
+                case "returned" -> OrderStatus.RETURNED;
                 default -> null;
             };
         }
