@@ -71,6 +71,7 @@ public class AdminShiprocketService {
 
         boolean hasSrOrder = !isBlank(order.getShiprocketOrderId());
         boolean hasAwb = !isBlank(order.getShiprocketAwbCode());
+        boolean pushFailed = isFailedPushStatus(order.getShiprocketStatus());
 
         // Already courier-assigned: only sync, do not recreate.
         if (hasSrOrder && hasAwb) {
@@ -83,13 +84,22 @@ public class AdminShiprocketService {
             return existing;
         }
 
-        // Linked earlier without AWB (often old Ashvi/work pickup) — cancel and recreate
-        // with the product seller warehouse pickup.
-        if (hasSrOrder) {
+        // Successful create awaiting manual courier assign in Shiprocket — never duplicate.
+        if (hasSrOrder && !pushFailed) {
+            Map<String, Object> existing = resultMap(order);
+            existing.put("already_exists", true);
+            existing.put("message",
+                    "Shipment already created on Shiprocket. Assign courier in Shiprocket, then Sync Now for AWB.");
+            return existing;
+        }
+
+        // Prior push failed (pending:…) — clear local link and recreate once.
+        if (hasSrOrder && pushFailed) {
             log.warn(
-                    "Replacing incomplete Shiprocket shipment orderId={} oldSrOrderId={} (recreate with seller pickup)",
+                    "Retrying failed Shiprocket push orderId={} oldSrOrderId={} status={}",
                     order.getId(),
-                    order.getShiprocketOrderId()
+                    order.getShiprocketOrderId(),
+                    order.getShiprocketStatus()
             );
             tryCancelShiprocketOrder(order.getShiprocketOrderId());
             clearShiprocketLinkage(order);
@@ -122,6 +132,15 @@ public class AdminShiprocketService {
                     e
             );
         }
+    }
+
+    /** True when shiprocket_status records a failed push (pending / pending: reason). */
+    static boolean isFailedPushStatus(String shiprocketStatus) {
+        if (isBlank(shiprocketStatus)) {
+            return false;
+        }
+        String s = shiprocketStatus.trim().toLowerCase(Locale.ENGLISH);
+        return s.equals("pending") || s.startsWith("pending:");
     }
 
     @Transactional
@@ -173,6 +192,21 @@ public class AdminShiprocketService {
                 order.setShiprocketStatus("awb_assigned");
             }
             order.setShiprocketSyncedAt(LocalDateTime.now());
+
+            // Keep shop order status in sync with Shiprocket logistics (separate from payment).
+            String mappedOrderStatus = mapShiprocketToOrderStatus(
+                    order.getShiprocketStatus(),
+                    order.getShiprocketAwbCode()
+            );
+            if (!isBlank(mappedOrderStatus)) {
+                String current = order.getOrderStatus() != null
+                        ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                        : "";
+                if (!current.contains("cancel") && !"delivered".equals(current)) {
+                    order.setOrderStatus(mappedOrderStatus);
+                }
+            }
+
             orderRepository.save(order);
 
             Map<String, Object> out = resultMap(order);
@@ -847,6 +881,102 @@ public class AdminShiprocketService {
             return null;
         }
         return status.length() > 500 ? status.substring(0, 500) : status;
+    }
+
+    /**
+     * Map Shiprocket logistics status → shop order_status (never invent shipped without AWB).
+     */
+    static String mapShiprocketToOrderStatus(String shiprocketStatus, String awb) {
+        String s = shiprocketStatus != null ? shiprocketStatus.trim().toLowerCase(Locale.ENGLISH) : "";
+        if (s.contains("cancel")) {
+            return null;
+        }
+        if (s.contains("deliver")) {
+            return "delivered";
+        }
+        if (s.contains("rto")) {
+            return "returned";
+        }
+        if (s.contains("out for delivery") || s.contains("out_for_delivery")) {
+            return "out_for_delivery";
+        }
+        if (s.contains("in transit") || s.contains("in_transit") || s.contains("shipped")) {
+            return "in_transit";
+        }
+        if (s.contains("picked") || s.contains("pickup")) {
+            return "picked_up";
+        }
+        if (!isBlank(awb) || s.contains("awb")) {
+            return "awb_assigned";
+        }
+        // Shipment created, courier not assigned yet — keep processing.
+        return null;
+    }
+
+    /**
+     * Fetch the real Shiprocket shipping-label PDF (requires AWB assigned in Shiprocket).
+     */
+    public byte[] fetchShippingLabelPdf(Order order) {
+        if (order == null) {
+            throw new IllegalStateException("Order is required.");
+        }
+        if (isBlank(order.getShiprocketAwbCode())) {
+            throw new IllegalStateException(
+                    "AWB is not assigned yet. Assign courier in Shiprocket, then Sync Now before downloading the label."
+            );
+        }
+        if (isBlank(order.getShiprocketShipmentId())
+                || !order.getShiprocketShipmentId().trim().matches("^\\d+$")) {
+            throw new IllegalStateException(
+                    "Shiprocket shipment id missing. Sync the order from Shiprocket first."
+            );
+        }
+
+        String token = getToken();
+        long shipmentId = Long.parseLong(order.getShiprocketShipmentId().trim());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("shipment_id", List.of(shipmentId));
+
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    apiBaseUrl + "/courier/generate/label",
+                    HttpMethod.POST,
+                    new HttpEntity<>(body, authHeaders(token)),
+                    Map.class
+            );
+            Map<?, ?> resp = response.getBody() != null ? response.getBody() : Map.of();
+            String labelUrl = firstString(resp, "label_url", "labelUrl");
+            if (isBlank(labelUrl)) {
+                throw new IllegalStateException(
+                        "Shiprocket did not return label_url. Response: " + resp
+                );
+            }
+            ResponseEntity<byte[]> pdf = restTemplate.exchange(
+                    labelUrl,
+                    HttpMethod.GET,
+                    new HttpEntity<>(new HttpHeaders()),
+                    byte[].class
+            );
+            byte[] bytes = pdf.getBody();
+            if (bytes == null || bytes.length == 0) {
+                throw new IllegalStateException("Shiprocket label PDF download was empty.");
+            }
+            return bytes;
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (HttpStatusCodeException e) {
+            String apiBody = e.getResponseBodyAsString();
+            throw new IllegalStateException(
+                    "Shiprocket label API error: " + (isBlank(apiBody) ? e.getMessage() : apiBody),
+                    e
+            );
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Could not download Shiprocket label: "
+                            + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()),
+                    e
+            );
+        }
     }
 
     private static boolean isBlank(String value) {

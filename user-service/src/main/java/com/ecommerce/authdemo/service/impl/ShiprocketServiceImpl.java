@@ -129,34 +129,57 @@ import java.util.Locale;
                 throw new IllegalArgumentException("Order is required for Shiprocket shipment.");
             }
 
-            // Already courier-assigned: sync only.
-            if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
-                if (!isBlank(order.getShiprocketAwbCode())) {
-                    log.info(
-                            "Shiprocket already linked for orderNumber={} shiprocketOrderId={} — syncing instead of create",
-                            order.getOrderNumber(),
-                            order.getShiprocketOrderId()
-                    );
-                    if (isBlank(order.getShiprocketTrackingUrl())) {
-                        return syncShipmentDetails(order);
-                    }
-                    return ShiprocketShipmentResult.builder()
-                            .shipmentId(order.getShiprocketShipmentId())
-                            .awbCode(order.getShiprocketAwbCode())
-                            .trackingUrl(order.getShiprocketTrackingUrl())
-                            .courierName(order.getShiprocketCourierName() != null
-                                    ? order.getShiprocketCourierName()
-                                    : "Shiprocket")
-                            .alreadyExists(true)
-                            .message("Shipment already exists on Shiprocket")
-                            .build();
-                }
+            boolean hasSrOrder = order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank();
+            boolean hasAwb = !isBlank(order.getShiprocketAwbCode());
+            boolean pushFailed = isFailedPushStatus(order.getShiprocketStatus());
 
-                // Incomplete prior push (often old Ashvi/work pickup) — cancel + recreate with seller pickup.
-                log.warn(
-                        "Replacing incomplete Shiprocket shipment orderNumber={} oldSrOrderId={}",
+            // Already courier-assigned: sync only.
+            if (hasSrOrder && hasAwb) {
+                log.info(
+                        "Shiprocket already linked for orderNumber={} shiprocketOrderId={} — syncing instead of create",
                         order.getOrderNumber(),
                         order.getShiprocketOrderId()
+                );
+                if (isBlank(order.getShiprocketTrackingUrl())) {
+                    return syncShipmentDetails(order);
+                }
+                return ShiprocketShipmentResult.builder()
+                        .shipmentId(order.getShiprocketShipmentId())
+                        .awbCode(order.getShiprocketAwbCode())
+                        .trackingUrl(order.getShiprocketTrackingUrl())
+                        .courierName(order.getShiprocketCourierName() != null
+                                ? order.getShiprocketCourierName()
+                                : "Shiprocket")
+                        .alreadyExists(true)
+                        .message("Shipment already exists on Shiprocket")
+                        .build();
+            }
+
+            // Successful create awaiting manual courier assign — never create a duplicate.
+            if (hasSrOrder && !pushFailed) {
+                log.info(
+                        "Shiprocket shipment already created for orderNumber={} (awaiting courier) — skipping recreate",
+                        order.getOrderNumber()
+                );
+                return ShiprocketShipmentResult.builder()
+                        .shipmentId(order.getShiprocketShipmentId())
+                        .awbCode(order.getShiprocketAwbCode())
+                        .trackingUrl(order.getShiprocketTrackingUrl())
+                        .courierName(order.getShiprocketCourierName() != null
+                                ? order.getShiprocketCourierName()
+                                : "Shiprocket")
+                        .alreadyExists(true)
+                        .message("Shipment already created on Shiprocket. Assign courier in Shiprocket, then sync.")
+                        .build();
+            }
+
+            // Prior push failed — cancel leftover SR order if any, then recreate.
+            if (hasSrOrder && pushFailed) {
+                log.warn(
+                        "Retrying failed Shiprocket push orderNumber={} oldSrOrderId={} status={}",
+                        order.getOrderNumber(),
+                        order.getShiprocketOrderId(),
+                        order.getShiprocketStatus()
                 );
                 try {
                     cancelShipment(order.getShiprocketOrderId());
@@ -201,6 +224,14 @@ import java.util.Locale;
                         e
                 );
             }
+        }
+
+        private static boolean isFailedPushStatus(String shiprocketStatus) {
+            if (isBlank(shiprocketStatus)) {
+                return false;
+            }
+            String s = shiprocketStatus.trim().toLowerCase(Locale.ENGLISH);
+            return s.equals("pending") || s.startsWith("pending:");
         }
 
         /**

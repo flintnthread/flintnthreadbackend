@@ -372,17 +372,16 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     @Transactional(readOnly = true)
     public Map<String, Object> generateShippingLabel(Long id) {
         Order order = requireOrder(id);
+        if (isBlank(order.getShiprocketAwbCode())) {
+            throw new IllegalStateException(
+                    "AWB is not assigned yet. Assign courier in Shiprocket, then Sync Now before viewing the label."
+            );
+        }
         Map<String, Object> label = new LinkedHashMap<>(generateInvoice(id));
         List<OrderItem> items = orderItemRepository.findByOrderId(id);
         appendListShippingMeta(label, order, items);
-        String awb = nullSafe(order.getShiprocketAwbCode());
-        if (isBlank(awb)) {
-            awb = nullSafe(order.getOrderNumber()).replaceAll("\\D", "");
-        }
-        if (isBlank(awb)) {
-            awb = String.valueOf(id);
-        }
-        label.put("awbCode", nullSafe(order.getShiprocketAwbCode()));
+        String awb = order.getShiprocketAwbCode().trim();
+        label.put("awbCode", awb);
         label.put("courierName", !isBlank(order.getShiprocketCourierName())
                 ? order.getShiprocketCourierName().trim()
                 : "Courier");
@@ -396,9 +395,22 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     @Override
     @Transactional(readOnly = true)
     public byte[] generateShippingLabelPdf(Long id) {
-        Map<String, Object> label = generateShippingLabel(id);
-        String html = ShippingLabelHtmlBuilder.build(label);
-        return InvoicePdfRenderer.renderPdf(html);
+        Order order = requireOrder(id);
+        // Prefer real Shiprocket label PDF (contains actual AWB/barcode from Shiprocket).
+        try {
+            return adminShiprocketService.fetchShippingLabelPdf(order);
+        } catch (IllegalStateException e) {
+            String msg = e.getMessage() != null ? e.getMessage().toLowerCase(Locale.ENGLISH) : "";
+            // If AWB missing, do not invent a fake label.
+            if (msg.contains("awb is not assigned") || isBlank(order.getShiprocketAwbCode())) {
+                throw e;
+            }
+            log.warn("Shiprocket label API unavailable for orderId={} — falling back to AWB label PDF: {}",
+                    id, e.getMessage());
+            Map<String, Object> label = generateShippingLabel(id);
+            String html = ShippingLabelHtmlBuilder.build(label);
+            return InvoicePdfRenderer.renderPdf(html);
+        }
     }
 
     @Override
@@ -409,13 +421,17 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
         boolean alreadyLinked = order.getShiprocketOrderId() != null
                 && !order.getShiprocketOrderId().isBlank();
-        boolean hasAwb = order.getShiprocketAwbCode() != null
-                && !order.getShiprocketAwbCode().isBlank();
-        if (alreadyLinked && hasAwb) {
+        boolean pushFailed = AdminShiprocketService.isFailedPushStatus(order.getShiprocketStatus());
+
+        // Successful shipment already exists (with or without AWB) — never create a duplicate.
+        if (alreadyLinked && !pushFailed) {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("success", true);
             response.put("alreadyExists", true);
-            response.put("message", "Shipment already exists on Shiprocket. Use Sync Now to refresh details.");
+            response.put("message",
+                    !isBlank(order.getShiprocketAwbCode())
+                            ? "Shipment already exists on Shiprocket. Use Sync Now to refresh details."
+                            : "Shipment already created on Shiprocket. Assign courier in Shiprocket, then Sync Now.");
             response.put("order", getOrder(id));
             return response;
         }
@@ -436,6 +452,18 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             return response;
         } catch (Exception e) {
             log.error("Admin Shiprocket push failed orderId={}: {}", id, e.getMessage(), e);
+            try {
+                Order failed = requireOrder(id);
+                String reason = friendlyShiprocketError(e);
+                String status = "pending: " + reason;
+                if (status.length() > 500) {
+                    status = status.substring(0, 500);
+                }
+                failed.setShiprocketStatus(status);
+                orderRepository.save(failed);
+            } catch (Exception ignore) {
+                // ignore secondary failure
+            }
             throw new IllegalStateException(friendlyShiprocketError(e), e);
         }
     }
@@ -670,21 +698,45 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
     private Map<String, Object> toShiprocketDetail(Order order) {
         Map<String, Object> shiprocket = new LinkedHashMap<>();
+        boolean alreadyPushed = order.getShiprocketOrderId() != null
+                && !order.getShiprocketOrderId().isBlank();
+        boolean pushFailed = AdminShiprocketService.isFailedPushStatus(order.getShiprocketStatus());
+        String rawStatus = order.getShiprocketStatus();
+        String displayStatus;
+        String failureReason = null;
+        if (pushFailed) {
+            displayStatus = "Push Failed";
+            if (rawStatus != null && rawStatus.toLowerCase(Locale.ENGLISH).startsWith("pending:")) {
+                failureReason = rawStatus.substring("pending:".length()).trim();
+            } else {
+                failureReason = "Unable to create shipment";
+            }
+        } else if (alreadyPushed && !isBlank(order.getShiprocketAwbCode())) {
+            displayStatus = "AWB Assigned";
+        } else if (alreadyPushed) {
+            displayStatus = "Shipment Created";
+        } else {
+            displayStatus = "Not Pushed to Shiprocket";
+        }
+
         shiprocket.put("orderId", order.getShiprocketOrderId());
         shiprocket.put("shipmentId", order.getShiprocketShipmentId());
         shiprocket.put("awb", order.getShiprocketAwbCode());
         shiprocket.put("courier", order.getShiprocketCourierName());
         shiprocket.put("courierName", order.getShiprocketCourierName());
-        shiprocket.put("status", order.getShiprocketStatus());
-        shiprocket.put("shippingStatus", order.getShiprocketStatus());
+        shiprocket.put("status", rawStatus);
+        shiprocket.put("shippingStatus", rawStatus);
+        shiprocket.put("displayStatus", displayStatus);
+        shiprocket.put("pushFailed", pushFailed);
+        shiprocket.put("failureReason", failureReason);
         shiprocket.put("pickupStatus", resolvePickupStatus(order.getShiprocketStatus()));
         shiprocket.put("trackingStatus", order.getShiprocketStatus());
         shiprocket.put("trackingUrl", order.getShiprocketTrackingUrl());
         shiprocket.put("pushedAt", toUtcIso(order.getShiprocketPushedAt()));
         shiprocket.put("syncedAt", toUtcIso(order.getShiprocketSyncedAt()));
         shiprocket.put("dashboardUrl", shiprocketDashboardUrl);
-        shiprocket.put("alreadyPushed", order.getShiprocketOrderId() != null
-                && !order.getShiprocketOrderId().isBlank());
+        shiprocket.put("alreadyPushed", alreadyPushed && !pushFailed);
+        shiprocket.put("canPush", !alreadyPushed || pushFailed);
         return shiprocket;
     }
 

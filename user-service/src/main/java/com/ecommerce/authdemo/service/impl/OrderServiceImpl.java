@@ -1385,26 +1385,9 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        // Already linked: sync AWB if missing instead of creating a duplicate.
-        if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
-            if (order.getShiprocketAwbCode() == null || order.getShiprocketAwbCode().isBlank()
-                    || order.getShiprocketTrackingUrl() == null || order.getShiprocketTrackingUrl().isBlank()) {
-                log.info(
-                        "Shiprocket already linked for orderNumber={} without AWB — syncing",
-                        order.getOrderNumber()
-                );
-                return shiprocketService.syncShipmentDetails(order);
-            }
-            return ShiprocketShipmentResult.builder()
-                    .shipmentId(order.getShiprocketShipmentId())
-                    .awbCode(order.getShiprocketAwbCode())
-                    .trackingUrl(order.getShiprocketTrackingUrl())
-                    .courierName(order.getShiprocketCourierName() != null
-                            ? order.getShiprocketCourierName()
-                            : "Shiprocket")
-                    .alreadyExists(true)
-                    .message("Shipment already exists on Shiprocket")
-                    .build();
+        if (order.getOrderStatus() != null
+                && order.getOrderStatus().toLowerCase(Locale.ENGLISH).contains("cancel")) {
+            throw new OrderException("Cancelled orders cannot be pushed to Shiprocket.");
         }
 
         String paymentStatus = order.getPaymentStatus() != null
@@ -1422,13 +1405,18 @@ public class OrderServiceImpl implements OrderService {
             );
         }
 
+        // Match admin push: createShipment handles
+        // - AWB already present → return/sync (no duplicate)
+        // - linked without AWB (often old Ashvi/work pickup) → cancel + recreate with seller warehouse
+        // - not linked → create with seller warehouse pickup + FNT totalAmount as sub_total
         try {
             ShiprocketShipmentResult result = shiprocketService.createShipment(order);
             log.info(
-                    "Shiprocket push retry OK orderNumber={} shipmentId={} awb={}",
+                    "Shiprocket push OK orderNumber={} shipmentId={} awb={} alreadyExists={}",
                     order.getOrderNumber(),
                     result.getShipmentId(),
-                    result.getAwbCode()
+                    result.getAwbCode(),
+                    Boolean.TRUE.equals(result.getAlreadyExists())
             );
             return result;
         } catch (Exception e) {
