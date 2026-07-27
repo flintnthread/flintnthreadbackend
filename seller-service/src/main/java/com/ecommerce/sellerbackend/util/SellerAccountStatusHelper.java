@@ -46,12 +46,30 @@ public final class SellerAccountStatusHelper {
                     .build();
         }
 
-        if (status == SellerAccountStatus.suspended) {
+        if (status == SellerAccountStatus.deact_req) {
             return SellerAccountStatusResponse.builder()
                     .status(status.name())
-                    .approvalState("suspended")
-                    .title("Suspended")
-                    .message("Your seller account has been suspended. Please contact support for assistance.")
+                    .approvalState("deactivation_requested")
+                    .title("Deactivation Requested")
+                    .message("Your deactivation request is pending admin approval.")
+                    .profileLabel(profileLabel)
+                    .kycLabel(kycLabel)
+                    .canManageProducts(true)
+                    .canReceiveOrders(true)
+                    .reviewEstimateHours(null)
+                    .rejectionReason(null)
+                    .build();
+        }
+
+        if (status == SellerAccountStatus.inactive || status == SellerAccountStatus.act_req) {
+            boolean activationPending = status == SellerAccountStatus.act_req;
+            return SellerAccountStatusResponse.builder()
+                    .status(status.name())
+                    .approvalState(activationPending ? "activation_requested" : "deactivated")
+                    .title(activationPending ? "Activation Requested" : "Account Deactivated")
+                    .message(activationPending
+                            ? "Your activation request is pending admin approval. Products remain unavailable for sale."
+                            : "Your seller account is temporarily deactivated. Products are unavailable for sale. You can request activation from the dashboard.")
                     .profileLabel(profileLabel)
                     .kycLabel(kycLabel)
                     .canManageProducts(false)
@@ -61,12 +79,12 @@ public final class SellerAccountStatusHelper {
                     .build();
         }
 
-        if (status == SellerAccountStatus.inactive) {
+        if (status == SellerAccountStatus.suspended) {
             return SellerAccountStatusResponse.builder()
                     .status(status.name())
-                    .approvalState("inactive")
-                    .title("Inactive")
-                    .message("Your seller account is currently inactive. Please contact support to reactivate.")
+                    .approvalState("suspended")
+                    .title("Suspended")
+                    .message("Your seller account has been suspended. Please contact support for assistance.")
                     .profileLabel(profileLabel)
                     .kycLabel(kycLabel)
                     .canManageProducts(false)

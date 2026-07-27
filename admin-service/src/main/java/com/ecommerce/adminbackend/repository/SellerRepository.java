@@ -16,6 +16,8 @@ public interface SellerRepository extends JpaRepository<Seller, Long> {
 
     boolean existsByEmailIgnoreCase(String email);
 
+    List<Seller> findByStatusIn(List<SellerAccountStatus> statuses);
+
     List<Seller> findBySellerCategory(SellerCategory sellerCategory);
 
     @Query("""

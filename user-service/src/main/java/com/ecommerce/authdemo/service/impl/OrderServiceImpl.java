@@ -188,6 +188,8 @@ public class OrderServiceImpl implements OrderService {
                 throw new OrderException("Cart is empty");
             }
 
+            assertCheckoutSellersAcceptingOrders(checkoutItems);
+
             boolean partialCheckout =
                     dto.getItemIds() != null && !dto.getItemIds().isEmpty();
 
@@ -3280,6 +3282,35 @@ public class OrderServiceImpl implements OrderService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void assertCheckoutSellersAcceptingOrders(List<CartItemResponseDTO> checkoutItems) {
+        if (checkoutItems == null || checkoutItems.isEmpty()) {
+            return;
+        }
+        Set<Long> sellerIds = new LinkedHashSet<>();
+        for (CartItemResponseDTO item : checkoutItems) {
+            if (item.getProductId() == null) {
+                continue;
+            }
+            productRepository.findById(item.getProductId()).ifPresent(p -> {
+                if (p.getSellerId() != null && p.getSellerId() > 0) {
+                    sellerIds.add(p.getSellerId());
+                }
+            });
+        }
+        for (Long sellerId : sellerIds) {
+            Seller seller = sellerRepository.findById(sellerId).orElse(null);
+            if (seller == null || seller.getStatus() == null) {
+                continue;
+            }
+            String status = seller.getStatus().trim().toLowerCase(Locale.ENGLISH);
+            if ("inactive".equals(status) || "act_req".equals(status) || "suspended".equals(status)) {
+                throw new OrderException(
+                        "One or more sellers in your cart are currently unavailable. Please remove their products and try again."
+                );
+            }
+        }
     }
 
     private void notifySellersOfAddressUpdate(Order order, List<OrderItem> items) {

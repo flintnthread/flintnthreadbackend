@@ -254,7 +254,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         switch (status) {
-            case active -> {
+            case active, deact_req, act_req, inactive, rejected -> {
                 return;
             }
             case pending -> {
@@ -264,13 +264,8 @@ public class AuthServiceImpl implements AuthService {
                 throw new ForbiddenException(
                         "Your seller account is pending approval. Please complete your profile or wait for admin review.");
             }
-            case rejected -> {
-                return;
-            }
             case email_pending -> throw new ForbiddenException(
                     "Email verification is pending. Please verify your email to continue.");
-            case inactive -> throw new ForbiddenException(
-                    "Your account is inactive. Please contact support to reactivate.");
             case suspended -> throw new ForbiddenException(
                     "Your account has been suspended. Please contact support.");
             default -> throw new ForbiddenException("Your account is not allowed to log in.");

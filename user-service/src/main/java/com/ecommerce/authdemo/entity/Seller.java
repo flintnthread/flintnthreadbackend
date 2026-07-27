@@ -72,6 +72,10 @@ public class Seller {
     @Column(name = "gst_number")
     private String gstNumber;
 
+    /** Existing sellers.status column — used to block purchases when deactivated. */
+    @Column(name = "status", length = 20)
+    private String status;
+
     @PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();

@@ -4,6 +4,7 @@ import com.ecommerce.sellerbackend.dto.SellerRegistrationInvoiceResponse;
 import com.ecommerce.sellerbackend.dto.SellerSettingsResponse;
 import com.ecommerce.sellerbackend.dto.UpdateSellerSettingsRequest;
 import com.ecommerce.sellerbackend.entity.SellerPreferences;
+import com.ecommerce.sellerbackend.exception.ForbiddenException;
 import com.ecommerce.sellerbackend.exception.ResourceNotFoundException;
 import com.ecommerce.sellerbackend.repository.SellerPreferencesRepository;
 import com.ecommerce.sellerbackend.repository.SellerRegistrationInvoiceRepository;
@@ -105,10 +106,9 @@ public class SellerSettingsServiceImpl implements SellerSettingsService {
     @Override
     @Transactional
     public void deactivateAccount(Long sellerId) {
-        var seller = sellerRepository.findById(sellerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Seller not found."));
-        seller.setStatus(com.ecommerce.sellerbackend.entity.SellerAccountStatus.inactive);
-        sellerRepository.save(seller);
+        throw new ForbiddenException(
+                "Immediate deactivation is disabled. Use Account Lifecycle: check eligibility, choose 12h or 1 day, then submit a deactivation request for admin approval."
+        );
     }
 
     @Override
