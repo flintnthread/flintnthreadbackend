@@ -421,7 +421,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         
         // Fetch tracking events from order_status_history
         List<Map<String, Object>> timeline = new ArrayList<>();
-        List<OrderStatusHistory> history = orderStatusHistoryRepository.findByOrder_IdOrderByCreatedAtAsc(id);
+        List<OrderStatusHistory> history = orderStatusHistoryRepository.findByOrderIdOrderByCreatedAtAsc(id);
         if (history != null) {
             for (OrderStatusHistory entry : history) {
                 String comment = entry.getComment();
