@@ -135,7 +135,7 @@ public class AdminShiprocketService {
     }
 
     /** True when shiprocket_status records a failed push (pending / pending: reason). */
-    static boolean isFailedPushStatus(String shiprocketStatus) {
+    public static boolean isFailedPushStatus(String shiprocketStatus) {
         if (isBlank(shiprocketStatus)) {
             return false;
         }

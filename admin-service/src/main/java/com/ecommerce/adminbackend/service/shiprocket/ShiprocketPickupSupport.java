@@ -207,6 +207,7 @@ public final class ShiprocketPickupSupport {
     }
 
     /** @deprecated use {@link #buildSellerPickupAddress} — kept for older call sites/tests */
+    @Deprecated
     public static String resolvePincode(String sellerPincode, String warehouseAddress, String businessAddress) {
         return firstSixDigitPin(
                 extractPin(warehouseAddress),
