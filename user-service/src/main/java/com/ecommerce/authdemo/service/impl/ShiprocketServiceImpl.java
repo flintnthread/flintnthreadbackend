@@ -957,30 +957,34 @@ import java.util.Locale;
                         remote.get("data") instanceof Map<?, ?> ? ((Map<?, ?>) remote.get("data")).get("tracking_data") : null,
                         remote.get("tracking")
                 );
-                
+
                 if (!(trackingData instanceof Map<?, ?> tdMap)) {
                     return;
                 }
-                
+
                 Object activities = tdMap.get("shipment_track_activities");
-                if (!(activities instanceof List<?> activityList)) {
+                List<?> activityList = null;
+                if (activities instanceof List<?> list) {
+                    activityList = list;
+                } else {
                     activities = tdMap.get("activities");
-                    if (!(activities instanceof List<?>)) {
+                    if (activities instanceof List<?> list) {
+                        activityList = list;
+                    } else {
                         return;
                     }
-                    activityList = (List<?>) activities;
                 }
-                
+
                 if (activityList == null || activityList.isEmpty()) {
                     return;
                 }
-                
+
                 // Store each tracking activity as order_status_history entry
                 for (Object act : activityList) {
                     if (!(act instanceof Map<?, ?> activity)) {
                         continue;
                     }
-                    
+
                     String status = textOrNull(activity.get("activity"));
                     String location = textOrNull(activity.get("location"));
                     String date = textOrNull(activity.get("date"));
@@ -1044,6 +1048,23 @@ import java.util.Locale;
                 case "returned" -> OrderStatus.RETURNED;
                 default -> null;
             };
+        }
+
+        private Object firstNode(Object... values) {
+            for (Object value : values) {
+                if (value != null) {
+                    return value;
+                }
+            }
+            return null;
+        }
+
+        private String textOrNull(Object value) {
+            if (value == null) {
+                return null;
+            }
+            String str = value.toString();
+            return str.isBlank() ? null : str;
         }
 
         @Override
