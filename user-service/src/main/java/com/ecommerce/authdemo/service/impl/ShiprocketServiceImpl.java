@@ -227,7 +227,7 @@ import java.util.Locale;
         }
 
         private static boolean isFailedPushStatus(String shiprocketStatus) {
-            if (isBlank(shiprocketStatus)) {
+            if (shiprocketStatus == null || shiprocketStatus.isBlank()) {
                 return false;
             }
             String s = shiprocketStatus.trim().toLowerCase(Locale.ENGLISH);
