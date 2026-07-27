@@ -146,10 +146,17 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
             );
             if (orderStatusEnum != null) {
                 try {
+                    String trackingComment = String.format(
+                            "Shiprocket tracking: status=%s, awb=%s, courier=%s, location=%s",
+                            currentStatus != null ? currentStatus : "",
+                            resolvedAwb != null ? resolvedAwb : "",
+                            courierName != null ? courierName : "",
+                            firstNonBlank(eventData, "location", "tracking_location", "current_location")
+                    );
                     OrderStatusHistory history = OrderStatusHistory.builder()
                             .order(order)
                             .status(orderStatusEnum)
-                            .comment("Updated from Shiprocket webhook: " + currentStatus)
+                            .comment(trackingComment)
                             .build();
                     orderStatusHistoryRepository.save(history);
                 } catch (Exception e) {

@@ -414,6 +414,92 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getOrderTracking(Long id) {
+        Order order = requireOrder(id);
+        Map<String, Object> response = new LinkedHashMap<>();
+        
+        // Fetch tracking events from order_status_history
+        List<Map<String, Object>> timeline = new ArrayList<>();
+        List<OrderStatusHistory> history = orderStatusHistoryRepository.findByOrder_IdOrderByCreatedAtAsc(id);
+        if (history != null) {
+            for (OrderStatusHistory entry : history) {
+                String comment = entry.getComment();
+                if (comment != null && comment.contains("Shiprocket tracking:")) {
+                    Map<String, Object> event = parseTrackingComment(comment, entry.getCreatedAt());
+                    if (event != null) {
+                        timeline.add(event);
+                    }
+                }
+            }
+        }
+
+        // If no tracking events but order has Shiprocket data, create initial entry
+        if (timeline.isEmpty() && order.getShiprocketStatus() != null) {
+            Map<String, Object> initialEvent = new LinkedHashMap<>();
+            initialEvent.put("status", order.getShiprocketStatus());
+            initialEvent.put("description", "Current shipment status");
+            initialEvent.put("location", "");
+            initialEvent.put("timestamp", order.getShiprocketSyncedAt() != null 
+                    ? order.getShiprocketSyncedAt() 
+                    : order.getUpdatedAt());
+            timeline.add(initialEvent);
+        }
+
+        String trackingUrl = order.getShiprocketTrackingUrl();
+        if (isBlank(trackingUrl) && !isBlank(order.getShiprocketAwbCode())) {
+            trackingUrl = "https://shiprocket.co/tracking/" + order.getShiprocketAwbCode();
+        }
+
+        response.put("orderId", order.getId());
+        response.put("orderNumber", order.getOrderNumber());
+        response.put("awbCode", order.getShiprocketAwbCode());
+        response.put("courierName", order.getShiprocketCourierName() != null 
+                ? order.getShiprocketCourierName() 
+                : "Shiprocket");
+        response.put("trackingUrl", trackingUrl);
+        response.put("currentStatus", order.getShiprocketStatus() != null 
+                ? order.getShiprocketStatus() 
+                : order.getOrderStatus());
+        response.put("timeline", timeline);
+        
+        return response;
+    }
+
+    private Map<String, Object> parseTrackingComment(String comment, LocalDateTime timestamp) {
+        try {
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("status", extractValue(comment, "status="));
+            event.put("location", extractValue(comment, "location="));
+            event.put("awb", extractValue(comment, "awb="));
+            event.put("courier", extractValue(comment, "courier="));
+            event.put("description", event.get("status") != null ? event.get("status") : "Tracking update");
+            event.put("timestamp", timestamp != null ? timestamp : LocalDateTime.now());
+            return event;
+        } catch (Exception e) {
+            log.warn("Failed to parse tracking comment: {}", comment, e);
+            return null;
+        }
+    }
+
+    private String extractValue(String text, String key) {
+        if (text == null || key == null) {
+            return null;
+        }
+        int keyIndex = text.indexOf(key);
+        if (keyIndex == -1) {
+            return null;
+        }
+        int startIndex = keyIndex + key.length();
+        int endIndex = text.indexOf(',', startIndex);
+        if (endIndex == -1) {
+            endIndex = text.length();
+        }
+        String value = text.substring(startIndex, endIndex).trim();
+        return value.isEmpty() ? null : value;
+    }
+
+    @Override
     @Transactional
     public Map<String, Object> pushToShiprocket(Long id) {
         Order order = requireOrder(id);

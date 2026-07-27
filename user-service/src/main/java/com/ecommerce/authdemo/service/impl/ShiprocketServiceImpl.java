@@ -6,6 +6,7 @@ import com.ecommerce.authdemo.dto.ShiprocketShipmentResult;
 import com.ecommerce.authdemo.entity.*;
 import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
+import com.ecommerce.authdemo.repository.OrderStatusHistoryRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
 import com.ecommerce.authdemo.repository.ProductVariantRepository;
 import com.ecommerce.authdemo.repository.SellerRepository;
@@ -48,6 +49,8 @@ import java.util.Locale;
         private final OrderItemRepository orderItemRepository;
 
         private final OrderRepository orderRepository;
+
+        private final OrderStatusHistoryRepository orderStatusHistoryRepository;
 
         private final ProductRepository productRepository;
 
@@ -944,6 +947,103 @@ import java.util.Locale;
 
 
 
+        private void storeTrackingTimelineFromRemote(Order order, Map<String, Object> remote) {
+            try {
+                // Extract tracking activities from Shiprocket response
+                Object trackingData = firstNode(
+                        remote.get("tracking_data"),
+                        remote.get("data") instanceof Map<?, ?> ? ((Map<?, ?>) remote.get("data")).get("tracking_data") : null,
+                        remote.get("tracking")
+                );
+                
+                if (!(trackingData instanceof Map<?, ?> tdMap)) {
+                    return;
+                }
+                
+                Object activities = tdMap.get("shipment_track_activities");
+                if (!(activities instanceof List<?> activityList)) {
+                    activities = tdMap.get("activities");
+                    if (!(activities instanceof List<?>)) {
+                        return;
+                    }
+                    activityList = (List<?>) activities;
+                }
+                
+                if (activityList == null || activityList.isEmpty()) {
+                    return;
+                }
+                
+                // Store each tracking activity as order_status_history entry
+                for (Object act : activityList) {
+                    if (!(act instanceof Map<?, ?> activity)) {
+                        continue;
+                    }
+                    
+                    String status = textOrNull(activity.get("activity"));
+                    String location = textOrNull(activity.get("location"));
+                    String date = textOrNull(activity.get("date"));
+                    
+                    if (status == null || status.isBlank()) {
+                        continue;
+                    }
+                    
+                    // Check if this status already exists to avoid duplicates
+                    boolean alreadyExists = orderStatusHistoryRepository.findByOrderIdOrderByCreatedAtAsc(order.getId())
+                            .stream()
+                            .anyMatch(h -> h.getComment() != null 
+                                    && h.getComment().contains("Shiprocket tracking:")
+                                    && h.getComment().contains("status=" + status));
+                    
+                    if (alreadyExists) {
+                        continue;
+                    }
+                    
+                    String trackingComment = String.format(
+                            "Shiprocket tracking: status=%s, awb=%s, courier=%s, location=%s",
+                            status,
+                            order.getShiprocketAwbCode() != null ? order.getShiprocketAwbCode() : "",
+                            order.getShiprocketCourierName() != null ? order.getShiprocketCourierName() : "",
+                            location != null ? location : ""
+                    );
+                    
+                    OrderStatus orderStatusEnum = mapToOrderStatusEnum(status);
+                    if (orderStatusEnum != null) {
+                        try {
+                            OrderStatusHistory history = OrderStatusHistory.builder()
+                                    .order(order)
+                                    .status(orderStatusEnum)
+                                    .comment(trackingComment)
+                                    .build();
+                            orderStatusHistoryRepository.save(history);
+                        } catch (Exception e) {
+                            log.warn("Failed to store tracking event for orderId={}: {}", order.getId(), e.getMessage());
+                        }
+                    }
+                }
+                
+                log.info("Stored {} tracking events for orderNumber={}", activityList.size(), order.getOrderNumber());
+            } catch (Exception e) {
+                log.warn("Failed to store tracking timeline for orderNumber={}: {}", order.getOrderNumber(), e.getMessage());
+            }
+        }
+
+        private OrderStatus mapToOrderStatusEnum(String status) {
+            if (status == null || status.isBlank()) {
+                return null;
+            }
+            String normalized = status.trim().toLowerCase(Locale.ENGLISH).replace("-", "_").replace(" ", "_");
+            return switch (normalized) {
+                case "new" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.CREATED;
+                case "confirmed", "processing", "packed", "awb_assigned", "pickup_scheduled", "picked_up", "in_transit" 
+                    -> com.ecommerce.authdemo.dto.Enum.OrderStatus.CONFIRMED;
+                case "out_for_delivery" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.OUT_FOR_DELIVERY;
+                case "delivered" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.DELIVERED;
+                case "cancelled", "rto_initiated", "rto_delivered" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.CANCELLED;
+                case "returned" -> com.ecommerce.authdemo.dto.Enum.OrderStatus.RETURNED;
+                default -> null;
+            };
+        }
+
         @Override
         @Transactional
         public ShiprocketShipmentResult syncShipmentDetails(Order order) {
@@ -971,6 +1071,9 @@ import java.util.Locale;
                 applyRemoteShiprocketFields(order, remote);
                 order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
                 orderRepository.save(order);
+
+                // Store tracking timeline from Shiprocket API response
+                storeTrackingTimelineFromRemote(order, remote);
 
                 if (!isBlank(order.getShiprocketAwbCode())
                         || !isBlank(order.getShiprocketTrackingUrl())) {
@@ -1955,6 +2058,103 @@ import java.util.Locale;
             }
         }
 
+
+        @Override
+        public OrderTrackingResponseDTO getTrackingFromDatabase(Long orderId) {
+            if (orderId == null) {
+                throw new IllegalArgumentException("Order ID is required for tracking");
+            }
+
+            Order order = orderRepository.findById(orderId).orElse(null);
+            if (order == null) {
+                throw new IllegalArgumentException("Order not found with ID: " + orderId);
+            }
+
+            List<OrderTrackingDTO> timeline = new ArrayList<>();
+            
+            // Fetch tracking events from order_status_history
+            List<OrderStatusHistory> history = orderStatusHistoryRepository.findByOrderIdOrderByCreatedAtAsc(orderId);
+            if (history != null) {
+                for (OrderStatusHistory entry : history) {
+                    String comment = entry.getComment();
+                    if (comment != null && comment.contains("Shiprocket tracking:")) {
+                        // Parse tracking details from comment
+                        OrderTrackingDTO trackingEvent = parseTrackingComment(comment, entry.getCreatedAt());
+                        if (trackingEvent != null) {
+                            timeline.add(trackingEvent);
+                        }
+                    }
+                }
+            }
+
+            // If no tracking events in history but order has Shiprocket data, create initial entry
+            if (timeline.isEmpty() && order.getShiprocketStatus() != null) {
+                timeline.add(OrderTrackingDTO.builder()
+                        .status(order.getShiprocketStatus())
+                        .description("Current shipment status")
+                        .location("")
+                        .timestamp(order.getShiprocketSyncedAt() != null 
+                                ? order.getShiprocketSyncedAt() 
+                                : order.getUpdatedAt())
+                        .build());
+            }
+
+            String trackingUrl = order.getShiprocketTrackingUrl();
+            if (isBlank(trackingUrl) && !isBlank(order.getShiprocketAwbCode())) {
+                trackingUrl = "https://shiprocket.co/tracking/" + order.getShiprocketAwbCode();
+            }
+
+            return OrderTrackingResponseDTO.builder()
+                    .orderId(order.getId())
+                    .orderNumber(order.getOrderNumber())
+                    .awbCode(order.getShiprocketAwbCode())
+                    .courierName(order.getShiprocketCourierName() != null 
+                            ? order.getShiprocketCourierName() 
+                            : "Shiprocket")
+                    .trackingUrl(trackingUrl)
+                    .currentStatus(order.getShiprocketStatus() != null 
+                            ? order.getShiprocketStatus() 
+                            : order.getOrderStatus())
+                    .timeline(timeline)
+                    .build();
+        }
+
+        private OrderTrackingDTO parseTrackingComment(String comment, LocalDateTime timestamp) {
+            try {
+                // Parse format: "Shiprocket tracking: status=XXX, awb=XXX, courier=XXX, location=XXX"
+                String status = extractValue(comment, "status=");
+                String location = extractValue(comment, "location=");
+                String awb = extractValue(comment, "awb=");
+                String courier = extractValue(comment, "courier=");
+
+                return OrderTrackingDTO.builder()
+                        .status(status != null ? status : "Update")
+                        .description(status != null ? status : "Tracking update")
+                        .location(location != null ? location : "")
+                        .timestamp(timestamp != null ? timestamp : LocalDateTime.now())
+                        .build();
+            } catch (Exception e) {
+                log.warn("Failed to parse tracking comment: {}", comment, e);
+                return null;
+            }
+        }
+
+        private String extractValue(String text, String key) {
+            if (text == null || key == null) {
+                return null;
+            }
+            int keyIndex = text.indexOf(key);
+            if (keyIndex == -1) {
+                return null;
+            }
+            int startIndex = keyIndex + key.length();
+            int endIndex = text.indexOf(',', startIndex);
+            if (endIndex == -1) {
+                endIndex = text.length();
+            }
+            String value = text.substring(startIndex, endIndex).trim();
+            return value.isEmpty() ? null : value;
+        }
 
         @Override
         public boolean cancelShipment(

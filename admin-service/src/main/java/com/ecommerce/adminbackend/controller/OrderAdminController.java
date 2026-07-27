@@ -98,6 +98,11 @@ public class OrderAdminController {
         return orderAdminService.generateShippingLabel(id);
     }
 
+    @GetMapping("/{id}/tracking")
+    public Map<String, Object> getOrderTracking(@PathVariable Long id) {
+        return orderAdminService.getOrderTracking(id);
+    }
+
     @GetMapping("/{id}/shipping-label/pdf")
     public ResponseEntity<byte[]> downloadShippingLabelPdf(@PathVariable Long id) {
         byte[] pdf = orderAdminService.generateShippingLabelPdf(id);

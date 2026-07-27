@@ -530,6 +530,27 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
         return shiprocketService.syncTracking(order);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public ShiprocketSyncResponse getTracking(Long sellerId, String orderKey) {
+        SellerContext ctx = loadContext(sellerId);
+        Long orderId = resolveOrderId(ctx, orderKey)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderKey));
+        List<OrderItem> sellerItems = ctx.items().stream()
+                .filter(i -> orderId.equals(i.getOrderId()))
+                .toList();
+        if (sellerItems.isEmpty()) {
+            throw new ResourceNotFoundException("Order not found for seller: " + orderKey);
+        }
+        Order order = ctx.order(orderId);
+        if (order == null) {
+            order = buildSyntheticOrder(orderId, sellerItems);
+        }
+        
+        // Return tracking from order's Shiprocket fields (single source of truth from database)
+        return shiprocketService.syncTracking(order);
+    }
+
     private Order buildSyntheticOrder(Long orderId, List<OrderItem> items) {
         Order order = new Order();
         order.setId(orderId);

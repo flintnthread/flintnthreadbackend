@@ -82,6 +82,13 @@ public class OrderController {
         return sellerFinancialService.syncShiprocket(requireSellerId(sellerId), orderKey);
     }
 
+    @GetMapping("/{orderKey}/tracking")
+    public ShiprocketSyncResponse getTracking(
+            @RequestHeader(SELLER_ID_HEADER) Long sellerId,
+            @PathVariable String orderKey) {
+        return sellerFinancialService.getTracking(requireSellerId(sellerId), orderKey);
+    }
+
     private Long resolveSellerId(Long sellerIdHeader, Long sellerIdQuery) {
         return sellerIdHeader != null ? sellerIdHeader : sellerIdQuery;
     }

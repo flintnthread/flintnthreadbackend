@@ -236,6 +236,26 @@ public class OrderController {
                 .getTrackingDetails(awb);
     }
 
+    @GetMapping("/{orderId}/tracking")
+    public ResponseEntity<ApiResponse<OrderTrackingResponseDTO>> getOrderTracking(
+            @PathVariable Long orderId) {
+        
+        try {
+            OrderTrackingResponseDTO tracking = shiprocketService.getTrackingFromDatabase(orderId);
+            return ResponseEntity.ok(
+                    new ApiResponse<>(true, "Tracking details fetched successfully", tracking)
+            );
+        } catch (IllegalArgumentException e) {
+            log.error("Order tracking failed: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        } catch (Exception e) {
+            log.error("Order tracking error: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(new ApiResponse<>(false, "Failed to fetch tracking details", null));
+        }
+    }
+
     @PostMapping(
             "/retry-payment"
     )
