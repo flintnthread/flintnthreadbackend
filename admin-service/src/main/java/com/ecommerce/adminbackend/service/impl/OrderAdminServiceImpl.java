@@ -23,6 +23,8 @@ import com.ecommerce.adminbackend.repository.SizeRepository;
 import com.ecommerce.adminbackend.service.AdminShiprocketService;
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.OrderAdminService;
+import com.ecommerce.adminbackend.service.ShiprocketSyncLogService;
+import com.ecommerce.adminbackend.service.shiprocket.ShiprocketPushOptions;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
 import com.ecommerce.adminbackend.util.MediaUrlHelper;
 import com.ecommerce.adminbackend.util.QrCodeGenerator;
@@ -79,6 +81,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     private final InvoiceSettings invoiceSettings;
     private final MailService mailService;
     private final AdminShiprocketService adminShiprocketService;
+    private final ShiprocketSyncLogService shiprocketSyncLogService;
 
     @Value("${shiprocket.dashboard.url:https://app.shiprocket.in/seller/home}")
     private String shiprocketDashboardUrl;
@@ -501,7 +504,7 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
     @Override
     @Transactional
-    public Map<String, Object> pushToShiprocket(Long id) {
+    public Map<String, Object> pushToShiprocket(Long id, Long sellerId, String productIds, String sellerName) {
         Order order = requireOrder(id);
         validateShiprocketReady(order, id);
 
@@ -522,9 +525,14 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             return response;
         }
 
+        ShiprocketPushOptions pushOptions = ShiprocketPushOptions.of(
+                sellerId,
+                parseProductIds(productIds),
+                sellerName
+        );
+
         try {
-            // Direct Shiprocket API from admin (does not require user-service to be running).
-            Map<String, Object> shiprocket = adminShiprocketService.createOrSyncShipment(order);
+            Map<String, Object> shiprocket = adminShiprocketService.createOrSyncShipment(order, pushOptions);
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("success", true);
             response.put("message", shiprocket.getOrDefault("message", "Shiprocket shipment created"));
@@ -552,6 +560,34 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
             }
             throw new IllegalStateException(friendlyShiprocketError(e), e);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getShiprocketLogs(Long id) {
+        requireOrder(id);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("orderId", id);
+        response.put("logs", shiprocketSyncLogService.getLogsForOrder(id));
+        return response;
+    }
+
+    private static List<Long> parseProductIds(String productIds) {
+        if (productIds == null || productIds.isBlank()) {
+            return List.of();
+        }
+        List<Long> ids = new ArrayList<>();
+        for (String part : productIds.split(",")) {
+            if (part == null || part.isBlank()) {
+                continue;
+            }
+            try {
+                ids.add(Long.parseLong(part.trim()));
+            } catch (NumberFormatException ignored) {
+                // skip invalid token
+            }
+        }
+        return ids;
     }
 
     @Override

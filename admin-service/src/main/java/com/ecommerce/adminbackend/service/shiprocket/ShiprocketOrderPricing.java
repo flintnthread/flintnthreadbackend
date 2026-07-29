@@ -58,10 +58,15 @@ public final class ShiprocketOrderPricing {
                 row.put("name", line.name() != null && !line.name().isBlank() ? line.name() : "Product");
                 row.put("sku", line.sku() != null && !line.sku().isBlank() ? line.sku() : "SKU");
                 row.put("units", units);
-                row.put("selling_price", unit);
+                row.put("selling_price", unit.doubleValue());
                 row.put("hsn", line.hsn() != null && !line.hsn().isBlank() ? line.hsn() : "0000");
                 orderItems.add(row);
             }
+        }
+
+        // When order total is missing/zero but line items have value, use item gross (fixes COD grand_total=0).
+        if (orderTotal.compareTo(BigDecimal.ZERO) <= 0 && itemsGross.compareTo(BigDecimal.ZERO) > 0) {
+            orderTotal = itemsGross;
         }
 
         // sub_total MUST equal FNT order total — same price as order placing.
@@ -77,9 +82,9 @@ public final class ShiprocketOrderPricing {
                 BigDecimal gap = subTotal.subtract(itemsGross);
                 Map<String, Object> last = orderItems.get(orderItems.size() - 1);
                 int units = ((Number) last.get("units")).intValue();
-                BigDecimal currentUnit = (BigDecimal) last.get("selling_price");
+                double currentUnit = ((Number) last.get("selling_price")).doubleValue();
                 BigDecimal perUnitBump = gap.divide(BigDecimal.valueOf(units), 2, RoundingMode.HALF_UP);
-                last.put("selling_price", money(currentUnit.add(perUnitBump)));
+                last.put("selling_price", money(BigDecimal.valueOf(currentUnit).add(perUnitBump)).doubleValue());
                 itemsGross = itemsGross.add(perUnitBump.multiply(BigDecimal.valueOf(units)));
                 BigDecimal leftover = itemsGross.subtract(subTotal);
                 if (leftover.compareTo(BigDecimal.ZERO) > 0) {
@@ -95,6 +100,13 @@ public final class ShiprocketOrderPricing {
             totalDiscount = storedDiscount;
         }
 
+        // Ensure line-item math never zeroes out a positive COD sub_total.
+        if (subTotal.compareTo(BigDecimal.ZERO) > 0 && itemsGross.compareTo(BigDecimal.ZERO) <= 0 && !orderItems.isEmpty()) {
+            distributeAmountAcrossItems(orderItems, subTotal);
+            itemsGross = subTotal;
+            totalDiscount = BigDecimal.ZERO;
+        }
+
         // shipping_charges = 0: shipping is already inside orderTotal / sub_total.
         // Passing shipping again would change the Shiprocket displayed/COD price.
         return new PricedPayload(
@@ -104,6 +116,47 @@ public final class ShiprocketOrderPricing {
                 money(totalDiscount),
                 money(orderTotal)
         );
+    }
+
+    /** Shiprocket grand_total = sum(units * selling_price) + shipping - discount; must stay > 0 for COD. */
+    public static BigDecimal computeGrandTotal(PricedPayload priced) {
+        if (priced == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal items = BigDecimal.ZERO;
+        for (Map<String, Object> row : priced.orderItems()) {
+            int units = ((Number) row.get("units")).intValue();
+            double unit = ((Number) row.get("selling_price")).doubleValue();
+            items = items.add(BigDecimal.valueOf(unit).multiply(BigDecimal.valueOf(units)));
+        }
+        return money(items.add(priced.shippingCharges()).subtract(priced.totalDiscount()));
+    }
+
+    private static void distributeAmountAcrossItems(List<Map<String, Object>> orderItems, BigDecimal amount) {
+        if (orderItems.isEmpty()) {
+            return;
+        }
+        int totalUnits = orderItems.stream()
+                .mapToInt(row -> ((Number) row.get("units")).intValue())
+                .sum();
+        if (totalUnits <= 0) {
+            orderItems.get(0).put("selling_price", money(amount).doubleValue());
+            return;
+        }
+        BigDecimal remaining = money(amount);
+        for (int i = 0; i < orderItems.size(); i++) {
+            Map<String, Object> row = orderItems.get(i);
+            int units = ((Number) row.get("units")).intValue();
+            BigDecimal lineAmount;
+            if (i == orderItems.size() - 1) {
+                lineAmount = remaining;
+            } else {
+                lineAmount = amount.multiply(BigDecimal.valueOf(units))
+                        .divide(BigDecimal.valueOf(totalUnits), 2, RoundingMode.HALF_UP);
+                remaining = remaining.subtract(lineAmount);
+            }
+            row.put("selling_price", money(lineAmount.divide(BigDecimal.valueOf(units), 2, RoundingMode.HALF_UP)).doubleValue());
+        }
     }
 
     static BigDecimal resolveUnitPrice(BigDecimal unitPrice, BigDecimal lineTotal, int units) {
