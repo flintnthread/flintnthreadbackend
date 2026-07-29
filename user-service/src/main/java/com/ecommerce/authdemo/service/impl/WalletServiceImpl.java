@@ -3,24 +3,33 @@ package com.ecommerce.authdemo.service.impl;
 import com.ecommerce.authdemo.dto.WalletResponse;
 import com.ecommerce.authdemo.dto.WalletTransactionResponse;
 import com.ecommerce.authdemo.entity.UserWallet;
+import com.ecommerce.authdemo.entity.UserWalletTransaction;
 import com.ecommerce.authdemo.entity.WalletTransaction;
 import com.ecommerce.authdemo.exception.ResourceNotFoundException;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.UserWalletRepository;
+import com.ecommerce.authdemo.repository.UserWalletTransactionRepository;
 import com.ecommerce.authdemo.repository.WalletTransactionRepository;
 import com.ecommerce.authdemo.service.WalletService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class WalletServiceImpl implements WalletService {
 
     private static final String CANCEL_REFUND_DESC_PREFIX = "FNT_ORDER_CANCEL_REFUND:";
@@ -28,7 +37,9 @@ public class WalletServiceImpl implements WalletService {
 
     private final UserWalletRepository walletRepo;
     private final WalletTransactionRepository walletTransactionRepo;
+    private final UserWalletTransactionRepository userWalletTransactionRepo;
     private final OrderRepository orderRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     @Transactional
@@ -71,7 +82,7 @@ public class WalletServiceImpl implements WalletService {
         wallet.setTotalEarned(safe(wallet.getTotalEarned()).add(value));
         walletRepo.save(wallet);
 
-        walletTransactionRepo.save(
+        persistLedgerRow(
                 WalletTransaction.builder()
                         .userId(userId)
                         .amount(value)
@@ -113,7 +124,7 @@ public class WalletServiceImpl implements WalletService {
         String label = razorpayOrderId != null && !razorpayOrderId.isBlank()
                 ? " (Razorpay " + razorpayOrderId.trim() + ")"
                 : "";
-        walletTransactionRepo.save(
+        persistLedgerRow(
                 WalletTransaction.builder()
                         .userId(userId)
                         .amount(value)
@@ -139,7 +150,7 @@ public class WalletServiceImpl implements WalletService {
         wallet.setTotalSpent(safe(wallet.getTotalSpent()).add(value));
         walletRepo.save(wallet);
 
-        walletTransactionRepo.save(
+        persistLedgerRow(
                 WalletTransaction.builder()
                         .userId(userId)
                         .amount(value)
@@ -175,7 +186,7 @@ public class WalletServiceImpl implements WalletService {
         wallet.setTotalEarned(safe(wallet.getTotalEarned()).add(value));
         walletRepo.save(wallet);
 
-        walletTransactionRepo.save(
+        persistLedgerRow(
                 WalletTransaction.builder()
                         .userId(userId)
                         .orderId(orderId != null ? Math.toIntExact(orderId) : null)
@@ -215,7 +226,7 @@ public class WalletServiceImpl implements WalletService {
         wallet.setTotalEarned(safe(wallet.getTotalEarned()).add(value));
         walletRepo.save(wallet);
 
-        walletTransactionRepo.save(
+        persistLedgerRow(
                 WalletTransaction.builder()
                         .userId(userId)
                         .orderId(orderId != null ? Math.toIntExact(orderId) : null)
@@ -257,7 +268,7 @@ public class WalletServiceImpl implements WalletService {
                 ? orderNumber
                 : String.valueOf(orderId);
 
-        walletTransactionRepo.save(
+        persistLedgerRow(
                 WalletTransaction.builder()
                         .userId(userId)
                         .orderId(orderId != null ? Math.toIntExact(orderId) : null)
@@ -298,13 +309,190 @@ public class WalletServiceImpl implements WalletService {
 
     @Override
     public List<WalletTransactionResponse> getTransactionsForUser(Integer userId) {
-        return walletTransactionRepo.findByUserId(userId).stream()
+        if (userId == null || userId <= 0) {
+            return List.of();
+        }
+
+        Map<String, WalletTransactionResponse> merged = new LinkedHashMap<>();
+
+        for (WalletTransactionResponse row : loadPrimaryWalletTransactions(userId)) {
+            merged.putIfAbsent(transactionDedupeKey(row), row);
+        }
+        for (WalletTransactionResponse row : loadLegacyUserWalletTransactions(userId)) {
+            merged.putIfAbsent(transactionDedupeKey(row), row);
+        }
+        for (WalletTransactionResponse row : loadWalletTransactionsViaJdbc(userId)) {
+            merged.putIfAbsent(transactionDedupeKey(row), row);
+        }
+
+        return merged.values().stream()
                 .sorted(Comparator.comparing(
-                        WalletTransaction::getCreatedAt,
+                        WalletTransactionResponse::getCreatedAt,
                         Comparator.nullsLast(Comparator.reverseOrder())
                 ))
-                .map(this::toTransactionResponse)
                 .toList();
+    }
+
+    private List<WalletTransactionResponse> loadPrimaryWalletTransactions(Integer userId) {
+        try {
+            return walletTransactionRepo.findByUserId(userId).stream()
+                    .map(this::toTransactionResponse)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("[WALLET] JPA wallet_transactions lookup failed userId={}: {}", userId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<WalletTransactionResponse> loadLegacyUserWalletTransactions(Integer userId) {
+        try {
+            return userWalletTransactionRepo.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                    .map(this::toTransactionResponse)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("[WALLET] user_wallet_transactions lookup failed userId={}: {}", userId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Fallback when the owner column is seller_id or user_id and JPA mapping misses rows.
+     */
+    private List<WalletTransactionResponse> loadWalletTransactionsViaJdbc(Integer userId) {
+        try {
+            String ownerColumn = resolveWalletTxnOwnerColumn();
+            if (ownerColumn == null) {
+                return List.of();
+            }
+            String sql =
+                    "SELECT id, " + ownerColumn + " AS owner_id, order_id, amount, type, description, created_by, created_at "
+                            + "FROM wallet_transactions WHERE `" + ownerColumn + "` = ? "
+                            + "ORDER BY created_at DESC, id DESC";
+            return jdbcTemplate.query(sql, (rs, rowNum) -> {
+                String typeRaw = rs.getString("type");
+                WalletTransaction.Type type =
+                        typeRaw != null && typeRaw.equalsIgnoreCase("debit")
+                                ? WalletTransaction.Type.debit
+                                : WalletTransaction.Type.credit;
+                Timestamp createdTs = rs.getTimestamp("created_at");
+                LocalDateTime createdAt = createdTs != null ? createdTs.toLocalDateTime() : null;
+                Integer orderId = rs.getObject("order_id") != null ? rs.getInt("order_id") : null;
+                String orderNumber = null;
+                if (orderId != null && orderId > 0) {
+                    orderNumber = orderRepository.findById(orderId.longValue())
+                            .map(order -> order.getOrderNumber())
+                            .filter(num -> num != null && !num.isBlank())
+                            .orElse(null);
+                }
+                return WalletTransactionResponse.builder()
+                        .id(rs.getInt("id"))
+                        .userId(rs.getInt("owner_id"))
+                        .orderId(orderId)
+                        .orderNumber(orderNumber)
+                        .amount(rs.getBigDecimal("amount"))
+                        .type(type)
+                        .description(rs.getString("description"))
+                        .createdBy(rs.getObject("created_by") != null ? rs.getInt("created_by") : null)
+                        .createdAt(createdAt)
+                        .build();
+            }, userId);
+        } catch (Exception e) {
+            log.warn("[WALLET] JDBC wallet_transactions lookup failed userId={}: {}", userId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private String resolveWalletTxnOwnerColumn() {
+        try {
+            List<String> columns = jdbcTemplate.queryForList(
+                    """
+                    SELECT COLUMN_NAME
+                    FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = 'wallet_transactions'
+                      AND COLUMN_NAME IN ('seller_id', 'user_id')
+                    ORDER BY FIELD(COLUMN_NAME, 'seller_id', 'user_id')
+                    """,
+                    String.class
+            );
+            return columns.isEmpty() ? null : columns.get(0);
+        } catch (Exception e) {
+            return "seller_id";
+        }
+    }
+
+    private String transactionDedupeKey(WalletTransactionResponse row) {
+        if (row == null) return "null";
+        if (row.getId() != null && row.getId() > 0) {
+            return "id:" + row.getId() + ":" + (row.getType() != null ? row.getType().name() : "");
+        }
+        return String.join(
+                "|",
+                String.valueOf(row.getAmount()),
+                row.getType() != null ? row.getType().name() : "",
+                String.valueOf(row.getOrderId()),
+                String.valueOf(row.getDescription()),
+                String.valueOf(row.getCreatedAt())
+        );
+    }
+
+    private WalletTransactionResponse toTransactionResponse(UserWalletTransaction row) {
+        String orderNumber = null;
+        if (row.getOrderId() != null && row.getOrderId() > 0) {
+            orderNumber = orderRepository.findById(row.getOrderId().longValue())
+                    .map(order -> order.getOrderNumber())
+                    .filter(num -> num != null && !num.isBlank())
+                    .orElse(null);
+        }
+        if (orderNumber == null) {
+            String desc = row.getDescription() != null ? row.getDescription() : "";
+            java.util.regex.Matcher matcher =
+                    java.util.regex.Pattern.compile("(FNT\\d{10,})").matcher(desc);
+            if (matcher.find()) {
+                orderNumber = matcher.group(1);
+            }
+        }
+        WalletTransaction.Type type =
+                row.getType() == UserWalletTransaction.Type.debit
+                        ? WalletTransaction.Type.debit
+                        : WalletTransaction.Type.credit;
+        return WalletTransactionResponse.builder()
+                .id(row.getId())
+                .userId(row.getUserId())
+                .orderId(row.getOrderId())
+                .orderNumber(orderNumber)
+                .amount(row.getAmount())
+                .type(type)
+                .description(row.getDescription())
+                .createdBy(row.getUserId())
+                .createdAt(row.getCreatedAt())
+                .build();
+    }
+
+    /** Persist ledger row to both tables so history stays available across schema variants. */
+    private void persistLedgerRow(WalletTransaction row) {
+        walletTransactionRepo.save(row);
+        try {
+            userWalletTransactionRepo.save(
+                    UserWalletTransaction.builder()
+                            .userId(row.getUserId())
+                            .orderId(row.getOrderId())
+                            .amount(row.getAmount())
+                            .type(
+                                    row.getType() == WalletTransaction.Type.debit
+                                            ? UserWalletTransaction.Type.debit
+                                            : UserWalletTransaction.Type.credit
+                            )
+                            .description(row.getDescription())
+                            .build()
+            );
+        } catch (Exception e) {
+            log.warn(
+                    "[WALLET] Mirror write to user_wallet_transactions failed userId={}: {}",
+                    row.getUserId(),
+                    e.getMessage()
+            );
+        }
     }
 
     private UserWallet requireWallet(Integer userId) {
