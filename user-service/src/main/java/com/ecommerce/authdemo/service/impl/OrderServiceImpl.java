@@ -2794,7 +2794,7 @@ public class OrderServiceImpl implements OrderService {
                 ? publicWebBaseUrl.replaceAll("/+$", "")
                 : "https://flintnthread.in";
         String orderNumber = order.getOrderNumber() != null ? order.getOrderNumber() : "";
-        return base + "/order-view.html?orderId=" + order.getId()
+        return base + "/order-view-app.html?orderId=" + order.getId()
                 + "&orderNumber=" + java.net.URLEncoder.encode(
                 orderNumber,
                 java.nio.charset.StandardCharsets.UTF_8

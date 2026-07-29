@@ -236,19 +236,27 @@ public class InvoiceServiceImpl implements InvoiceService {
         }
         String style = """
                 <style id="fnt-invoice-mobile-download-style">
-                html,body{margin:0 auto!important;padding:0!important;width:100%!important;max-width:100%!important;background:#fff!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-                .wrap,.fnt-invoice-sheet,.page{width:100%!important;max-width:794px!important;min-width:0!important;margin:0 auto!important;padding:8px 10px!important;box-sizing:border-box!important}
-                .invoice-header-table,.invoice-addr-table,.items-table{width:100%!important;table-layout:fixed!important}
-                .brand-logo-img{width:180px!important;max-width:100%!important;height:auto!important;display:block!important;object-fit:contain!important}
+                html,body{margin:0 auto!important;padding:0!important;width:100%!important;max-width:100%!important;background:#fff!important;overflow-x:auto!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;-webkit-text-size-adjust:100%}
+                .wrap,.fnt-invoice-sheet,.page{width:100%!important;max-width:100%!important;min-width:0!important;margin:0 auto!important;padding:8px 10px!important;box-sizing:border-box!important}
+                .invoice-header-table,.invoice-addr-table{width:100%!important;table-layout:fixed!important}
+                .table-wrap{width:100%!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
+                .items-table{width:100%!important;min-width:520px!important;table-layout:auto!important}
+                .items-table th,.items-table td{font-size:9px!important;padding:4px 3px!important;word-break:break-word!important}
+                .items-table td.right,.items-table td.num{white-space:nowrap!important}
+                .gst-box,.totals-block,.payment-block{max-width:100%!important;overflow-wrap:anywhere!important;box-sizing:border-box!important}
+                .brand-logo-img{width:140px!important;max-width:100%!important;height:auto!important;display:block!important;object-fit:contain!important}
                 .qr-img{width:72px!important;height:72px!important;max-width:72px!important;max-height:72px!important}
                 img{max-width:100%!important;height:auto!important;object-fit:contain!important}
-                .fnt-invoice-toolbar{position:sticky;top:0;z-index:9;display:flex;justify-content:flex-end;padding:8px 12px;background:rgba(255,255,255,.96);border-bottom:1px solid #e5e7eb}
-                .fnt-invoice-toolbar button{padding:10px 16px;border-radius:8px;background:#ea580c;color:#fff;font-weight:600;border:0;cursor:pointer}
+                .fnt-invoice-toolbar{position:sticky;top:0;z-index:9;display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;background:rgba(255,255,255,.96);border-bottom:1px solid #e5e7eb}
+                .fnt-invoice-toolbar button{padding:10px 16px;border-radius:8px;color:#fff;font-weight:600;border:0;cursor:pointer}
+                .fnt-invoice-toolbar .fnt-dl{background:#28a745}
+                .fnt-invoice-toolbar .fnt-print{background:#dc3545}
                 @media print{.fnt-invoice-toolbar{display:none!important}}
-                @media(min-width:820px){html,body{width:794px!important;max-width:794px!important}.wrap,.fnt-invoice-sheet,.page{width:794px!important;min-width:794px!important;padding:0!important}}
+                @media(max-width:760px){.invoice-header-table,.invoice-addr-table{display:block!important;width:100%!important}.invoice-header-table tr,.invoice-addr-table tr{display:block!important;width:100%!important}.invoice-header-table td,.invoice-addr-table td,.header-left,.header-right-cell,.addr-col-bill,.addr-col-ship{display:block!important;width:100%!important;max-width:100%!important;padding-left:0!important;padding-right:0!important;padding-bottom:10px!important}.fnt-invoice-toolbar{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}}
+                @media(min-width:820px){html,body{width:794px!important;max-width:794px!important}.wrap,.fnt-invoice-sheet,.page{width:794px!important;min-width:794px!important;padding:0!important}.items-table{min-width:0!important}}
                 @page{size:A4 portrait;margin:7mm}
                 </style>
-                <div class="fnt-invoice-toolbar"><button type="button" onclick="window.print()">Download Invoice</button></div>
+                <div class="fnt-invoice-toolbar"><button class="fnt-dl" type="button" onclick="window.print()">Download</button><button class="fnt-print" type="button" onclick="window.print()">Print</button></div>
                 """;
         if (html.contains("fnt-invoice-mobile-download-style")) {
             return html;
