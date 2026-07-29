@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -325,6 +326,12 @@ public class WalletServiceImpl implements WalletService {
             merged.putIfAbsent(transactionDedupeKey(row), row);
         }
 
+        if (merged.isEmpty()) {
+            for (WalletTransactionResponse row : reconstructTransactionsFromOrders(userId)) {
+                merged.putIfAbsent(transactionDedupeKey(row), row);
+            }
+        }
+
         return merged.values().stream()
                 .sorted(Comparator.comparing(
                         WalletTransactionResponse::getCreatedAt,
@@ -359,66 +366,160 @@ public class WalletServiceImpl implements WalletService {
      * Fallback when the owner column is seller_id or user_id and JPA mapping misses rows.
      */
     private List<WalletTransactionResponse> loadWalletTransactionsViaJdbc(Integer userId) {
-        try {
-            String ownerColumn = resolveWalletTxnOwnerColumn();
-            if (ownerColumn == null) {
-                return List.of();
+        List<WalletTransactionResponse> out = new ArrayList<>();
+        for (String ownerColumn : List.of("seller_id", "user_id")) {
+            if (!walletTxnColumnExists(ownerColumn)) {
+                continue;
             }
-            String sql =
-                    "SELECT id, " + ownerColumn + " AS owner_id, order_id, amount, type, description, created_by, created_at "
-                            + "FROM wallet_transactions WHERE `" + ownerColumn + "` = ? "
-                            + "ORDER BY created_at DESC, id DESC";
-            return jdbcTemplate.query(sql, (rs, rowNum) -> {
-                String typeRaw = rs.getString("type");
-                WalletTransaction.Type type =
-                        typeRaw != null && typeRaw.equalsIgnoreCase("debit")
-                                ? WalletTransaction.Type.debit
-                                : WalletTransaction.Type.credit;
-                Timestamp createdTs = rs.getTimestamp("created_at");
-                LocalDateTime createdAt = createdTs != null ? createdTs.toLocalDateTime() : null;
-                Integer orderId = rs.getObject("order_id") != null ? rs.getInt("order_id") : null;
-                String orderNumber = null;
-                if (orderId != null && orderId > 0) {
-                    orderNumber = orderRepository.findById(orderId.longValue())
-                            .map(order -> order.getOrderNumber())
-                            .filter(num -> num != null && !num.isBlank())
-                            .orElse(null);
-                }
-                return WalletTransactionResponse.builder()
-                        .id(rs.getInt("id"))
-                        .userId(rs.getInt("owner_id"))
-                        .orderId(orderId)
-                        .orderNumber(orderNumber)
-                        .amount(rs.getBigDecimal("amount"))
-                        .type(type)
-                        .description(rs.getString("description"))
-                        .createdBy(rs.getObject("created_by") != null ? rs.getInt("created_by") : null)
-                        .createdAt(createdAt)
-                        .build();
-            }, userId);
-        } catch (Exception e) {
-            log.warn("[WALLET] JDBC wallet_transactions lookup failed userId={}: {}", userId, e.getMessage());
-            return List.of();
+            try {
+                String sql =
+                        "SELECT id, `" + ownerColumn + "` AS owner_id, order_id, amount, type, description, created_by, created_at "
+                                + "FROM wallet_transactions WHERE `" + ownerColumn + "` = ? "
+                                + "ORDER BY created_at DESC, id DESC";
+                out.addAll(jdbcTemplate.query(sql, (rs, rowNum) -> mapJdbcWalletTxn(rs), userId));
+            } catch (Exception e) {
+                log.warn(
+                        "[WALLET] JDBC wallet_transactions lookup failed userId={} col={}: {}",
+                        userId,
+                        ownerColumn,
+                        e.getMessage()
+                );
+            }
         }
+        return out;
     }
 
-    private String resolveWalletTxnOwnerColumn() {
+    private WalletTransactionResponse mapJdbcWalletTxn(java.sql.ResultSet rs) throws java.sql.SQLException {
+        String typeRaw = rs.getString("type");
+        WalletTransaction.Type type =
+                typeRaw != null && typeRaw.equalsIgnoreCase("debit")
+                        ? WalletTransaction.Type.debit
+                        : WalletTransaction.Type.credit;
+        Timestamp createdTs = rs.getTimestamp("created_at");
+        LocalDateTime createdAt = createdTs != null ? createdTs.toLocalDateTime() : null;
+        Integer orderId = rs.getObject("order_id") != null ? rs.getInt("order_id") : null;
+        String orderNumber = null;
+        if (orderId != null && orderId > 0) {
+            orderNumber = orderRepository.findById(orderId.longValue())
+                    .map(order -> order.getOrderNumber())
+                    .filter(num -> num != null && !num.isBlank())
+                    .orElse(null);
+        }
+        return WalletTransactionResponse.builder()
+                .id(rs.getInt("id"))
+                .userId(rs.getInt("owner_id"))
+                .orderId(orderId)
+                .orderNumber(orderNumber)
+                .amount(rs.getBigDecimal("amount"))
+                .type(type)
+                .description(rs.getString("description"))
+                .createdBy(rs.getObject("created_by") != null ? rs.getInt("created_by") : null)
+                .createdAt(createdAt)
+                .build();
+    }
+
+    private boolean walletTxnColumnExists(String column) {
         try {
-            List<String> columns = jdbcTemplate.queryForList(
+            Integer count = jdbcTemplate.queryForObject(
                     """
-                    SELECT COLUMN_NAME
+                    SELECT COUNT(*)
                     FROM information_schema.COLUMNS
                     WHERE TABLE_SCHEMA = DATABASE()
                       AND TABLE_NAME = 'wallet_transactions'
-                      AND COLUMN_NAME IN ('seller_id', 'user_id')
-                    ORDER BY FIELD(COLUMN_NAME, 'seller_id', 'user_id')
+                      AND COLUMN_NAME = ?
                     """,
-                    String.class
+                    Integer.class,
+                    column
             );
-            return columns.isEmpty() ? null : columns.get(0);
+            return count != null && count > 0;
         } catch (Exception e) {
-            return "seller_id";
+            return false;
         }
+    }
+
+    /**
+     * When ledger tables are empty but wallet totals exist, rebuild visible history from orders
+     * (checkout wallet usage + wallet balance summary credits).
+     */
+    private List<WalletTransactionResponse> reconstructTransactionsFromOrders(Integer userId) {
+        List<WalletTransactionResponse> rows = new ArrayList<>();
+        BigDecimal debitSum = BigDecimal.ZERO;
+        try {
+            List<com.ecommerce.authdemo.entity.Order> orders =
+                    orderRepository.findByUserIdOrderByCreatedAtDesc(userId.longValue());
+            int synthId = -1;
+            for (com.ecommerce.authdemo.entity.Order order : orders) {
+                if (order == null) continue;
+                Double walletUsed = order.getWalletAmountUsed();
+                if (walletUsed == null || walletUsed <= 0.009d) continue;
+                BigDecimal amount = BigDecimal.valueOf(walletUsed).setScale(2, RoundingMode.HALF_UP);
+                debitSum = debitSum.add(amount);
+                rows.add(WalletTransactionResponse.builder()
+                        .id(synthId--)
+                        .userId(userId)
+                        .orderId(order.getId() != null ? Math.toIntExact(order.getId()) : null)
+                        .orderNumber(order.getOrderNumber())
+                        .amount(amount)
+                        .type(WalletTransaction.Type.debit)
+                        .description("Used at checkout"
+                                + (order.getOrderNumber() != null && !order.getOrderNumber().isBlank()
+                                ? " · " + order.getOrderNumber().trim()
+                                : ""))
+                        .createdBy(userId)
+                        .createdAt(order.getCreatedAt())
+                        .build());
+            }
+        } catch (Exception e) {
+            log.warn("[WALLET] order-based history rebuild failed userId={}: {}", userId, e.getMessage());
+        }
+
+        try {
+            UserWallet wallet = walletRepo.findByUserId(userId).orElse(null);
+            if (wallet == null) {
+                return rows;
+            }
+            BigDecimal totalEarned = safe(wallet.getTotalEarned());
+            BigDecimal totalSpent = safe(wallet.getTotalSpent());
+            BigDecimal balance = safe(wallet.getBalance());
+
+            BigDecimal remainingDebit = totalSpent.subtract(debitSum);
+            if (remainingDebit.compareTo(new BigDecimal("0.01")) >= 0) {
+                rows.add(WalletTransactionResponse.builder()
+                        .id(-900001)
+                        .userId(userId)
+                        .amount(remainingDebit.setScale(2, RoundingMode.HALF_UP))
+                        .type(WalletTransaction.Type.debit)
+                        .description("Wallet used on earlier checkouts")
+                        .createdBy(userId)
+                        .createdAt(wallet.getUpdatedAt() != null ? wallet.getUpdatedAt() : wallet.getCreatedAt())
+                        .build());
+            }
+
+            if (totalEarned.compareTo(new BigDecimal("0.01")) >= 0) {
+                rows.add(WalletTransactionResponse.builder()
+                        .id(-900002)
+                        .userId(userId)
+                        .amount(totalEarned.setScale(2, RoundingMode.HALF_UP))
+                        .type(WalletTransaction.Type.credit)
+                        .description("Refunds & wallet credits")
+                        .createdBy(userId)
+                        .createdAt(wallet.getCreatedAt())
+                        .build());
+            } else if (rows.isEmpty() && balance.compareTo(new BigDecimal("0.01")) >= 0) {
+                rows.add(WalletTransactionResponse.builder()
+                        .id(-900003)
+                        .userId(userId)
+                        .amount(balance.setScale(2, RoundingMode.HALF_UP))
+                        .type(WalletTransaction.Type.credit)
+                        .description("Available FNT Wallet balance")
+                        .createdBy(userId)
+                        .createdAt(wallet.getUpdatedAt() != null ? wallet.getUpdatedAt() : wallet.getCreatedAt())
+                        .build());
+            }
+        } catch (Exception e) {
+            log.warn("[WALLET] wallet-summary history rebuild failed userId={}: {}", userId, e.getMessage());
+        }
+        return rows;
     }
 
     private String transactionDedupeKey(WalletTransactionResponse row) {
