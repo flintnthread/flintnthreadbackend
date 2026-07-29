@@ -21,9 +21,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -602,11 +606,188 @@ public class ProductServiceImpl implements ProductService {
             return Page.empty(pageable);
         }
 
-        return productRepo
-                .advancedSearch(keyword.trim(), pageable)
-                .map(mapper::toDTO);
+        String trimmed = keyword.trim();
+        List<String> tokens = tokenizeSearchKeyword(trimmed);
+        if (tokens.isEmpty()) {
+            return productRepo.advancedSearch(trimmed, pageable).map(mapper::toDTO);
+        }
+
+        // Single simple token → existing phrase LIKE is enough.
+        if (tokens.size() == 1 && aliasesForToken(tokens.get(0)).size() <= 1) {
+            return productRepo.advancedSearch(tokens.get(0), pageable).map(mapper::toDTO);
+        }
+
+        // Multi-word queries ("mens t-shirt"): phrase LIKE fails because catalog names
+        // are like "Men's … T-Shirt". Fetch candidates by the most selective token,
+        // expand aliases (t-shirt/tshirt), then AND-filter all tokens in memory.
+        String primary = selectPrimarySearchToken(tokens);
+        int fetchSize = Math.min(500, Math.max(120, pageable.getPageSize() * 12));
+        Pageable fetchPage = PageRequest.of(0, fetchSize);
+
+        Map<Long, Product> byId = new LinkedHashMap<>();
+        for (String probe : aliasesForToken(primary)) {
+            for (Product product : productRepo.advancedSearch(probe, fetchPage).getContent()) {
+                if (product.getId() != null) {
+                    byId.putIfAbsent(product.getId(), product);
+                }
+            }
+        }
+        // Also try the raw phrase in case it uniquely matches.
+        for (Product product : productRepo.advancedSearch(trimmed, fetchPage).getContent()) {
+            if (product.getId() != null) {
+                byId.putIfAbsent(product.getId(), product);
+            }
+        }
+
+        List<Product> matched = byId.values().stream()
+                .filter(product -> productMatchesSearchTokens(product, tokens))
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        if (start >= matched.size()) {
+            return new PageImpl<>(List.of(), pageable, matched.size());
+        }
+        int end = Math.min(start + pageable.getPageSize(), matched.size());
+        List<ProductDTO> slice = matched.subList(start, end).stream()
+                .map(mapper::toDTO)
+                .toList();
+        return new PageImpl<>(slice, pageable, matched.size());
     }
 
+    /** Split / normalize shopper queries into searchable tokens. */
+    static List<String> tokenizeSearchKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        String normalized = keyword.toLowerCase(Locale.ROOT)
+                .replace('’', '\'')
+                .replaceAll("\\b(men's|mens|man)\\b", "men")
+                .replaceAll("\\b(women's|womens|woman|ladies|lady)\\b", "women")
+                .replaceAll("\\b(kid's|kids|kid|boys?|girls?|children)\\b", "kids")
+                .replaceAll("\\bt\\s*-?\\s*shirts?\\b", "tshirt")
+                .replaceAll("\\btees?\\b", "tshirt")
+                .replaceAll("[^a-z0-9\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
 
+        Set<String> stop = Set.of(
+                "a", "an", "the", "for", "of", "and", "or", "in", "on", "to", "with", "from"
+        );
+        List<String> tokens = new ArrayList<>();
+        for (String part : normalized.split(" ")) {
+            if (part.length() < 2 || stop.contains(part)) {
+                continue;
+            }
+            tokens.add(part);
+        }
+        return tokens;
+    }
+
+    static String selectPrimarySearchToken(List<String> tokens) {
+        // Prefer product-type tokens over gender so we don't pull the whole Men catalog.
+        for (String token : tokens) {
+            if (!isGenderToken(token) && token.length() >= 4) {
+                return token;
+            }
+        }
+        return tokens.get(tokens.size() - 1);
+    }
+
+    static List<String> aliasesForToken(String token) {
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (token == null || token.isBlank()) {
+            return List.of();
+        }
+        out.add(token);
+        if ("tshirt".equals(token)) {
+            out.add("t-shirt");
+            out.add("tshirts");
+            out.add("tee");
+            out.add("tees");
+        } else if ("men".equals(token)) {
+            out.add("mens");
+            out.add("man's");
+            out.add("men's");
+        } else if ("women".equals(token)) {
+            out.add("womens");
+            out.add("woman");
+            out.add("women's");
+            out.add("ladies");
+        }
+        return new ArrayList<>(out);
+    }
+
+    static boolean isGenderToken(String token) {
+        return "men".equals(token) || "women".equals(token) || "kids".equals(token)
+                || "unisex".equals(token);
+    }
+
+    private static boolean productMatchesSearchTokens(Product product, List<String> tokens) {
+        String gender = normalizeSearchBlob(product.getGender());
+        String blob = normalizeSearchBlob(String.join(" ",
+                nullToEmpty(product.getName()),
+                nullToEmpty(product.getShortDescription()),
+                nullToEmpty(product.getDescription()),
+                nullToEmpty(product.getFeatures()),
+                nullToEmpty(product.getGender())
+        ));
+        for (String token : tokens) {
+            if (!tokenMatchesProduct(token, blob, gender)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean tokenMatchesProduct(String token, String blob, String gender) {
+        if ("men".equals(token)) {
+            if (gender.contains("women")) {
+                return false;
+            }
+            if (gender.contains("men") || gender.contains("male") || gender.contains("unisex")) {
+                return true;
+            }
+            // Avoid matching "women" / "womens" via substring "men".
+            if (blob.contains("women")) {
+                return blob.contains(" men ") || blob.startsWith("men ") || blob.contains("mens");
+            }
+            return blob.contains("men");
+        }
+        if ("women".equals(token)) {
+            return gender.contains("women") || gender.contains("female") || gender.contains("lady")
+                    || gender.contains("unisex")
+                    || blob.contains("women") || blob.contains("lady") || blob.contains("ladies");
+        }
+        if ("kids".equals(token)) {
+            return gender.contains("kid") || gender.contains("boy") || gender.contains("girl")
+                    || gender.contains("child") || gender.contains("unisex")
+                    || blob.contains("kid") || blob.contains("boy") || blob.contains("girl")
+                    || blob.contains("child");
+        }
+        for (String alias : aliasesForToken(token)) {
+            String needle = normalizeSearchBlob(alias);
+            if (!needle.isEmpty() && blob.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeSearchBlob(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        return raw.toLowerCase(Locale.ROOT)
+                .replace('’', '\'')
+                .replace("'", "")
+                .replace("-", "")
+                .replaceAll("[^a-z0-9\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
 
 }
