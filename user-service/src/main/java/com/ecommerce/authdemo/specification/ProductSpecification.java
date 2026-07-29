@@ -3,16 +3,16 @@ package com.ecommerce.authdemo.specification;
 import com.ecommerce.authdemo.dto.EnhancedProductFilterRequestDTO;
 import com.ecommerce.authdemo.entity.Product;
 import com.ecommerce.authdemo.entity.ProductVariant;
-import com.ecommerce.authdemo.entity.ProductColor;
-import com.ecommerce.authdemo.entity.ProductSize;
 import com.ecommerce.authdemo.entity.Category;
 import com.ecommerce.authdemo.util.ProductCatalogVisibility;
 import jakarta.persistence.criteria.*;
 import org.springframework.data.jpa.domain.Specification;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 public class ProductSpecification {
 
@@ -91,34 +91,18 @@ public class ProductSpecification {
                 }
             }
 
-            // Color filter - Use new many-to-many relationship
-            if ((request.getColorIds() != null && !request.getColorIds().isEmpty()) ||
-                    (request.getColorNames() != null && !request.getColorNames().isEmpty())) {
-
-                Join<Product, ProductColor> colorJoin = root.join("productColors", JoinType.INNER);
-
-                if (request.getColorIds() != null && !request.getColorIds().isEmpty()) {
-                    predicates.add(colorJoin.get("color").get("id").in(request.getColorIds()));
-                }
-
-                if (request.getColorNames() != null && !request.getColorNames().isEmpty()) {
-                    predicates.add(colorJoin.get("color").get("name").in(request.getColorNames()));
-                }
+            // Color filter — variants store color id (e.g. "1") and/or free-text name ("Red")
+            List<String> colorTokens = collectColorTokens(request);
+            if (!colorTokens.isEmpty()) {
+                Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.INNER);
+                predicates.add(matchVariantAttribute(cb, variantJoin.get("color"), colorTokens));
             }
 
-            // Size filter - Use new many-to-many relationship
-            if ((request.getSizeIds() != null && !request.getSizeIds().isEmpty()) ||
-                    (request.getSizeNames() != null && !request.getSizeNames().isEmpty())) {
-
-                Join<Product, ProductSize> sizeJoin = root.join("productSizes", JoinType.INNER);
-
-                if (request.getSizeIds() != null && !request.getSizeIds().isEmpty()) {
-                    predicates.add(sizeJoin.get("size").get("id").in(request.getSizeIds()));
-                }
-
-                if (request.getSizeNames() != null && !request.getSizeNames().isEmpty()) {
-                    predicates.add(sizeJoin.get("size").get("name").in(request.getSizeNames()));
-                }
+            // Size filter — variants store size id and/or free-text name
+            List<String> sizeTokens = collectSizeTokens(request);
+            if (!sizeTokens.isEmpty()) {
+                Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.INNER);
+                predicates.add(matchVariantAttribute(cb, variantJoin.get("size"), sizeTokens));
             }
 
             // Stock filter
@@ -202,16 +186,16 @@ public class ProductSpecification {
                 }
             }
 
-            // Color filter - Join with ProductVariant
+            // Color filter — match id and/or name tokens on variants
             if (request.getColors() != null && !request.getColors().isEmpty()) {
                 Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.INNER);
-                predicates.add(variantJoin.get("color").in(request.getColors()));
+                predicates.add(matchVariantAttribute(cb, variantJoin.get("color"), request.getColors()));
             }
 
-            // Size filter - Join with ProductVariant
+            // Size filter — match id and/or name tokens on variants
             if (request.getSizes() != null && !request.getSizes().isEmpty()) {
                 Join<Product, ProductVariant> variantJoin = root.join("variants", JoinType.INNER);
-                predicates.add(variantJoin.get("size").in(request.getSizes()));
+                predicates.add(matchVariantAttribute(cb, variantJoin.get("size"), request.getSizes()));
             }
 
             // Stock filter
@@ -230,5 +214,66 @@ public class ProductSpecification {
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    private static List<String> collectColorTokens(EnhancedProductFilterRequestDTO request) {
+        Set<String> tokens = new LinkedHashSet<>();
+        if (request.getColorIds() != null) {
+            for (Long id : request.getColorIds()) {
+                if (id != null && id > 0) {
+                    tokens.add(String.valueOf(id));
+                }
+            }
+        }
+        if (request.getColorNames() != null) {
+            for (String name : request.getColorNames()) {
+                if (name != null && !name.isBlank()) {
+                    tokens.add(name.trim());
+                }
+            }
+        }
+        return new ArrayList<>(tokens);
+    }
+
+    private static List<String> collectSizeTokens(EnhancedProductFilterRequestDTO request) {
+        Set<String> tokens = new LinkedHashSet<>();
+        if (request.getSizeIds() != null) {
+            for (Long id : request.getSizeIds()) {
+                if (id != null && id > 0) {
+                    tokens.add(String.valueOf(id));
+                }
+            }
+        }
+        if (request.getSizeNames() != null) {
+            for (String name : request.getSizeNames()) {
+                if (name != null && !name.isBlank()) {
+                    tokens.add(name.trim());
+                }
+            }
+        }
+        return new ArrayList<>(tokens);
+    }
+
+    /** Match variant.color / variant.size against id strings and names (case-insensitive). */
+    private static Predicate matchVariantAttribute(
+            CriteriaBuilder cb,
+            Path<String> attribute,
+            List<String> tokens
+    ) {
+        Set<String> exact = new LinkedHashSet<>();
+        Set<String> lowered = new LinkedHashSet<>();
+        for (String token : tokens) {
+            if (token == null || token.isBlank()) continue;
+            String trimmed = token.trim();
+            exact.add(trimmed);
+            lowered.add(trimmed.toLowerCase(Locale.ROOT));
+        }
+        if (exact.isEmpty()) {
+            return cb.disjunction();
+        }
+        return cb.or(
+                attribute.in(exact),
+                cb.lower(attribute).in(lowered)
+        );
     }
 }

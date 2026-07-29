@@ -359,7 +359,9 @@ public class ProductServiceImpl implements ProductService {
             );
         }
 
-        Specification<Product> spec = ProductSpecification.filterProductsLegacy(filterRequest);
+        Specification<Product> spec = ProductSpecification.filterProductsLegacy(
+                resolveLegacyColorSizeTokens(filterRequest)
+        );
         
         Pageable pageable = PageRequest.of(
             filterRequest.getPage(),
@@ -399,7 +401,9 @@ public class ProductServiceImpl implements ProductService {
     
     @Override
     public FilterResponseDTO getFilteredProductsEnhanced(EnhancedProductFilterRequestDTO filterRequest) {
-        Specification<Product> spec = ProductSpecification.filterProducts(filterRequest);
+        Specification<Product> spec = ProductSpecification.filterProducts(
+                resolveEnhancedColorSizeTokens(filterRequest)
+        );
         
         Pageable pageable = PageRequest.of(
             filterRequest.getPage(),
@@ -444,6 +448,49 @@ public class ProductServiceImpl implements ProductService {
         if (request.getSellerId() != null) count++;
         if (request.getInStock() != null && !request.getInStock()) count++;
         return count;
+    }
+
+    /**
+     * Variants store color/size as catalog IDs (e.g. {@code "1"} for Red).
+     * Expand request names/ids into match tokens before the JPA specification runs.
+     */
+    private EnhancedProductFilterRequestDTO resolveEnhancedColorSizeTokens(
+            EnhancedProductFilterRequestDTO request
+    ) {
+        if (request == null) {
+            return null;
+        }
+        List<String> colorTokens = sizeColorMapper.resolveColorVariantTokens(
+                request.getColorIds(),
+                request.getColorNames()
+        );
+        if (!colorTokens.isEmpty()) {
+            request.setColorNames(colorTokens);
+            request.setColorIds(null);
+        }
+
+        List<String> sizeTokens = sizeColorMapper.resolveSizeVariantTokens(
+                request.getSizeIds(),
+                request.getSizeNames()
+        );
+        if (!sizeTokens.isEmpty()) {
+            request.setSizeNames(sizeTokens);
+            request.setSizeIds(null);
+        }
+        return request;
+    }
+
+    private ProductFilterRequestDTO resolveLegacyColorSizeTokens(ProductFilterRequestDTO request) {
+        if (request == null) {
+            return null;
+        }
+        if (request.getColors() != null && !request.getColors().isEmpty()) {
+            request.setColors(sizeColorMapper.resolveColorVariantTokens(null, request.getColors()));
+        }
+        if (request.getSizes() != null && !request.getSizes().isEmpty()) {
+            request.setSizes(sizeColorMapper.resolveSizeVariantTokens(null, request.getSizes()));
+        }
+        return request;
     }
 
     @Override
