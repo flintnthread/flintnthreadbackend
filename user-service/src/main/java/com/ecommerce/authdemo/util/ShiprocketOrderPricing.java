@@ -105,6 +105,20 @@ public final class ShiprocketOrderPricing {
         );
     }
 
+    /** Shiprocket grand_total = sum(units * selling_price) + shipping - discount; must stay > 0 for COD. */
+    public static BigDecimal computeGrandTotal(PricedPayload priced) {
+        if (priced == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal items = BigDecimal.ZERO;
+        for (Map<String, Object> row : priced.orderItems()) {
+            int units = ((Number) row.get("units")).intValue();
+            double unit = ((Number) row.get("selling_price")).doubleValue();
+            items = items.add(BigDecimal.valueOf(unit).multiply(BigDecimal.valueOf(units)));
+        }
+        return money(items.add(priced.shippingCharges()).subtract(priced.totalDiscount()));
+    }
+
     private static void distributeAmountAcrossItems(List<Map<String, Object>> orderItems, BigDecimal amount) {
         if (orderItems.isEmpty()) {
             return;

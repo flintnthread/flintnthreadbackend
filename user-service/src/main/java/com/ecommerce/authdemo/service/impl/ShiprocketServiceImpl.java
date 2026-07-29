@@ -13,8 +13,12 @@ import com.ecommerce.authdemo.repository.ProductVariantRepository;
 import com.ecommerce.authdemo.repository.SellerRepository;
 import com.ecommerce.authdemo.service.PlatformIntegrationSettings;
 import com.ecommerce.authdemo.service.ShiprocketService;
+import com.ecommerce.authdemo.service.ShiprocketSyncLogService;
 import com.ecommerce.authdemo.util.ShiprocketOrderPricing;
 import com.ecommerce.authdemo.util.ShiprocketPickupSupport;
+import com.ecommerce.authdemo.util.ShiprocketPushOptions;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -31,6 +35,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -61,6 +66,10 @@ import java.util.Locale;
         private final SellerRepository sellerRepository;
 
         private final PlatformIntegrationSettings integrationSettings;
+
+        private final ShiprocketSyncLogService shiprocketSyncLogService;
+
+        private final ObjectMapper objectMapper;
 
         @Value("${shiprocket.api.base-url}")
         private String apiBaseUrl;
@@ -202,33 +211,109 @@ import java.util.Locale;
                 orderRepository.save(order);
             }
 
-            try {
-                Map<String, Object> payload = buildShipmentPayload(order);
-                Map<String, Object> body = postCreateAdhocWithPickupFallback(order, payload);
-                return persistShiprocketCreateResponse(order, body);
-            } catch (
-                    HttpClientErrorException
-                    | HttpServerErrorException e
-            ) {
-                String apiBody = e.getResponseBodyAsString();
-                log.error(
-                        "Shiprocket API error orderNumber={} body={}",
-                        order.getOrderNumber(),
-                        apiBody,
-                        e
-                );
+            List<OrderItem> allItems = orderItemRepository.findByOrderId(order.getId());
+            if (allItems == null || allItems.isEmpty()) {
                 throw new RuntimeException(
-                        "Shiprocket API error: " + (apiBody != null && !apiBody.isBlank() ? apiBody : e.getMessage()),
-                        e
-                );
-
-            } catch (Exception e) {
-
-                throw new RuntimeException(
-                        "Shipment creation failed: " + e.getMessage(),
-                        e
+                        "No order items found for Shiprocket order " + order.getOrderNumber()
                 );
             }
+
+            for (OrderItem item : allItems) {
+                enrichOrderItemFromCatalog(item);
+            }
+
+            Map<Long, List<OrderItem>> itemsBySeller = groupItemsBySeller(allItems);
+            if (itemsBySeller.isEmpty()) {
+                throw new RuntimeException(
+                        "No seller found on order items for Shiprocket order " + order.getOrderNumber()
+                );
+            }
+
+            boolean multiSeller = itemsBySeller.size() > 1;
+            ShiprocketShipmentResult firstSuccess = null;
+            RuntimeException lastError = null;
+            int successCount = 0;
+
+            for (Map.Entry<Long, List<OrderItem>> entry : itemsBySeller.entrySet()) {
+                Long sellerId = entry.getKey();
+                ShiprocketPushOptions options = multiSeller
+                        ? ShiprocketPushOptions.forSeller(sellerId)
+                        : ShiprocketPushOptions.empty();
+                Map<String, Object> payload = null;
+                try {
+                    payload = buildShipmentPayload(order, entry.getValue(), options);
+                    Map<String, Object> apiPayload = sanitizePayloadForApi(payload);
+                    validateCodAmount(order, apiPayload);
+                    Map<String, Object> body = postCreateAdhocWithPickupFallback(order, payload);
+                    logOrderPush(
+                            order,
+                            body.get("order_id") != null ? String.valueOf(body.get("order_id")) : null,
+                            "success",
+                            apiPayload,
+                            body,
+                            null
+                    );
+                    if (firstSuccess == null) {
+                        firstSuccess = persistShiprocketCreateResponse(order, body);
+                    } else {
+                        log.info(
+                                "Shiprocket multi-seller push OK orderNumber={} sellerId={} srOrderId={} (primary already saved)",
+                                order.getOrderNumber(),
+                                sellerId,
+                                body.get("order_id")
+                        );
+                    }
+                    successCount++;
+                } catch (HttpClientErrorException | HttpServerErrorException e) {
+                    String apiBody = e.getResponseBodyAsString();
+                    log.error(
+                            "Shiprocket API error orderNumber={} sellerId={} body={}",
+                            order.getOrderNumber(),
+                            sellerId,
+                            apiBody,
+                            e
+                    );
+                    logOrderPush(
+                            order,
+                            null,
+                            "failed",
+                            payload != null ? sanitizePayloadForApi(payload) : Map.of(),
+                            Map.of("httpStatus", e.getStatusCode().value(), "body", apiBody != null ? apiBody : ""),
+                            apiBody
+                    );
+                    lastError = new RuntimeException(
+                            "Shiprocket API error: " + (apiBody != null && !apiBody.isBlank() ? apiBody : e.getMessage()),
+                            e
+                    );
+                } catch (Exception e) {
+                    logOrderPush(
+                            order,
+                            null,
+                            "failed",
+                            payload != null ? sanitizePayloadForApi(payload) : Map.of(),
+                            null,
+                            e.getMessage()
+                    );
+                    lastError = e instanceof RuntimeException re
+                            ? re
+                            : new RuntimeException("Shipment creation failed: " + e.getMessage(), e);
+                }
+            }
+
+            if (firstSuccess == null) {
+                throw lastError != null
+                        ? lastError
+                        : new RuntimeException("Shipment creation failed for all sellers");
+            }
+            if (multiSeller) {
+                log.info(
+                        "Shiprocket multi-seller auto-push orderNumber={} sellers={} succeeded={}",
+                        order.getOrderNumber(),
+                        itemsBySeller.size(),
+                        successCount
+                );
+            }
+            return firstSuccess;
         }
 
         private static boolean isFailedPushStatus(String shiprocketStatus) {
@@ -273,7 +358,20 @@ import java.util.Locale;
                         order.getOrderNumber()
                 );
 
-                Long sellerId = findPrimarySellerId(order);
+                Long sellerId = null;
+                Object pickupSeller = payload.get("_pickup_seller_id");
+                if (pickupSeller instanceof Number number) {
+                    sellerId = number.longValue();
+                } else if (pickupSeller != null) {
+                    try {
+                        sellerId = Long.parseLong(String.valueOf(pickupSeller));
+                    } catch (NumberFormatException ignored) {
+                        // fall through
+                    }
+                }
+                if (sellerId == null) {
+                    sellerId = findPrimarySellerId(order);
+                }
                 if (sellerId != null) {
                     sellerRepository.findById(sellerId).ifPresent(seller ->
                             ensureSellerPickupRegistered(seller, used));
@@ -315,12 +413,15 @@ import java.util.Locale;
             headers.setBearerAuth(token);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+            HttpEntity<Map<String, Object>> request =
+                    new HttpEntity<>(sanitizePayloadForApi(payload), headers);
             log.info(
-                    "Shiprocket Payload orderNumber={} pickup={} phone={} items={}",
+                    "Shiprocket Payload orderNumber={} pickup={} phone={} sub_total={} grand_total={} items={}",
                     order.getOrderNumber(),
                     payload.get("pickup_location"),
                     payload.get("billing_phone"),
+                    payload.get("sub_total"),
+                    payload.get("grand_total"),
                     payload.get("order_items") instanceof List<?> list ? list.size() : 0
             );
 
@@ -457,49 +558,69 @@ import java.util.Locale;
                     .build();
         }
 
-        private Map<String, Object>
-        buildShipmentPayload(Order order) {
-
-            Map<String, Object> payload =
-                    new HashMap<>();
-
-            List<OrderItem> items =
-                    orderItemRepository.findByOrderId(
-                            order.getId()
-                    );
-
+        private Map<String, Object> buildShipmentPayload(
+                Order order,
+                List<OrderItem> items,
+                ShiprocketPushOptions pushOptions
+        ) {
             if (items == null || items.isEmpty()) {
                 throw new RuntimeException(
                         "No order items found for Shiprocket order " + order.getOrderNumber()
                 );
             }
 
+            boolean scopedPush = pushOptions != null && pushOptions.isScoped();
             List<ShiprocketOrderPricing.LineInput> pricingLines = new ArrayList<>();
 
             double totalWeight = 0;
-
             double maxLength = 1;
             double maxWidth = 1;
             double maxHeight = 1;
             Long primarySellerId = null;
+            BigDecimal scopedItemTotal = BigDecimal.ZERO;
 
             for (OrderItem item : items) {
                 enrichOrderItemFromCatalog(item);
 
+                Long productSellerId = null;
+                if (item.getProductId() != null) {
+                    productSellerId = productRepository.findById(item.getProductId())
+                            .map(Product::getSellerId)
+                            .orElse(null);
+                }
+                Long itemSellerId = ShiprocketPickupSupport.resolveSellerId(
+                        productSellerId,
+                        item.getSellerId()
+                );
                 if (primarySellerId == null) {
-                    Long productSellerId = null;
-                    if (item.getProductId() != null) {
-                        productSellerId = productRepository.findById(item.getProductId())
-                                .map(Product::getSellerId)
-                                .orElse(null);
-                    }
-                    primarySellerId = ShiprocketPickupSupport.resolveSellerId(
-                            productSellerId,
-                            item.getSellerId()
-                    );
+                    primarySellerId = itemSellerId;
                 }
 
                 int qty = item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1;
+                BigDecimal unitPrice = ShiprocketOrderPricing.toMoney(item.getPrice());
+                BigDecimal lineTotal = ShiprocketOrderPricing.toMoney(item.getTotal());
+                if (unitPrice.compareTo(BigDecimal.ZERO) <= 0
+                        && lineTotal.compareTo(BigDecimal.ZERO) <= 0
+                        && item.getVariantId() != null) {
+                    ProductVariant variant = productVariantRepository.findById(item.getVariantId()).orElse(null);
+                    if (variant != null) {
+                        BigDecimal catalogPrice = firstPositivePrice(
+                                variant.getFinalPrice(),
+                                variant.getSellingPrice(),
+                                variant.getBasePrice()
+                        );
+                        if (catalogPrice != null && catalogPrice.compareTo(BigDecimal.ZERO) > 0) {
+                            unitPrice = catalogPrice;
+                            lineTotal = unitPrice.multiply(BigDecimal.valueOf(qty));
+                        }
+                    }
+                }
+                scopedItemTotal = scopedItemTotal.add(
+                        lineTotal.compareTo(BigDecimal.ZERO) > 0
+                                ? lineTotal
+                                : unitPrice.multiply(BigDecimal.valueOf(qty))
+                );
+
                 pricingLines.add(new ShiprocketOrderPricing.LineInput(
                         item.getProductName() != null && !item.getProductName().isBlank()
                                 ? item.getProductName()
@@ -511,8 +632,8 @@ import java.util.Locale;
                                 ? item.getHsnCode()
                                 : "0000",
                         qty,
-                        ShiprocketOrderPricing.toMoney(item.getPrice()),
-                        ShiprocketOrderPricing.toMoney(item.getTotal())
+                        unitPrice,
+                        lineTotal
                 ));
 
                 double lineWeight = item.getChargeableWeight() != null
@@ -531,45 +652,48 @@ import java.util.Locale;
                 }
             }
 
+            if (primarySellerId == null && pushOptions != null) {
+                primarySellerId = pushOptions.sellerId();
+            }
+
+            BigDecimal orderAmountForPricing = scopedPush
+                    ? scopedItemTotal
+                    : ShiprocketOrderPricing.toMoney(order.getTotalAmount());
+            if (orderAmountForPricing.compareTo(BigDecimal.ZERO) <= 0 && scopedItemTotal.compareTo(BigDecimal.ZERO) > 0) {
+                orderAmountForPricing = scopedItemTotal;
+            }
+
             ShiprocketOrderPricing.PricedPayload priced = ShiprocketOrderPricing.build(
                     pricingLines,
-                    ShiprocketOrderPricing.toMoney(order.getTotalAmount()),
-                    ShiprocketOrderPricing.toMoney(order.getShippingAmount()),
-                    ShiprocketOrderPricing.toMoney(order.getDiscountAmount()),
+                    orderAmountForPricing,
+                    scopedPush ? BigDecimal.ZERO : ShiprocketOrderPricing.toMoney(order.getShippingAmount()),
+                    scopedPush ? BigDecimal.ZERO : ShiprocketOrderPricing.toMoney(order.getDiscountAmount()),
                     null
             );
 
-            payload.put(
-                    "order_id",
-                    order.getOrderNumber()
-            );
+            Map<String, Object> payload = new LinkedHashMap<>();
+            String shiprocketOrderRef = order.getOrderNumber();
+            if (scopedPush && primarySellerId != null) {
+                shiprocketOrderRef = order.getOrderNumber() + "-S" + primarySellerId;
+            }
+            payload.put("order_id", shiprocketOrderRef);
+            payload.put("order_date", LocalDate.now().toString());
 
-            payload.put(
-                    "order_date",
-                    LocalDate.now().toString()
-            );
+            String pickupNickname = resolvePickupLocation(primarySellerId);
+            payload.put("pickup_location", pickupNickname);
+            payload.put("_pickup_seller_id", primarySellerId);
 
-            payload.put(
-                    "pickup_location",
-                    resolvePickupLocation(primarySellerId)
-            );
-
-            // Customer name for Shiprocket: use the real name only — never append "Customer".
             String[] nameParts = splitCustomerName(order.getShippingName());
             payload.put("billing_customer_name", nameParts[0]);
             payload.put("billing_last_name", nameParts[1]);
-            // Shiprocket requires a valid 10-digit Indian mobile (6–9…). Invalid phones → HTTP 422.
             payload.put("billing_phone", normalizeIndianMobile(order.getShippingPhone()));
-            payload.put("billing_email", order.getShippingEmail() != null ? order.getShippingEmail() : "support@flintnthread.in");
+            payload.put("billing_email",
+                    order.getShippingEmail() != null ? order.getShippingEmail() : "support@flintnthread.in");
 
-            String billingAddress =
-                    order.getShippingAddress1();
-
-            if (order.getShippingAddress2() != null
-                    && !order.getShippingAddress2().isBlank()) {
-
-                billingAddress +=
-                        ", " + order.getShippingAddress2();
+            String billingAddress = order.getShippingAddress1();
+            if (order.getShippingAddress2() != null && !order.getShippingAddress2().isBlank()) {
+                billingAddress = (billingAddress != null ? billingAddress + ", " : "")
+                        + order.getShippingAddress2();
             }
             if (billingAddress == null || billingAddress.isBlank()) {
                 billingAddress = "Address not provided";
@@ -596,25 +720,23 @@ import java.util.Locale;
             payload.put("billing_pincode", pincode);
             payload.put("billing_country", "India");
             payload.put("shipping_is_billing", true);
-
             payload.put("order_items", priced.orderItems());
-
             payload.put(
                     "payment_method",
-                    isCodPaymentMethod(order.getPaymentMethod())
-                            ? "COD"
-                            : "Prepaid"
+                    isCodPaymentMethod(order.getPaymentMethod()) ? "COD" : "Prepaid"
             );
-
-            // sub_total = exact FNT order placing total; shipping_charges = 0 (already inside total).
             payload.put("sub_total", priced.subTotal().doubleValue());
             payload.put("shipping_charges", priced.shippingCharges().doubleValue());
             payload.put("total_discount", priced.totalDiscount().doubleValue());
+            payload.put("grand_total", ShiprocketOrderPricing.computeGrandTotal(priced).doubleValue());
             log.info(
-                    "Shiprocket pricing orderNumber={} orderPlacingTotal={} shiprocketSubTotal={} shippingCharges={} discount={}",
+                    "Shiprocket pricing orderNumber={} scoped={} sellerId={} orderPlacingTotal={} shiprocketSubTotal={} grandTotal={} shippingCharges={} discount={}",
                     order.getOrderNumber(),
+                    scopedPush,
+                    primarySellerId,
                     priced.orderTotal(),
                     priced.subTotal(),
+                    ShiprocketOrderPricing.computeGrandTotal(priced),
                     priced.shippingCharges(),
                     priced.totalDiscount()
             );
@@ -623,13 +745,134 @@ import java.util.Locale;
             payload.put("breadth", Math.max(maxWidth, 1));
             payload.put("height", Math.max(maxHeight, 1));
             payload.put("weight", totalWeight > 0 ? totalWeight : 0.5);
-
             payload.put(
                     "comment",
                     "FNT Order " + order.getOrderNumber()
+                            + (scopedPush && primarySellerId != null ? " seller " + primarySellerId : "")
             );
-
             return payload;
+        }
+
+        private Map<Long, List<OrderItem>> groupItemsBySeller(List<OrderItem> items) {
+            Map<Long, List<OrderItem>> bySeller = new LinkedHashMap<>();
+            for (OrderItem item : items) {
+                Long productSellerId = null;
+                if (item.getProductId() != null) {
+                    productSellerId = productRepository.findById(item.getProductId())
+                            .map(Product::getSellerId)
+                            .orElse(null);
+                }
+                Long sellerId = ShiprocketPickupSupport.resolveSellerId(productSellerId, item.getSellerId());
+                if (sellerId == null) {
+                    continue;
+                }
+                bySeller.computeIfAbsent(sellerId, ignored -> new ArrayList<>()).add(item);
+            }
+            return bySeller;
+        }
+
+        private static Map<String, Object> sanitizePayloadForApi(Map<String, Object> payload) {
+            Map<String, Object> api = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : payload.entrySet()) {
+                if (entry.getKey() != null && entry.getKey().startsWith("_")) {
+                    continue;
+                }
+                api.put(entry.getKey(), entry.getValue());
+            }
+            return api;
+        }
+
+        private void validateCodAmount(Order order, Map<String, Object> apiPayload) {
+            if (!isCodPaymentMethod(order.getPaymentMethod())) {
+                return;
+            }
+            double subTotal = toDouble(apiPayload.get("sub_total"));
+            double grandTotal = toDouble(apiPayload.get("grand_total"));
+            if (subTotal <= 0 && grandTotal <= 0) {
+                throw new RuntimeException(
+                        "COD order amount is zero. Check order item prices/totals before pushing to Shiprocket."
+                );
+            }
+            // Shiprocket recalculates from line items — ensure selling prices yield a positive grand total.
+            if (grandTotal <= 0 && subTotal > 0) {
+                throw new RuntimeException(
+                        "COD grand total is zero after line-item pricing. Check selling_price on order items."
+                );
+            }
+        }
+
+        private static double toDouble(Object value) {
+            if (value == null) {
+                return 0;
+            }
+            if (value instanceof Number number) {
+                return number.doubleValue();
+            }
+            try {
+                return Double.parseDouble(String.valueOf(value));
+            } catch (NumberFormatException ex) {
+                return 0;
+            }
+        }
+
+        private static BigDecimal firstPositivePrice(BigDecimal... values) {
+            if (values == null) {
+                return null;
+            }
+            for (BigDecimal value : values) {
+                if (value != null && value.compareTo(BigDecimal.ZERO) > 0) {
+                    return value;
+                }
+            }
+            return null;
+        }
+
+        private void logOrderPush(
+                Order order,
+                String shiprocketOrderId,
+                String status,
+                Map<String, Object> requestPayload,
+                Map<String, Object> responsePayload,
+                String errorMessage
+        ) {
+            if (order == null || order.getId() == null) {
+                return;
+            }
+            try {
+                shiprocketSyncLogService.logSync(
+                        order.getId().intValue(),
+                        order.getOrderNumber(),
+                        shiprocketOrderId,
+                        "ORDER_PUSH",
+                        status,
+                        toJson(requestPayload),
+                        toJson(responsePayload),
+                        truncate(errorMessage, 4000)
+                );
+            } catch (Exception e) {
+                log.warn("Failed to write ORDER_PUSH sync log for orderId={}: {}", order.getId(), e.getMessage());
+            }
+        }
+
+        private String toJson(Map<String, Object> payload) {
+            if (payload == null || payload.isEmpty()) {
+                return null;
+            }
+            try {
+                return truncate(objectMapper.writeValueAsString(payload), 16_000);
+            } catch (JsonProcessingException e) {
+                return truncate(String.valueOf(payload), 16_000);
+            }
+        }
+
+        private static String truncate(String value, int max) {
+            if (value == null) {
+                return null;
+            }
+            if (value.length() <= max) {
+                return value;
+            }
+            return value.substring(0, max) + "…";
         }
 
         /**
@@ -944,6 +1187,25 @@ import java.util.Locale;
 
             if (item.getSellerId() == null && product != null && product.getSellerId() != null) {
                 item.setSellerId(product.getSellerId());
+            }
+
+            boolean priceMissing = item.getPrice() == null || item.getPrice() <= 0;
+            boolean totalMissing = item.getTotal() == null || item.getTotal() <= 0;
+            if ((priceMissing || totalMissing) && variant != null) {
+                BigDecimal catalogPrice = firstPositivePrice(
+                        variant.getFinalPrice(),
+                        variant.getSellingPrice(),
+                        variant.getBasePrice()
+                );
+                if (catalogPrice != null && catalogPrice.compareTo(BigDecimal.ZERO) > 0) {
+                    if (priceMissing) {
+                        item.setPrice(catalogPrice.doubleValue());
+                    }
+                    if (totalMissing) {
+                        int qty = item.getQuantity() != null && item.getQuantity() > 0 ? item.getQuantity() : 1;
+                        item.setTotal(catalogPrice.multiply(BigDecimal.valueOf(qty)).doubleValue());
+                    }
+                }
             }
         }
 
