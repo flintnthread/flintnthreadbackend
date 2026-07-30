@@ -26,8 +26,21 @@ class EmbeddingVectorMathTest {
         catalog.put(20L, "0.9,0.1,0");
         catalog.put(30L, "1,0,0");
 
-        List<Long> ranked = EmbeddingVectorMath.topSimilarProductIds(query, catalog, 2);
+        List<Long> ranked = EmbeddingVectorMath.topSimilarProductIds(query, catalog, 2, 0.0);
         assertEquals(List.of(30L, 20L), ranked);
+    }
+
+    @Test
+    void topSimilarProductIds_respectsMinSimilarityFloor() {
+        double[] query = EmbeddingVectorMath.parseCsv("1,0,0");
+        Map<Long, String> catalog = new LinkedHashMap<>();
+        catalog.put(10L, "0,1,0"); // similarity 0
+        catalog.put(20L, "0.2,0.98,0"); // weak
+        catalog.put(30L, "0.95,0.05,0"); // strong
+
+        List<Long> ranked = EmbeddingVectorMath.topSimilarProductIds(
+                query, catalog, 5, EmbeddingVectorMath.MIN_CAMERA_SIMILARITY);
+        assertEquals(List.of(30L), ranked);
     }
 
     @Test

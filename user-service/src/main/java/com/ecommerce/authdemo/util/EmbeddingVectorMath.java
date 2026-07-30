@@ -10,6 +10,12 @@ import java.util.Map;
  */
 public final class EmbeddingVectorMath {
 
+    /**
+     * Cosine floor for camera search. Below this, matches are noise
+     * (e.g. screenshots / unrelated photos still score slightly &gt; 0).
+     */
+    public static final double MIN_CAMERA_SIMILARITY = 0.32;
+
     private EmbeddingVectorMath() {
     }
 
@@ -62,6 +68,15 @@ public final class EmbeddingVectorMath {
             Map<Long, String> productIdToEmbeddingCsv,
             int limit
     ) {
+        return topSimilarProductIds(queryVector, productIdToEmbeddingCsv, limit, MIN_CAMERA_SIMILARITY);
+    }
+
+    public static List<Long> topSimilarProductIds(
+            double[] queryVector,
+            Map<Long, String> productIdToEmbeddingCsv,
+            int limit,
+            double minSimilarity
+    ) {
         if (queryVector == null || queryVector.length == 0 || productIdToEmbeddingCsv == null || limit <= 0) {
             return List.of();
         }
@@ -75,7 +90,7 @@ public final class EmbeddingVectorMath {
                 continue;
             }
             double similarity = cosineSimilarity(queryVector, candidate);
-            if (similarity > 0) {
+            if (similarity >= minSimilarity) {
                 scored.add(Map.entry(entry.getKey(), similarity));
             }
         }

@@ -612,8 +612,8 @@ public class ProductServiceImpl implements ProductService {
             return productRepo.advancedSearch(trimmed, pageable).map(mapper::toDTO);
         }
 
-        // Single simple token → existing phrase LIKE is enough.
-        if (tokens.size() == 1 && aliasesForToken(tokens.get(0)).size() <= 1) {
+        // Single simple non-color token → existing phrase LIKE is enough.
+        if (tokens.size() == 1 && !isColorToken(tokens.get(0)) && aliasesForToken(tokens.get(0)).size() <= 1) {
             return productRepo.advancedSearch(tokens.get(0), pageable).map(mapper::toDTO);
         }
 
@@ -684,13 +684,29 @@ public class ProductServiceImpl implements ProductService {
     }
 
     static String selectPrimarySearchToken(List<String> tokens) {
-        // Prefer product-type tokens over gender so we don't pull the whole Men catalog.
+        // Prefer product-type tokens over gender/color so we don't pull the whole Men catalog.
         for (String token : tokens) {
-            if (!isGenderToken(token) && token.length() >= 4) {
+            if (!isGenderToken(token) && !isColorToken(token) && token.length() >= 4) {
+                return token;
+            }
+        }
+        for (String token : tokens) {
+            if (!isGenderToken(token) && !isColorToken(token)) {
                 return token;
             }
         }
         return tokens.get(tokens.size() - 1);
+    }
+
+    private static final Set<String> COLOR_TOKENS = Set.of(
+            "red", "blue", "green", "black", "white", "yellow", "pink", "purple",
+            "orange", "brown", "grey", "gray", "navy", "maroon", "beige", "cream",
+            "cyan", "gold", "silver", "multicolor", "multi", "olive", "khaki",
+            "burgundy", "crimson", "mustard", "teal", "coral", "ivory", "charcoal"
+    );
+
+    static boolean isColorToken(String token) {
+        return token != null && COLOR_TOKENS.contains(token.toLowerCase(Locale.ROOT));
     }
 
     static List<String> aliasesForToken(String token) {
@@ -722,7 +738,7 @@ public class ProductServiceImpl implements ProductService {
                 || "unisex".equals(token);
     }
 
-    private static boolean productMatchesSearchTokens(Product product, List<String> tokens) {
+    private boolean productMatchesSearchTokens(Product product, List<String> tokens) {
         String gender = normalizeSearchBlob(product.getGender());
         String blob = normalizeSearchBlob(String.join(" ",
                 nullToEmpty(product.getName()),
@@ -732,11 +748,118 @@ public class ProductServiceImpl implements ProductService {
                 nullToEmpty(product.getGender())
         ));
         for (String token : tokens) {
+            if (isColorToken(token)) {
+                if (!productHasColorToken(product, token, blob)) {
+                    return false;
+                }
+                continue;
+            }
             if (!tokenMatchesProduct(token, blob, gender)) {
                 return false;
             }
         }
         return true;
+    }
+
+    private boolean productHasColorToken(Product product, String colorToken, String textBlob) {
+        List<String> needles = colorAliases(colorToken);
+        String paddedBlob = " " + textBlob + " ";
+        for (String needle : needles) {
+            String n = normalizeSearchBlob(needle);
+            if (n.isEmpty()) {
+                continue;
+            }
+            if (paddedBlob.contains(" " + n + " ") || paddedBlob.contains(n)) {
+                // Prefer whole-word-ish hits for short color names inside blob.
+                if (n.length() >= 3 && paddedBlob.contains(" " + n + " ")) {
+                    return true;
+                }
+                if (n.length() >= 4 && textBlob.contains(n)) {
+                    return true;
+                }
+            }
+        }
+
+        if (product.getId() == null) {
+            return false;
+        }
+        List<String> colorIdsOrNames = variantRepo.findDistinctColorsByProductId(product.getId());
+        for (String raw : colorIdsOrNames) {
+            String resolved = normalizeSearchBlob(sizeColorMapper.getColorName(raw));
+            String rawNorm = normalizeSearchBlob(raw);
+            for (String needle : needles) {
+                String n = normalizeSearchBlob(needle);
+                if (n.isEmpty()) {
+                    continue;
+                }
+                if (resolved.equals(n) || resolved.contains(n) || rawNorm.equals(n) || rawNorm.contains(n)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static List<String> colorAliases(String token) {
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (token == null || token.isBlank()) {
+            return List.of();
+        }
+        String t = token.toLowerCase(Locale.ROOT).trim();
+        out.add(t);
+        switch (t) {
+            case "red" -> {
+                out.add("maroon");
+                out.add("burgundy");
+                out.add("crimson");
+            }
+            case "blue" -> {
+                out.add("navy");
+                out.add("indigo");
+                out.add("teal");
+            }
+            case "green" -> {
+                out.add("olive");
+                out.add("emerald");
+            }
+            case "grey", "gray" -> {
+                out.add("grey");
+                out.add("gray");
+                out.add("charcoal");
+                out.add("silver");
+            }
+            case "yellow" -> {
+                out.add("mustard");
+                out.add("gold");
+            }
+            case "white" -> {
+                out.add("ivory");
+                out.add("cream");
+            }
+            case "pink" -> {
+                out.add("rose");
+                out.add("magenta");
+            }
+            case "brown" -> {
+                out.add("tan");
+                out.add("khaki");
+                out.add("beige");
+            }
+            case "beige", "cream" -> {
+                out.add("beige");
+                out.add("cream");
+                out.add("tan");
+            }
+            case "multicolor", "multi" -> {
+                out.add("multicolor");
+                out.add("multi");
+                out.add("printed");
+                out.add("floral");
+            }
+            default -> {
+            }
+        }
+        return new ArrayList<>(out);
     }
 
     private static boolean tokenMatchesProduct(String token, String blob, String gender) {

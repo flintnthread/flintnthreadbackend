@@ -369,21 +369,78 @@ public class SearchServiceImpl implements SearchService {
         boolean accessoryPhoto = looksLikeAccessoryPhoto(bufferedImage);
         LinkedHashMap<Long, Product> merged = new LinkedHashMap<>();
 
+        // Screenshots / UI / code dumps are not product photos — never invent "similar" fashion.
+        if (looksLikeNonProductPhoto(bufferedImage)) {
+            log.info("Camera search: uploaded image looks like a screenshot/document — returning empty");
+            return List.of();
+        }
+
         // CLIP / vector matches are the primary ranking signal when available.
         appendUniqueProducts(merged, aiProducts, accessoryPhoto, 20);
+        // Only keep local matches that are visually close (perceptual hash) — never dump
+        // weak color/filename keyword hits (that caused sarees for a code screenshot).
         appendUniqueProducts(
                 merged,
                 filterByVisualHashDistance(localMatches, uploadedHash, STRONG_VISUAL_HASH_DISTANCE),
                 accessoryPhoto,
                 20
         );
-        appendUniqueProducts(merged, localMatches, accessoryPhoto, 20);
-
-        if (merged.isEmpty() && accessoryPhoto) {
-            appendUniqueProducts(merged, fetchAccessoryProducts(), false, 20);
-        }
 
         return new ArrayList<>(merged.values());
+    }
+
+    /**
+     * Detects screenshots, terminals, and document UIs (high paper/white + dark text,
+     * low fashion chroma) so camera search does not return random catalog items.
+     */
+    private boolean looksLikeNonProductPhoto(BufferedImage image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        if (width <= 0 || height <= 0) {
+            return false;
+        }
+
+        int lightPixels = 0;
+        int darkPixels = 0;
+        int accentPixels = 0;
+        int sampled = 0;
+        int stepX = Math.max(width / 28, 1);
+        int stepY = Math.max(height / 28, 1);
+
+        for (int y = 0; y < height; y += stepY) {
+            for (int x = 0; x < width; x += stepX) {
+                int rgb = image.getRGB(x, y);
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+                sampled++;
+
+                int max = Math.max(r, Math.max(g, b));
+                int min = Math.min(r, Math.min(g, b));
+                int saturation = max == 0 ? 0 : (max - min) * 100 / max;
+
+                if (r > 200 && g > 200 && b > 200) {
+                    lightPixels++;
+                } else if (r < 55 && g < 55 && b < 55) {
+                    darkPixels++;
+                }
+
+                if (saturation >= 32 && max >= 100) {
+                    accentPixels++;
+                }
+            }
+        }
+
+        if (sampled == 0) {
+            return false;
+        }
+
+        double lightRatio = (double) lightPixels / sampled;
+        double darkRatio = (double) darkPixels / sampled;
+        double accentRatio = (double) accentPixels / sampled;
+
+        // Typical code/IDE screenshot: mostly light canvas + dark glyphs, little fashion color.
+        return lightRatio >= 0.45 && darkRatio >= 0.06 && accentRatio <= 0.18;
     }
 
     private void appendUniqueProducts(
@@ -554,6 +611,9 @@ public class SearchServiceImpl implements SearchService {
 
     private List<Product> findSimilarProductsByVisualSignature(MultipartFile image, BufferedImage bufferedImage) throws IOException {
         if (bufferedImage == null) {
+            return Collections.emptyList();
+        }
+        if (looksLikeNonProductPhoto(bufferedImage)) {
             return Collections.emptyList();
         }
 
