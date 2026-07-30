@@ -200,7 +200,8 @@ public class AIImageSearchDecorator {
         try {
             Map<String, Object> request = Map.of(
                     "query_embedding", queryEmbedding,
-                    "limit", limit
+                    "limit", limit,
+                    "min_similarity", EmbeddingVectorMath.MIN_CAMERA_SIMILARITY
             );
 
             Map<String, Object> response = restTemplate.postForObject(
@@ -210,20 +211,34 @@ public class AIImageSearchDecorator {
             );
 
             if (response != null && response.get("similar_product_ids") instanceof List<?> ids) {
-                return ids.stream()
-                        .map(v -> {
-                            if (v instanceof Number n) {
-                                return n.longValue();
-                            }
-                            try {
-                                return Long.parseLong(String.valueOf(v).trim());
-                            } catch (NumberFormatException e) {
-                                return null;
-                            }
-                        })
-                        .filter(Objects::nonNull)
-                        .filter(id -> id > 0)
-                        .collect(Collectors.toList());
+                List<?> similarities = response.get("similarities") instanceof List<?> sims
+                        ? (List<?>) sims
+                        : List.of();
+                List<Long> result = new ArrayList<>();
+                for (int i = 0; i < ids.size(); i++) {
+                    Object v = ids.get(i);
+                    Long id = null;
+                    if (v instanceof Number n) {
+                        id = n.longValue();
+                    } else {
+                        try {
+                            id = Long.parseLong(String.valueOf(v).trim());
+                        } catch (NumberFormatException ignored) {
+                            // skip
+                        }
+                    }
+                    if (id == null || id <= 0) {
+                        continue;
+                    }
+                    if (i < similarities.size()) {
+                        double score = toDouble(similarities.get(i));
+                        if (score < EmbeddingVectorMath.MIN_CAMERA_SIMILARITY) {
+                            continue;
+                        }
+                    }
+                    result.add(id);
+                }
+                return result;
             }
 
             return Collections.emptyList();
@@ -231,6 +246,17 @@ public class AIImageSearchDecorator {
         } catch (Exception e) {
             log.error("Error finding similar products via AI service", e);
             return Collections.emptyList();
+        }
+    }
+
+    private static double toDouble(Object value) {
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (Exception e) {
+            return 0;
         }
     }
 

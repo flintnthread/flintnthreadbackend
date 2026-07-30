@@ -10,6 +10,19 @@ import java.util.Map;
  */
 public final class EmbeddingVectorMath {
 
+    /**
+     * Absolute cosine floor — below this is noise (screenshots vs catalog).
+     * Kept modest so near-duplicate catalog photos still match when CLIP scores
+     * are soft (recompression / crop / different resolution).
+     */
+    public static final double MIN_CAMERA_SIMILARITY = 0.20;
+
+    /**
+     * Prefer keeping candidates at least this strong, or within a relative band
+     * of the best hit when the best is only moderately confident.
+     */
+    public static final double STRONG_CAMERA_SIMILARITY = 0.28;
+
     private EmbeddingVectorMath() {
     }
 
@@ -62,6 +75,15 @@ public final class EmbeddingVectorMath {
             Map<Long, String> productIdToEmbeddingCsv,
             int limit
     ) {
+        return topSimilarProductIds(queryVector, productIdToEmbeddingCsv, limit, MIN_CAMERA_SIMILARITY);
+    }
+
+    public static List<Long> topSimilarProductIds(
+            double[] queryVector,
+            Map<Long, String> productIdToEmbeddingCsv,
+            int limit,
+            double minSimilarity
+    ) {
         if (queryVector == null || queryVector.length == 0 || productIdToEmbeddingCsv == null || limit <= 0) {
             return List.of();
         }
@@ -75,11 +97,21 @@ public final class EmbeddingVectorMath {
                 continue;
             }
             double similarity = cosineSimilarity(queryVector, candidate);
-            if (similarity > 0) {
+            if (similarity >= minSimilarity) {
                 scored.add(Map.entry(entry.getKey(), similarity));
             }
         }
+        if (scored.isEmpty()) {
+            return List.of();
+        }
         scored.sort(Comparator.comparingDouble(Map.Entry<Long, Double>::getValue).reversed());
-        return scored.stream().limit(limit).map(Map.Entry::getKey).toList();
+        double best = scored.get(0).getValue();
+        // Keep strong hits, or anything close to the best match (same garment, softer score).
+        double keepFloor = Math.max(minSimilarity, Math.min(STRONG_CAMERA_SIMILARITY, best * 0.82));
+        return scored.stream()
+                .filter(entry -> entry.getValue() >= keepFloor)
+                .limit(limit)
+                .map(Map.Entry::getKey)
+                .toList();
     }
 }

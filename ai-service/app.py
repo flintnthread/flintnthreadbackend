@@ -127,12 +127,13 @@ def similarity_search():
             
             similarities.append((product_id, float(similarity)))
         
-        # Sort by similarity and get top results
+        # Sort by similarity and keep only confident matches (avoid random top-K on noise).
+        MIN_SIMILARITY = float(data.get('min_similarity', 0.20) or 0.20)
         similarities.sort(key=lambda x: x[1], reverse=True)
-        top = similarities[:limit]
+        top = [(pid, sim) for pid, sim in similarities if sim >= MIN_SIMILARITY][:limit]
         top_similar_ids = [int(pid) for pid, _ in top]
         
-        logger.info(f"Found {len(top_similar_ids)} similar products")
+        logger.info(f"Found {len(top_similar_ids)} similar products above {MIN_SIMILARITY}")
         
         return jsonify({
             "similar_product_ids": top_similar_ids,

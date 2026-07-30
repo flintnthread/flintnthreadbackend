@@ -5,6 +5,7 @@ import com.ecommerce.authdemo.dto.Enum.AdminStatus;
 import com.ecommerce.authdemo.dto.Enum.OrderStatus;
 import com.ecommerce.authdemo.entity.*;
 import com.ecommerce.authdemo.event.OrderPlacedEvent;
+import com.ecommerce.authdemo.event.ShiprocketAutoPushEvent;
 import com.ecommerce.authdemo.service.*;
 import com.ecommerce.authdemo.exception.ResourceNotFoundException;
 import com.ecommerce.authdemo.exception.OrderException;
@@ -21,8 +22,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -1278,9 +1277,9 @@ public class OrderServiceImpl implements OrderService {
     private boolean shiprocketAutoCreateOnPayment;
 
     /**
-     * Push to Shiprocket only after DB commit, off the request thread.
+     * Queue Shiprocket create after this transaction commits.
+     * {@link com.ecommerce.authdemo.event.ShiprocketAutoPushListener} runs the push off the request thread.
      * Customer never waits on Shiprocket — payment/order success is immediate.
-     * Creates shipment only (no courier/AWB assign). Courier is assigned in Shiprocket dashboard.
      * On failure, order stays processing/paid; shiprocket_status=pending for admin retry.
      */
     private void scheduleShiprocketAfterCommit(Order order) {
@@ -1292,93 +1291,32 @@ public class OrderServiceImpl implements OrderService {
         if (order == null || order.getId() == null) {
             return;
         }
-        final Long orderId = order.getId();
-        final String orderNumber = order.getOrderNumber();
-
-        Runnable push = () -> {
-            try {
-                // Brief settle so payment commit is fully visible before Shiprocket call.
+        // Visible in admin while background push runs (cleared on success / pending: on failure).
+        if (order.getShiprocketOrderId() == null || order.getShiprocketOrderId().isBlank()) {
+            String current = order.getShiprocketStatus();
+            if (current == null || current.isBlank()
+                    || current.trim().equalsIgnoreCase("pending")
+                    || current.trim().toLowerCase(Locale.ENGLISH).startsWith("pending:")) {
+                order.setShiprocketStatus("queued");
                 try {
-                    Thread.sleep(400);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-                createShiprocketForPaidOrder(orderId, orderNumber, true);
-            } catch (Exception e) {
-                log.error(
-                        "Shiprocket shipment creation failed for order {} reason {}",
-                        orderNumber,
-                        e.getMessage(),
-                        e
-                );
-                try {
-                    markShiprocketCreateFailed(orderNumber, e.getMessage());
-                } catch (Exception ignore) {
-                    // ignore
+                    orderRepository.save(order);
+                } catch (Exception e) {
+                    log.warn(
+                            "Could not mark shiprocket queued for order {}: {}",
+                            order.getOrderNumber(),
+                            e.getMessage()
+                    );
                 }
             }
-        };
-
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            Thread t = new Thread(push, "shiprocket-push-" + orderId);
-            t.setDaemon(true);
-            t.start();
-            return;
         }
-
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                Thread t = new Thread(push, "shiprocket-push-" + orderId);
-                t.setDaemon(true);
-                t.start();
-            }
-        });
-    }
-
-    /**
-     * @param allowOneRetry when true, retries once after a short delay on transient failure
-     */
-    private void createShiprocketForPaidOrder(Long orderId, String orderNumber, boolean allowOneRetry) {
-        Order fresh = orderRepository.findById(orderId).orElse(null);
-        if (fresh == null) {
-            return;
-        }
-        if (fresh.getShiprocketOrderId() != null && !fresh.getShiprocketOrderId().isBlank()) {
-            return;
-        }
-        boolean isCod = isCodPaymentMethod(fresh.getPaymentMethod());
-        String paymentStatus = fresh.getPaymentStatus() != null
-                ? fresh.getPaymentStatus().trim().toLowerCase()
-                : "";
-        boolean paymentConfirmed = paymentStatus.equals("paid")
-                || paymentStatus.equals("completed")
-                || paymentStatus.equals("success")
-                || paymentStatus.equals("captured");
-        if (!isCod && !paymentConfirmed) {
-            log.info("Skipping Shiprocket for unpaid online order {}", orderNumber);
-            return;
-        }
-        try {
-            shiprocketService.createShipment(fresh);
-            log.info("Shiprocket shipment created for order {}", orderNumber);
-        } catch (Exception e) {
-            if (allowOneRetry) {
-                log.warn(
-                        "Shiprocket create failed for order {} — retrying once in 3s: {}",
-                        orderNumber,
-                        e.getMessage()
-                );
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-                createShiprocketForPaidOrder(orderId, orderNumber, false);
-                return;
-            }
-            throw e;
-        }
+        applicationEventPublisher.publishEvent(
+                new ShiprocketAutoPushEvent(order.getId(), order.getOrderNumber())
+        );
+        log.info(
+                "Shiprocket auto-push queued orderNumber={} orderId={}",
+                order.getOrderNumber(),
+                order.getId()
+        );
     }
 
     @Override
@@ -2794,7 +2732,7 @@ public class OrderServiceImpl implements OrderService {
                 ? publicWebBaseUrl.replaceAll("/+$", "")
                 : "https://flintnthread.in";
         String orderNumber = order.getOrderNumber() != null ? order.getOrderNumber() : "";
-        return base + "/order-view.html?orderId=" + order.getId()
+        return base + "/order-view-app.html?orderId=" + order.getId()
                 + "&orderNumber=" + java.net.URLEncoder.encode(
                 orderNumber,
                 java.nio.charset.StandardCharsets.UTF_8
@@ -3172,7 +3110,7 @@ public class OrderServiceImpl implements OrderService {
 
         boolean shouldSendConfirmationEmail = isPendingOnlinePayment(order);
 
-        order.setPaymentStatus("PAID");
+        order.setPaymentStatus("paid");
 
         order.setOrderStatus("processing");
 
@@ -3181,6 +3119,8 @@ public class OrderServiceImpl implements OrderService {
         );
 
         order = orderRepository.save(order);
+        // Same path as markOrderAsPaid — auto-push Shiprocket after commit.
+        scheduleShiprocketAfterCommit(order);
         if (shouldSendConfirmationEmail) {
             sendOrderConfirmationEmailForOrder(order);
         }

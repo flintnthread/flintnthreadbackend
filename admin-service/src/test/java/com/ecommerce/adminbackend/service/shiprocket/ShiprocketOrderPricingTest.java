@@ -46,7 +46,25 @@ class ShiprocketOrderPricingTest {
 
         assertEquals(new BigDecimal("1850.00"), priced.subTotal());
         assertEquals(new BigDecimal("0.00"), priced.shippingCharges());
-        assertEquals(new BigDecimal("150.00"), priced.totalDiscount()); // 2000 - 1850
+        assertEquals(new BigDecimal("150.00"), priced.totalDiscount());
         assertEquals(priced.orderTotal(), priced.subTotal());
+    }
+
+    @Test
+    void usesItemTotalsWhenOrderTotalMissing() {
+        var priced = ShiprocketOrderPricing.build(
+                List.of(new ShiprocketOrderPricing.LineInput(
+                        "Dress", "SKU3", "6204", 1,
+                        BigDecimal.ZERO,
+                        new BigDecimal("799.00")
+                )),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO
+        );
+
+        assertEquals(new BigDecimal("799.00"), priced.subTotal());
+        assertEquals(new BigDecimal("799.00"), ShiprocketOrderPricing.computeGrandTotal(priced));
     }
 }
