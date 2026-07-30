@@ -671,7 +671,10 @@ public class ProductServiceImpl implements ProductService {
                 .trim();
 
         Set<String> stop = Set.of(
-                "a", "an", "the", "for", "of", "and", "or", "in", "on", "to", "with", "from"
+                "a", "an", "the", "for", "of", "and", "or", "in", "on", "to", "with", "from",
+                "without", "like", "looking", "style", "styled", "design", "designed",
+                "pattern", "patterns", "print", "printed", "line", "lines", "check", "checks",
+                "checked", "stripe", "stripes", "striped", "floral", "solid", "plain"
         );
         List<String> tokens = new ArrayList<>();
         for (String part : normalized.split(" ")) {
@@ -686,6 +689,11 @@ public class ProductServiceImpl implements ProductService {
     static String selectPrimarySearchToken(List<String> tokens) {
         // Prefer product-type tokens over gender/color so we don't pull the whole Men catalog.
         for (String token : tokens) {
+            if (isProductTypeToken(token)) {
+                return token;
+            }
+        }
+        for (String token : tokens) {
             if (!isGenderToken(token) && !isColorToken(token) && token.length() >= 4) {
                 return token;
             }
@@ -696,6 +704,26 @@ public class ProductServiceImpl implements ProductService {
             }
         }
         return tokens.get(tokens.size() - 1);
+    }
+
+    private static final Set<String> PRODUCT_TYPE_TOKENS = Set.of(
+            "saree", "sari", "lehenga", "kurta", "kurti", "dress", "shirt", "tshirt",
+            "tee", "top", "blouse", "jeans", "pant", "pants", "trouser", "trousers",
+            "hoodie", "sweatshirt", "jacket", "coat", "skirt", "shorts", "legging",
+            "dupatta", "gown", "suit", "anarkali", "palazzo", "bag", "bags", "clutch",
+            "sling", "handbag", "backpack", "shoe", "shoes", "sandal", "sneaker",
+            "bangle", "bracelet", "earring", "necklace", "ring", "watch"
+    );
+
+    static boolean isProductTypeToken(String token) {
+        if (token == null || token.isBlank()) {
+            return false;
+        }
+        String t = token.toLowerCase(Locale.ROOT);
+        if (PRODUCT_TYPE_TOKENS.contains(t)) {
+            return true;
+        }
+        return t.endsWith("s") && PRODUCT_TYPE_TOKENS.contains(t.substring(0, t.length() - 1));
     }
 
     private static final Set<String> COLOR_TOKENS = Set.of(
