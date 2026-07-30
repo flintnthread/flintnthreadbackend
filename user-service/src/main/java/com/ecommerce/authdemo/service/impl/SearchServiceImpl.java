@@ -367,7 +367,7 @@ public class SearchServiceImpl implements SearchService {
     ) {
         Long uploadedHash = computeDHash(bufferedImage);
         boolean accessoryPhoto = looksLikeAccessoryPhoto(bufferedImage);
-        // Dress/kurti/model photos: never mix in bangles just because colors overlap.
+        // Includes colorful dresses AND dark graphic tees (low chroma black/white prints).
         boolean apparelPhoto = !accessoryPhoto && looksLikeFashionProductPhoto(bufferedImage);
         LinkedHashMap<Long, Product> merged = new LinkedHashMap<>();
 
@@ -399,16 +399,36 @@ public class SearchServiceImpl implements SearchService {
             );
         }
 
-        // Real fashion photo + ranked local color/keyword hits (e.g. catalog saree re-upload)
-        // when embeddings/hash cannot confirm. Screenshots already returned empty above.
+        // Looser hash pass for dark graphic tees (recompression often bumps distance a bit).
+        if (merged.isEmpty() && looksLikeDarkApparelPhoto(bufferedImage)) {
+            appendUniqueProducts(
+                    merged,
+                    filterByVisualHashDistance(localFiltered, uploadedHash, 20),
+                    accessoryPhoto,
+                    20
+            );
+        }
+
+        // Catalog re-upload / fashion photo when embeddings/hash cannot confirm.
         if (merged.isEmpty()
                 && localFiltered != null
                 && !localFiltered.isEmpty()
                 && looksLikeFashionProductPhoto(bufferedImage)) {
-            appendUniqueProducts(merged, localFiltered, accessoryPhoto, 12);
+            appendUniqueProducts(merged, preferApparelLocalMatches(localFiltered), accessoryPhoto, 12);
         }
 
         return new ArrayList<>(merged.values());
+    }
+
+    /** Prefer shirts/tees/kurtis over random color-only catalog noise. */
+    private List<Product> preferApparelLocalMatches(List<Product> products) {
+        if (products == null || products.isEmpty()) {
+            return List.of();
+        }
+        List<Product> apparel = products.stream()
+                .filter(this::isApparelProduct)
+                .toList();
+        return apparel.isEmpty() ? products : apparel;
     }
 
     private List<Product> excludeAccessoryProducts(List<Product> products) {
@@ -430,14 +450,18 @@ public class SearchServiceImpl implements SearchService {
             return false;
         }
         // Typical code/IDE screenshot: mostly light canvas + dark glyphs, little fashion color.
+        // Do NOT treat black apparel with white print as a screenshot (dark-dominant, not paper).
+        if (stats.darkRatio >= 0.35) {
+            return false;
+        }
         return stats.lightRatio >= 0.50
                 && stats.darkRatio >= 0.08
                 && stats.accentRatio <= 0.14;
     }
 
     /**
-     * True when the upload looks like a real product/model photo (enough color + subject),
-     * so we can safely use ranked local keyword/color matches if CLIP/hash miss.
+     * True when the upload looks like a real product/model photo — including black/white
+     * graphic tees that have almost no saturated "accent" pixels.
      */
     private boolean looksLikeFashionProductPhoto(BufferedImage image) {
         ImageColorStats stats = sampleImageColorStats(image);
@@ -447,8 +471,29 @@ public class SearchServiceImpl implements SearchService {
         if (looksLikeNonProductPhoto(image)) {
             return false;
         }
-        // Need some chroma (garment/backdrop) and not a near-blank page.
-        return stats.accentRatio >= 0.12 && stats.lightRatio <= 0.85;
+        if (stats.lightRatio > 0.88) {
+            return false;
+        }
+        boolean colorfulGarment = stats.accentRatio >= 0.10;
+        boolean darkApparel = looksLikeDarkApparelPhoto(stats);
+        boolean printContrast =
+                stats.darkRatio >= 0.18
+                        && stats.lightRatio >= 0.03
+                        && stats.lightRatio <= 0.50;
+        return colorfulGarment || darkApparel || printContrast;
+    }
+
+    private boolean looksLikeDarkApparelPhoto(BufferedImage image) {
+        ImageColorStats stats = sampleImageColorStats(image);
+        return looksLikeDarkApparelPhoto(stats);
+    }
+
+    private boolean looksLikeDarkApparelPhoto(ImageColorStats stats) {
+        if (stats == null) {
+            return false;
+        }
+        // Black/navy tees, hoodies, jeans flat-lays / model backs.
+        return stats.darkRatio >= 0.28 && stats.lightRatio <= 0.55;
     }
 
     private static final class ImageColorStats {
@@ -700,6 +745,12 @@ public class SearchServiceImpl implements SearchService {
             keywords.add("bangle");
             keywords.add("bracelet");
             keywords.add("jewellery");
+        } else if (looksLikeDarkApparelPhoto(bufferedImage) || looksLikeFashionProductPhoto(bufferedImage)) {
+            // Black graphic tees often only yield "black"/"white" color keywords — add apparel types.
+            keywords.add("tshirt");
+            keywords.add("t-shirt");
+            keywords.add("shirt");
+            keywords.add("tee");
         }
         keywords = new LinkedHashSet<>(expandKeywords(keywords));
         if (keywords.isEmpty()) {
@@ -708,8 +759,32 @@ public class SearchServiceImpl implements SearchService {
 
         Long uploadedHash = computeDHash(bufferedImage);
         String uploadedStem = toFileStem(image.getOriginalFilename());
-        List<Product> candidates = fetchCandidateProducts(keywords, accessoryPhoto);
-        return rankProductsByImageKeywords(candidates, keywords, uploadedStem, uploadedHash, accessoryPhoto);
+        // Prefer apparel candidates first so hash budget hits the right tee (e.g. product 243).
+        boolean preferAccessories = accessoryPhoto;
+        List<Product> candidates = fetchCandidateProducts(keywords, preferAccessories);
+        if (!preferAccessories) {
+            candidates = prioritizeApparelCandidates(candidates);
+        }
+        return rankProductsByImageKeywords(candidates, keywords, uploadedStem, uploadedHash, preferAccessories);
+    }
+
+    private List<Product> prioritizeApparelCandidates(List<Product> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        List<Product> apparel = new ArrayList<>();
+        List<Product> other = new ArrayList<>();
+        for (Product product : candidates) {
+            if (isApparelProduct(product)) {
+                apparel.add(product);
+            } else {
+                other.add(product);
+            }
+        }
+        List<Product> ordered = new ArrayList<>(apparel.size() + other.size());
+        ordered.addAll(apparel);
+        ordered.addAll(other);
+        return ordered;
     }
 
     @Override
