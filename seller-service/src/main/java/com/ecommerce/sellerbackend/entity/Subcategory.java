@@ -27,4 +27,7 @@ public class Subcategory {
 
     @Column(name = "material_slabs")
     private String materialSlabs;
+
+    @Column(name = "mobile_image")
+    private String mobileImage;
 }
