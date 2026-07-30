@@ -51,7 +51,6 @@ public class Subcategory {
     @Column(name = "seller_id")
     private Integer sellerId;
 
-    /** Not present on all DB deployments; keep out of generated SQL. */
-    @jakarta.persistence.Transient
+    @Column(name = "mobile_image")
     private String mobileImage;
 }

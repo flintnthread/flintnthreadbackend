@@ -771,9 +771,11 @@ public class InvoiceServiceImpl implements InvoiceService {
         try {
             Files.createDirectories(invoiceDirectory);
             Files.writeString(filePath, html, StandardCharsets.UTF_8);
+            log.info("Generated invoice file: {}", filePath.toAbsolutePath());
             return relativePath;
         } catch (IOException e) {
-            throw new OrderException("Could not generate invoice file");
+            log.error("Failed to generate invoice file: {} for order: {}", filePath.toAbsolutePath(), orderId, e);
+            throw new OrderException("Could not generate invoice file: " + e.getMessage());
         }
     }
 
@@ -1195,12 +1197,22 @@ public class InvoiceServiceImpl implements InvoiceService {
     }
 
     private Path invoiceStorageDirectory() {
-        return Path.of(System.getProperty("user.dir"), "invoices");
+        Path dir = Path.of(System.getProperty("user.dir"), "invoices");
+        try {
+            if (!Files.exists(dir)) {
+                Files.createDirectories(dir);
+                log.info("Created invoice storage directory: {}", dir.toAbsolutePath());
+            }
+        } catch (IOException e) {
+            log.error("Failed to create invoice storage directory: {}", dir.toAbsolutePath(), e);
+        }
+        return dir;
     }
 
     private Invoice ensureInvoiceFileExists(Invoice entity) {
         String invoiceNumber = normalize(entity.getInvoiceNumber());
         if (invoiceNumber == null) {
+            log.warn("Invoice number is null for entity: {}", entity.getId());
             return entity;
         }
 
@@ -1210,6 +1222,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                 ? "Invoice_" + invoiceNumber + ".html"
                 : "Invoice_" + invoiceNumber + "_seller_" + sellerId + ".html";
         Path expectedFile = invoiceStorageDirectory().resolve(expectedFileName);
+        
         if (Files.exists(expectedFile)) {
             if (!expectedRelativePath.equals(entity.getInvoicePath())) {
                 entity.setInvoicePath(expectedRelativePath);
@@ -1218,10 +1231,15 @@ public class InvoiceServiceImpl implements InvoiceService {
             return entity;
         }
 
-        String generatedPath = generateInvoiceHtmlFile(invoiceNumber, entity.getOrderId(), sellerId);
-        if (!generatedPath.equals(entity.getInvoicePath())) {
-            entity.setInvoicePath(generatedPath);
-            return invoiceRepository.save(entity);
+        try {
+            String generatedPath = generateInvoiceHtmlFile(invoiceNumber, entity.getOrderId(), sellerId);
+            if (!generatedPath.equals(entity.getInvoicePath())) {
+                entity.setInvoicePath(generatedPath);
+                return invoiceRepository.save(entity);
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate invoice file for invoice number: {}, order ID: {}", 
+                invoiceNumber, entity.getOrderId(), e);
         }
         return entity;
     }
