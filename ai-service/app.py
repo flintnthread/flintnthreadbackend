@@ -128,7 +128,7 @@ def similarity_search():
             similarities.append((product_id, float(similarity)))
         
         # Sort by similarity and keep only confident matches (avoid random top-K on noise).
-        MIN_SIMILARITY = float(data.get('min_similarity', 0.32) or 0.32)
+        MIN_SIMILARITY = float(data.get('min_similarity', 0.20) or 0.20)
         similarities.sort(key=lambda x: x[1], reverse=True)
         top = [(pid, sim) for pid, sim in similarities if sim >= MIN_SIMILARITY][:limit]
         top_similar_ids = [int(pid) for pid, _ in top]

@@ -67,7 +67,7 @@ public class SearchServiceImpl implements SearchService {
             "black", "white", "grey", "gray", "brown", "beige", "red", "green", "blue",
             "purple", "yellow", "pink", "multicolor", "orange"
     );
-    private static final int MAX_ONLINE_HASH_COMPUTES_PER_REQUEST = 20;
+    private static final int MAX_ONLINE_HASH_COMPUTES_PER_REQUEST = 40;
     private static final int STRONG_VISUAL_HASH_DISTANCE = 12;
     private static final int ACCEPTABLE_VISUAL_HASH_DISTANCE = 16;
     private static final List<String> ACCESSORY_SEARCH_TERMS = List.of(
@@ -377,14 +377,31 @@ public class SearchServiceImpl implements SearchService {
 
         // CLIP / vector matches are the primary ranking signal when available.
         appendUniqueProducts(merged, aiProducts, accessoryPhoto, 20);
-        // Only keep local matches that are visually close (perceptual hash) — never dump
-        // weak color/filename keyword hits (that caused sarees for a code screenshot).
         appendUniqueProducts(
                 merged,
                 filterByVisualHashDistance(localMatches, uploadedHash, STRONG_VISUAL_HASH_DISTANCE),
                 accessoryPhoto,
                 20
         );
+
+        // Near-duplicate catalog photos when CLIP is down / embeddings missing.
+        if (merged.isEmpty()) {
+            appendUniqueProducts(
+                    merged,
+                    filterByVisualHashDistance(localMatches, uploadedHash, ACCEPTABLE_VISUAL_HASH_DISTANCE),
+                    accessoryPhoto,
+                    20
+            );
+        }
+
+        // Real fashion photo + ranked local color/keyword hits (e.g. catalog saree re-upload)
+        // when embeddings/hash cannot confirm. Screenshots already returned empty above.
+        if (merged.isEmpty()
+                && localMatches != null
+                && !localMatches.isEmpty()
+                && looksLikeFashionProductPhoto(bufferedImage)) {
+            appendUniqueProducts(merged, localMatches, accessoryPhoto, 12);
+        }
 
         return new ArrayList<>(merged.values());
     }
@@ -394,10 +411,49 @@ public class SearchServiceImpl implements SearchService {
      * low fashion chroma) so camera search does not return random catalog items.
      */
     private boolean looksLikeNonProductPhoto(BufferedImage image) {
+        ImageColorStats stats = sampleImageColorStats(image);
+        if (stats == null) {
+            return false;
+        }
+        // Typical code/IDE screenshot: mostly light canvas + dark glyphs, little fashion color.
+        return stats.lightRatio >= 0.50
+                && stats.darkRatio >= 0.08
+                && stats.accentRatio <= 0.14;
+    }
+
+    /**
+     * True when the upload looks like a real product/model photo (enough color + subject),
+     * so we can safely use ranked local keyword/color matches if CLIP/hash miss.
+     */
+    private boolean looksLikeFashionProductPhoto(BufferedImage image) {
+        ImageColorStats stats = sampleImageColorStats(image);
+        if (stats == null) {
+            return false;
+        }
+        if (looksLikeNonProductPhoto(image)) {
+            return false;
+        }
+        // Need some chroma (garment/backdrop) and not a near-blank page.
+        return stats.accentRatio >= 0.12 && stats.lightRatio <= 0.85;
+    }
+
+    private static final class ImageColorStats {
+        final double lightRatio;
+        final double darkRatio;
+        final double accentRatio;
+
+        ImageColorStats(double lightRatio, double darkRatio, double accentRatio) {
+            this.lightRatio = lightRatio;
+            this.darkRatio = darkRatio;
+            this.accentRatio = accentRatio;
+        }
+    }
+
+    private ImageColorStats sampleImageColorStats(BufferedImage image) {
         int width = image.getWidth();
         int height = image.getHeight();
         if (width <= 0 || height <= 0) {
-            return false;
+            return null;
         }
 
         int lightPixels = 0;
@@ -425,22 +481,20 @@ public class SearchServiceImpl implements SearchService {
                     darkPixels++;
                 }
 
-                if (saturation >= 32 && max >= 100) {
+                if (saturation >= 28 && max >= 90) {
                     accentPixels++;
                 }
             }
         }
 
         if (sampled == 0) {
-            return false;
+            return null;
         }
-
-        double lightRatio = (double) lightPixels / sampled;
-        double darkRatio = (double) darkPixels / sampled;
-        double accentRatio = (double) accentPixels / sampled;
-
-        // Typical code/IDE screenshot: mostly light canvas + dark glyphs, little fashion color.
-        return lightRatio >= 0.45 && darkRatio >= 0.06 && accentRatio <= 0.18;
+        return new ImageColorStats(
+                (double) lightPixels / sampled,
+                (double) darkPixels / sampled,
+                (double) accentPixels / sampled
+        );
     }
 
     private void appendUniqueProducts(

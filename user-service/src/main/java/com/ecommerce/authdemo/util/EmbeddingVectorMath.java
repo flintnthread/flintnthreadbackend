@@ -11,10 +11,17 @@ import java.util.Map;
 public final class EmbeddingVectorMath {
 
     /**
-     * Cosine floor for camera search. Below this, matches are noise
-     * (e.g. screenshots / unrelated photos still score slightly &gt; 0).
+     * Absolute cosine floor — below this is noise (screenshots vs catalog).
+     * Kept modest so near-duplicate catalog photos still match when CLIP scores
+     * are soft (recompression / crop / different resolution).
      */
-    public static final double MIN_CAMERA_SIMILARITY = 0.32;
+    public static final double MIN_CAMERA_SIMILARITY = 0.20;
+
+    /**
+     * Prefer keeping candidates at least this strong, or within a relative band
+     * of the best hit when the best is only moderately confident.
+     */
+    public static final double STRONG_CAMERA_SIMILARITY = 0.28;
 
     private EmbeddingVectorMath() {
     }
@@ -94,7 +101,17 @@ public final class EmbeddingVectorMath {
                 scored.add(Map.entry(entry.getKey(), similarity));
             }
         }
+        if (scored.isEmpty()) {
+            return List.of();
+        }
         scored.sort(Comparator.comparingDouble(Map.Entry<Long, Double>::getValue).reversed());
-        return scored.stream().limit(limit).map(Map.Entry::getKey).toList();
+        double best = scored.get(0).getValue();
+        // Keep strong hits, or anything close to the best match (same garment, softer score).
+        double keepFloor = Math.max(minSimilarity, Math.min(STRONG_CAMERA_SIMILARITY, best * 0.82));
+        return scored.stream()
+                .filter(entry -> entry.getValue() >= keepFloor)
+                .limit(limit)
+                .map(Map.Entry::getKey)
+                .toList();
     }
 }
