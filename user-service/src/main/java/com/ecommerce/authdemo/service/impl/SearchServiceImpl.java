@@ -367,6 +367,8 @@ public class SearchServiceImpl implements SearchService {
     ) {
         Long uploadedHash = computeDHash(bufferedImage);
         boolean accessoryPhoto = looksLikeAccessoryPhoto(bufferedImage);
+        // Dress/kurti/model photos: never mix in bangles just because colors overlap.
+        boolean apparelPhoto = !accessoryPhoto && looksLikeFashionProductPhoto(bufferedImage);
         LinkedHashMap<Long, Product> merged = new LinkedHashMap<>();
 
         // Screenshots / UI / code dumps are not product photos — never invent "similar" fashion.
@@ -375,11 +377,14 @@ public class SearchServiceImpl implements SearchService {
             return List.of();
         }
 
+        List<Product> aiFiltered = apparelPhoto ? excludeAccessoryProducts(aiProducts) : aiProducts;
+        List<Product> localFiltered = apparelPhoto ? excludeAccessoryProducts(localMatches) : localMatches;
+
         // CLIP / vector matches are the primary ranking signal when available.
-        appendUniqueProducts(merged, aiProducts, accessoryPhoto, 20);
+        appendUniqueProducts(merged, aiFiltered, accessoryPhoto, 20);
         appendUniqueProducts(
                 merged,
-                filterByVisualHashDistance(localMatches, uploadedHash, STRONG_VISUAL_HASH_DISTANCE),
+                filterByVisualHashDistance(localFiltered, uploadedHash, STRONG_VISUAL_HASH_DISTANCE),
                 accessoryPhoto,
                 20
         );
@@ -388,7 +393,7 @@ public class SearchServiceImpl implements SearchService {
         if (merged.isEmpty()) {
             appendUniqueProducts(
                     merged,
-                    filterByVisualHashDistance(localMatches, uploadedHash, ACCEPTABLE_VISUAL_HASH_DISTANCE),
+                    filterByVisualHashDistance(localFiltered, uploadedHash, ACCEPTABLE_VISUAL_HASH_DISTANCE),
                     accessoryPhoto,
                     20
             );
@@ -397,13 +402,22 @@ public class SearchServiceImpl implements SearchService {
         // Real fashion photo + ranked local color/keyword hits (e.g. catalog saree re-upload)
         // when embeddings/hash cannot confirm. Screenshots already returned empty above.
         if (merged.isEmpty()
-                && localMatches != null
-                && !localMatches.isEmpty()
+                && localFiltered != null
+                && !localFiltered.isEmpty()
                 && looksLikeFashionProductPhoto(bufferedImage)) {
-            appendUniqueProducts(merged, localMatches, accessoryPhoto, 12);
+            appendUniqueProducts(merged, localFiltered, accessoryPhoto, 12);
         }
 
         return new ArrayList<>(merged.values());
+    }
+
+    private List<Product> excludeAccessoryProducts(List<Product> products) {
+        if (products == null || products.isEmpty()) {
+            return List.of();
+        }
+        return products.stream()
+                .filter(product -> product != null && !isAccessoryProduct(product))
+                .toList();
     }
 
     /**
@@ -616,15 +630,22 @@ public class SearchServiceImpl implements SearchService {
 
         double greenRatio = (double) greenPixels / sampled;
         double accentRatio = (double) accentPixels / sampled;
-        return accentRatio >= 0.05 && (greenRatio >= 0.12 || accentRatio >= 0.14);
+        // Jewelry is often shot on leafy/green backdrops. Never treat a normal
+        // colorful dress/kurti model photo as jewelry just because accentRatio is high.
+        return greenRatio >= 0.18 && accentRatio >= 0.04 && accentRatio <= 0.40;
     }
 
     private boolean isApparelProduct(Product product) {
         String text = buildSearchText(product).toLowerCase(Locale.ROOT);
         return text.contains("saree") || text.contains("sari") || text.contains("lehenga")
-                || text.contains("kurta") || text.contains("dress") || text.contains("shirt")
+                || text.contains("kurta") || text.contains("kurti") || text.contains("dress")
+                || text.contains("shirt") || text.contains("tshirt") || text.contains("t-shirt")
                 || text.contains("blouse") || text.contains("dupatta") || text.contains("gown")
-                || text.contains("suit") || text.contains("ethnic");
+                || text.contains("suit") || text.contains("ethnic") || text.contains("hoodie")
+                || text.contains("sweatshirt") || text.contains("jean") || text.contains("pant")
+                || text.contains("trouser") || text.contains("skirt") || text.contains("top")
+                || text.contains("jacket") || text.contains("coat") || text.contains("shorts")
+                || text.contains("legging") || text.contains("palazzo") || text.contains("anarkali");
     }
 
     private boolean isAccessoryProduct(Product product) {
@@ -1002,6 +1023,9 @@ public class SearchServiceImpl implements SearchService {
                 if (isAccessoryProduct(product)) {
                     score += 45;
                 }
+            } else if (isAccessoryProduct(product)) {
+                // Apparel / general fashion photo: jewelry color overlap must not win.
+                score -= 120;
             }
 
             if (exactTokenHits == 0 && fuzzyHits == 0 && colorHits == 0 && modelHits == 0) {
@@ -1071,10 +1095,19 @@ public class SearchServiceImpl implements SearchService {
         List<Product> sortedByScore = candidates.stream()
                 .filter(product -> product.getId() != null && scoreMap.containsKey(product.getId()))
                 .filter(product -> !preferAccessories || !isApparelProduct(product) || scoreMap.get(product.getId()) >= 180)
+                .filter(product -> preferAccessories || !isAccessoryProduct(product) || scoreMap.get(product.getId()) >= 220)
                 .sorted(Comparator
                         .comparingInt((Product product) -> scoreMap.get(product.getId())).reversed()
                         .thenComparing(Product::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
+        if (!preferAccessories) {
+            List<Product> apparelOnly = sortedByScore.stream()
+                    .filter(product -> !isAccessoryProduct(product))
+                    .toList();
+            if (!apparelOnly.isEmpty()) {
+                sortedByScore = apparelOnly;
+            }
+        }
         return diversifyByCategory(sortedByScore, 20, preferAccessories ? 6 : 3);
     }
 
