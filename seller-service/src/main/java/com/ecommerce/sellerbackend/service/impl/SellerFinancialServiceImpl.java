@@ -772,7 +772,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
     private boolean isSellerPaymentPending(Order order) {
         if (order == null) return true;
         String status = nullToEmpty(order.getSellerPaymentStatus()).toLowerCase(Locale.ROOT);
-        return status.isBlank() || status.contains("pending");
+        return status.isBlank() || status.contains("pending") || !(status.contains("completed") || status.contains("paid"));
     }
 
     private double itemTotal(OrderItem item) {
