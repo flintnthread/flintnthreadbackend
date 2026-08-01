@@ -1,0 +1,91 @@
+# =============================================================================
+# USER SERVICE — database, integrations, and user-only settings
+# =============================================================================
+
+# --- Database ---
+spring.datasource.url=jdbc:mysql://127.0.0.1:3306/flintdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata
+spring.datasource.username=root
+spring.datasource.password=Flint&&thread@90
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+spring.datasource.hikari.connection-timeout=20000
+
+spring.jpa.hibernate.ddl-auto=none
+spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+logging.level.org.hibernate.SQL=DEBUG
+logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+
+# --- Server ---
+spring.application.name=user-service
+server.port=8080
+server.address=0.0.0.0
+server.servlet.encoding.charset=UTF-8
+server.servlet.encoding.enabled=true
+server.servlet.encoding.force=true
+spring.messages.encoding=UTF-8
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=10MB
+
+# --- Twilio ---
+twilio.account.sid=ACa7443c6896f4f5bbe2f3cf6bba2ccef8
+twilio.auth.token=559cb3cc77d036172800a061e638b95f
+twilio.phone.number=+13189243311
+
+# --- SendGrid SMTP (username is literally "apikey"; set SENDGRID_API_KEY env var on server/local) ---
+spring.mail.host=smtp.sendgrid.net
+spring.mail.port=587
+spring.mail.username=apikey
+spring.mail.password=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
+spring.mail.protocol=smtp
+spring.mail.default-encoding=UTF-8
+spring.mail.properties.mail.transport.protocol=smtp
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.starttls.required=true
+spring.mail.properties.mail.smtp.ssl.trust=smtp.sendgrid.net
+spring.mail.properties.mail.smtp.ssl.protocols=TLSv1.2
+spring.mail.properties.mail.smtp.connectiontimeout=10000
+spring.mail.properties.mail.smtp.timeout=10000
+spring.mail.properties.mail.smtp.writetimeout=10000
+logging.level.org.springframework.mail=DEBUG
+app.mail.from=support@flintnthread.in
+app.mail.from-name=Flint & Thread
+
+# --- Razorpay ---
+razorpay.key_id=rzp_test_SdfDdN0O7TfBld
+razorpay.key_secret=UHWc5ZBB66c9hqYI6vhCy7qk
+
+# --- Shiprocket ---
+shiprocket.email=flintandthread@gmail.com
+shiprocket.password=FNUJ!f8WQV$u\#g6f
+shiprocket.api.base-url=https://apiv2.shiprocket.in
+shiprocket.dashboard.url=https://app.shiprocket.in/seller/home
+shiprocket.pickup-location=work
+# Optional per-seller pickup nicknames (Shiprocket pickup_location names):
+# Format: sellerId:Pickup Name,sellerId:Another Pickup
+# shiprocket.pickup-location-by-seller=1:work,2:ASVI HOME FOODS
+
+# --- Media / uploads ---
+app.media.public-base-url=https://flintnthread.in
+
+# --- Invoice header details (used in generated HTML invoices) ---
+invoice.seller.name=Flint & Thread (India) Pvt. Ltd.
+invoice.seller.address=India
+invoice.seller.phone=+91 9063499092
+invoice.seller.email=support@flintnthread.in
+invoice.seller.gstin=36AGQCF5402J1ZP
+
+# --- App logs: payment, orders, Shiprocket ([PAYMENT], [ORDER], [SHIPROCKET]) ---
+logging.level.com.ecommerce.authdemo=INFO
+
+management.endpoints.web.exposure.include=health,info
+management.endpoint.health.show-details=when_authorized
+
+# --- User service extras ---
+ai.service.url=${AI_SERVICE_URL:http://127.0.0.1:5000}
+ai.model.version=${AI_MODEL_VERSION:clip-vit-base-patch32}
+app.upload.max-file-size-bytes=${UPLOAD_MAX_BYTES:26214400}
+app.cloudinary.folder-prefix=${CLOUDINARY_FOLDER:flintnthread}
+app.public-web-base-url=${PUBLIC_WEB_BASE_URL:https://flintnthread.in}
