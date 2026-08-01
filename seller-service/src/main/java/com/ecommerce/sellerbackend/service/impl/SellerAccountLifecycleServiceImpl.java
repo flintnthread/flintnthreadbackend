@@ -219,34 +219,30 @@ public class SellerAccountLifecycleServiceImpl implements SellerAccountLifecycle
     }
 
     private List<Map<String, Object>> findBlockingOrders(Long sellerId) {
-        List<OrderItem> items = orderItemRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
-        if (items == null || items.isEmpty()) {
+        List<Object[]> results = orderItemRepository.findOrderItemsWithOrderAndProductBySellerId(sellerId);
+        if (results == null || results.isEmpty()) {
             return List.of();
         }
-        Set<Long> orderIds = items.stream()
-                .map(OrderItem::getOrderId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(HashSet::new));
+
+        Map<Long, List<OrderItem>> byOrder = new LinkedHashMap<>();
         Map<Long, Order> ordersById = new HashMap<>();
-        if (!orderIds.isEmpty()) {
-            for (Order order : orderRepository.findAllById(orderIds)) {
+        Map<Long, Product> productsById = new HashMap<>();
+
+        for (Object[] result : results) {
+            OrderItem item = (OrderItem) result[0];
+            Order order = (Order) result[1];
+            Product product = (Product) result[2];
+
+            if (item.getOrderId() != null) {
+                byOrder.computeIfAbsent(item.getOrderId(), k -> new ArrayList<>()).add(item);
+            }
+            if (order != null) {
                 ordersById.put(order.getId(), order);
             }
-        }
-        Map<Long, Product> productsById = new HashMap<>();
-        Set<Long> productIds = items.stream()
-                .map(OrderItem::getProductId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        if (!productIds.isEmpty()) {
-            for (Product p : productRepository.findAllById(productIds)) {
-                productsById.put(p.getId(), p);
+            if (product != null && item.getProductId() != null) {
+                productsById.put(item.getProductId(), product);
             }
         }
-
-        Map<Long, List<OrderItem>> byOrder = items.stream()
-                .filter(i -> i.getOrderId() != null)
-                .collect(Collectors.groupingBy(OrderItem::getOrderId, LinkedHashMap::new, Collectors.toList()));
 
         List<Map<String, Object>> blocking = new ArrayList<>();
         for (Map.Entry<Long, List<OrderItem>> entry : byOrder.entrySet()) {
@@ -285,31 +281,24 @@ public class SellerAccountLifecycleServiceImpl implements SellerAccountLifecycle
     }
 
     private List<Map<String, Object>> findInStockProducts(Long sellerId) {
-        List<Product> products = productRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
-        if (products == null || products.isEmpty()) {
+        List<Object[]> results = productRepository.findInStockProductsWithStockCount(sellerId);
+        if (results == null || results.isEmpty()) {
             return List.of();
         }
-        List<Long> productIds = products.stream().map(Product::getId).filter(Objects::nonNull).toList();
-        List<ProductVariant> variants = productVariantRepository.findByProductIdIn(productIds);
-        Map<Long, Integer> stockByProduct = new HashMap<>();
-        for (ProductVariant v : variants) {
-            if (v.getProductId() == null) {
-                continue;
-            }
-            int stock = v.getStock() != null ? Math.max(0, v.getStock()) : 0;
-            stockByProduct.merge(v.getProductId(), stock, Integer::sum);
-        }
+
         List<Map<String, Object>> inStock = new ArrayList<>();
-        for (Product p : products) {
-            int stock = stockByProduct.getOrDefault(p.getId(), 0);
-            if (stock <= 0) {
-                continue;
+        for (Object[] result : results) {
+            Long productId = ((Number) result[0]).longValue();
+            String productName = (String) result[1];
+            Integer stock = ((Number) result[2]).intValue();
+
+            if (stock > 0) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("productId", productId);
+                row.put("name", productName != null ? productName : "Product");
+                row.put("stock", stock);
+                inStock.add(row);
             }
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("productId", p.getId());
-            row.put("name", p.getName());
-            row.put("stock", stock);
-            inStock.add(row);
         }
         return inStock;
     }

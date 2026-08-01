@@ -358,6 +358,8 @@ public class CatalogHierarchyService {
         return CatalogSubcategoryResponse.builder()
                 .id(sub.getId())
                 .name(sub.getSubcategoryName())
+                .subcategoryImage(sub.getSubcategoryImage())
+                .mobileImage(sub.getMobileImage())
                 .gstPercentage(sub.getGstPercentage())
                 .materials(materialsForSubcategory(sub))
                 .children(children)

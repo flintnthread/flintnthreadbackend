@@ -249,19 +249,25 @@ public class AdminSellerLifecycleService {
     }
 
     private List<Map<String, Object>> findBlockingOrders(Long sellerId) {
-        List<OrderItem> items = orderItemRepository.findBySellerIdOrderByCreatedAtDesc(sellerId);
-        if (items == null || items.isEmpty()) {
+        List<Object[]> results = orderItemRepository.findOrderItemsWithOrderBySellerId(sellerId);
+        if (results == null || results.isEmpty()) {
             return List.of();
         }
-        Set<Long> orderIds = items.stream().map(OrderItem::getOrderId).filter(Objects::nonNull)
-                .collect(Collectors.toCollection(HashSet::new));
+
+        Map<Long, List<OrderItem>> byOrder = new LinkedHashMap<>();
         Map<Long, Order> ordersById = new HashMap<>();
-        for (Order order : orderRepository.findAllById(orderIds)) {
-            ordersById.put(order.getId(), order);
+
+        for (Object[] result : results) {
+            OrderItem item = (OrderItem) result[0];
+            Order order = (Order) result[1];
+
+            if (item.getOrderId() != null) {
+                byOrder.computeIfAbsent(item.getOrderId(), k -> new ArrayList<>()).add(item);
+            }
+            if (order != null) {
+                ordersById.put(order.getId(), order);
+            }
         }
-        Map<Long, List<OrderItem>> byOrder = items.stream()
-                .filter(i -> i.getOrderId() != null)
-                .collect(Collectors.groupingBy(OrderItem::getOrderId, LinkedHashMap::new, Collectors.toList()));
 
         List<Map<String, Object>> blocking = new ArrayList<>();
         for (Map.Entry<Long, List<OrderItem>> entry : byOrder.entrySet()) {
@@ -292,27 +298,24 @@ public class AdminSellerLifecycleService {
     }
 
     private List<Map<String, Object>> findInStockProducts(Long sellerId) {
-        List<Product> products = productRepository.findBySellerId(sellerId);
-        if (products == null || products.isEmpty()) {
+        List<Object[]> results = productRepository.findInStockProductsWithStockCount(sellerId);
+        if (results == null || results.isEmpty()) {
             return List.of();
         }
-        Collection<Long> ids = products.stream().map(Product::getId).filter(Objects::nonNull).toList();
-        List<ProductVariant> variants = productVariantRepository.findByProductIdIn(ids);
-        Map<Long, Integer> stockByProduct = new HashMap<>();
-        for (ProductVariant v : variants) {
-            if (v.getProductId() == null) continue;
-            int stock = v.getStock() != null ? Math.max(0, v.getStock()) : 0;
-            stockByProduct.merge(v.getProductId(), stock, Integer::sum);
-        }
+
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (Product p : products) {
-            int stock = stockByProduct.getOrDefault(p.getId(), 0);
-            if (stock <= 0) continue;
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("productId", p.getId());
-            row.put("name", p.getName());
-            row.put("stock", stock);
-            rows.add(row);
+        for (Object[] result : results) {
+            Long productId = ((Number) result[0]).longValue();
+            String productName = (String) result[1];
+            Integer stock = ((Number) result[2]).intValue();
+
+            if (stock > 0) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("productId", productId);
+                row.put("name", productName != null ? productName : "Product");
+                row.put("stock", stock);
+                rows.add(row);
+            }
         }
         return rows;
     }

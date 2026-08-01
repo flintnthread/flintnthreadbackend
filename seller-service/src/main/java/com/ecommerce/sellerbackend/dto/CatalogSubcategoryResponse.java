@@ -11,6 +11,8 @@ import java.util.List;
 public class CatalogSubcategoryResponse {
     private Integer id;
     private String name;
+    private String subcategoryImage;
+    private String mobileImage;
     private BigDecimal gstPercentage;
     private List<CatalogMaterialOptionResponse> materials;
     /** Leaf sub-types under this category row (e.g. Folding chairs under Chairs). */

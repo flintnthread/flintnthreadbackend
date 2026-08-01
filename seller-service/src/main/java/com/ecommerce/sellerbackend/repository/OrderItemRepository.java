@@ -16,6 +16,17 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Integer> {
 
     List<OrderItem> findBySellerIdOrderByCreatedAtDesc(Long sellerId);
 
+    @Query("""
+            SELECT oi, o, p
+            FROM OrderItem oi
+            LEFT JOIN Order o ON o.id = oi.orderId
+            LEFT JOIN Product p ON p.id = oi.productId
+            WHERE oi.sellerId = :sellerId
+              AND oi.orderId IS NOT NULL
+            ORDER BY oi.createdAt DESC
+            """)
+    List<Object[]> findOrderItemsWithOrderAndProductBySellerId(@Param("sellerId") Long sellerId);
+
     List<OrderItem> findBySellerIdAndOrderId(Long sellerId, Long orderId);
 
     @Query("""

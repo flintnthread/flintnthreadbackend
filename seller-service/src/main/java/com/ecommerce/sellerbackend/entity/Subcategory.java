@@ -22,12 +22,15 @@ public class Subcategory {
     @Column(name = "subcategory_name", nullable = false)
     private String subcategoryName;
 
+    @Column(name = "subcategory_image")
+    private String subcategoryImage;
+
+    @Column(name = "mobile_image")
+    private String mobileImage;
+
     @Column(name = "gst_percentage")
     private java.math.BigDecimal gstPercentage;
 
     @Column(name = "material_slabs")
     private String materialSlabs;
-
-    @Column(name = "mobile_image")
-    private String mobileImage;
 }

@@ -49,124 +49,159 @@ public final class InvoiceHtmlBuilder {
 
         BigDecimal shippingAmount = decimal(totals.get("shipping"));
         String shippingLabel = shippingAmount.compareTo(BigDecimal.ZERO) == 0 ? "FREE" : money(shippingAmount);
+        
+        String gstBreakdownNote = isIntraState 
+            ? "*intra-state transaction - CGST and SGST applicable"
+            : "*inter-state transaction - IGST applicable";
 
         return """
-                <!DOCTYPE html>
-                <html>
+                <!doctype html>
+                <html lang="en">
                 <head>
                   <meta charset="utf-8" />
+                  <meta name="viewport" content="width=device-width, initial-scale=1" />
+                  <title>Invoice %s</title>
                   <style>
-                    body { font-family: Arial, sans-serif; color: #111827; padding: 24px; }
-                    h1 { color: #1E2B6B; margin: 0 0 4px; }
-                    .meta { color: #6B7280; font-size: 13px; margin-bottom: 6px; }
-                    .grid { display: flex; gap: 24px; margin-bottom: 18px; }
-                    .col { flex: 1; }
-                    .label { font-size: 11px; font-weight: 700; color: #F97316; }
-                    .name { font-weight: 700; margin: 4px 0; }
-                    .muted { color: #6B7280; font-size: 13px; line-height: 1.5; }
-                    table { width: 100%%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
-                    th, td { border-bottom: 1px solid #E5E7EB; padding: 8px 6px; vertical-align: top; }
-                    th { background: #FFF7ED; text-align: left; }
-                    .totals { margin-top: 18px; width: 320px; margin-left: auto; }
-                    .totals div { display: flex; justify-content: space-between; padding: 6px 0; }
-                    .grand { font-size: 16px; font-weight: 800; border-top: 2px solid #1E2B6B; margin-top: 8px; padding-top: 8px; }
-                    .qr { width: 88px; height: 88px; }
+                    body { font-family: Arial, sans-serif; margin: 0; background: #fff; color: #1f2937; font-size: 12px; }
+                    .page { max-width: 794px; margin: 0 auto; background: #fff; border: none; border-radius: 0; overflow: hidden; }
+                    .section { padding: 8px 12px; }
+                    .header { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+                    .company h1 { margin: 0 0 4px; font-size: 20px; }
+                    .company p { margin: 2px 0; font-size: 12px; }
+                    .invoice-meta { min-width: 220px; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; }
+                    .invoice-meta h2 { margin: 0 0 4px; font-size: 16px; color: #b91c1c; text-transform: uppercase; letter-spacing: 0.5px; }
+                    .invoice-meta p { margin: 2px 0; font-size: 11px; }
+                    .heading { margin: 0 0 6px; font-size: 18px; }
+                    .subheading { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; color: #6b7280; }
+                    .party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+                    .party-box { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; }
+                    .party-box h3 { margin: 0 0 4px; font-size: 14px; }
+                    .party-box p { margin: 2px 0; font-size: 11px; }
+                    .items-table { width: 100%%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
+                    .items-table th { background: #123763; color: #fff; font-size: 9px; text-align: left; padding: 5px 4px; text-transform: uppercase; vertical-align: middle; }
+                    .items-table th:nth-child(2) { text-align: center; }
+                    .items-table th:nth-child(n+3) { text-align: right; }
+                    .items-table td { font-size: 10px; padding: 5px 4px; border-bottom: 1px solid #e5e7eb; vertical-align: top; word-wrap: break-word; }
+                    .items-table td:nth-child(2) { text-align: center; }
+                    .items-table td.right { text-align: right; white-space: nowrap; }
+                    .item-meta { color: #6b7280; font-size: 9px; margin-top: 1px; }
+                    .total { text-align: right; border-top: 1px solid #e5e7eb; margin-top: 8px; padding-top: 6px; }
+                    .total p { margin: 3px 0; font-size: 11px; }
+                    .grand { font-size: 20px; color: #92400e; font-weight: 700; }
+                    .muted { color: #6b7280; font-size: 10px; }
+                    @page { size: A4 portrait; margin: 7mm; }
                   </style>
                 </head>
                 <body>
-                  <div style="display:flex; justify-content:space-between; gap:20px;">
-                    <div>
-                      <h1>INVOICE</h1>
-                      <div class="meta">%s</div>
-                      <div class="meta">Order: %s</div>
-                      <div class="meta">Date: %s</div>
-                      <div class="muted" style="margin-top:12px;">
-                        <strong>%s</strong><br/>
-                        %s<br/>
-                        Phone: %s<br/>
-                        Email: %s<br/>
-                        GSTIN: %s
+                  <div class="page">
+                    <div class="section header">
+                      <div class="company">
+                        <h1>%s</h1>
+                        <p>%s</p>
+                        <p><strong>Phone:</strong> %s</p>
+                        <p><strong>Email:</strong> %s</p>
+                        <p><strong>GSTIN:</strong> %s</p>
+                      </div>
+                      <div class="invoice-meta">
+                        <h2>Invoice</h2>
+                        <p><strong>Invoice:</strong> %s</p>
+                        <p><strong>Order ID:</strong> %s</p>
+                        <p><strong>Date:</strong> %s</p>
+                        <p><strong>Order Date:</strong> %s</p>
                       </div>
                     </div>
-                    %s
-                  </div>
-                  <div class="grid">
-                    <div class="col">
-                      <div class="label">SOLD BY</div>
-                      <div class="name">%s</div>
-                      <div class="muted">
-                        %s<br/>
-                        %s<br/>
-                        %s
+
+                    <div class="section">
+                      <p class="subheading">Sold By</p>
+                      <p><strong>%s</strong></p>
+                      <p>%s</p>
+                      <p><strong>Phone:</strong> %s</p>
+                      <p><strong>Email:</strong> %s</p>
+                    </div>
+
+                    <div class="section">
+                      <table class="items-table">
+                        <thead>
+                          <tr>
+                            <th>Item Description</th>
+                            <th>HSN Code</th>
+                            <th>Qty</th>
+                            <th>Unit Price</th>
+                            <th>Tax %%</th>
+                            <th>Tax Amount</th>
+                            <th>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          %s
+                        </tbody>
+                      </table>
+
+                      <div class="party-grid">
+                        <div class="party-box">
+                          <h3>Bill To:</h3>
+                          <p><strong>%s</strong></p>
+                          <p>%s</p>
+                          <p><strong>Phone:</strong> %s</p>
+                          <p><strong>Email:</strong> %s</p>
+                        </div>
+                        <div class="party-box">
+                          <h3>Ship To:</h3>
+                          <p><strong>%s</strong></p>
+                          <p>%s</p>
+                          <p><strong>Phone:</strong> %s</p>
+                          <p><strong>Email:</strong> %s</p>
+                        </div>
                       </div>
+                      <div class="total">
+                        <p><strong>Subtotal (Before Tax):</strong> Rs %s</p>
+                        <p class="subheading">GST Breakdown Summary</p>
+                        <p><strong>Total GST:</strong> Rs %s</p>
+                        <p><strong>Total CGST:</strong> Rs %s</p>
+                        <p><strong>Total SGST:</strong> Rs %s</p>
+                        <p><strong>Total IGST:</strong> Rs %s</p>
+                        <p class="muted">%s</p>
+                        <p><strong>Shipping Charges:</strong> Rs %s</p>
+                        <p><strong>Grand Total:</strong></p>
+                        <p class="grand">Rs %s</p>
+                      </div>
+                      <p class="muted">Generated by FlintNThread backend.</p>
                     </div>
-                  </div>
-                  <div class="grid">
-                    <div class="col">
-                      <div class="label">BILL TO</div>
-                      <div class="name">%s</div>
-                      <div class="muted">%s</div>
-                    </div>
-                    <div class="col">
-                      <div class="label">SHIP TO</div>
-                      <div class="name">%s</div>
-                      <div class="muted">%s</div>
-                    </div>
-                  </div>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>HSN</th>
-                        <th style="text-align:right">Qty</th>
-                        <th style="text-align:right">Unit Price</th>
-                        <th style="text-align:right">Tax %%</th>
-                        <th style="text-align:right">Tax Amt</th>
-                        <th style="text-align:right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>%s</tbody>
-                  </table>
-                  <div class="totals">
-                    <div><span>Subtotal</span><span>%s</span></div>
-                    <div><span>%s</span><span>%s</span></div>
-                    <div><span>Shipping</span><span>%s</span></div>
-                    <div class="grand"><span>Grand Total</span><span>%s</span></div>
-                  </div>
-                  <div class="muted" style="margin-top:18px;">
-                    CGST: %s | SGST: %s | IGST: %s<br/>
-                    Payment: %s | Status: %s
                   </div>
                 </body>
                 </html>
                 """.formatted(
                 esc(str(invoice.get("invoiceNumber"))),
-                esc(str(invoice.get("orderNumber"))),
-                esc(formatDate(invoice.get("invoiceDate"), invoice.get("orderDate"))),
                 esc(str(company.get("name"))),
                 esc(str(company.get("country"))),
                 esc(str(company.get("phone"))),
                 esc(str(company.get("email"))),
                 esc(str(company.get("gstin"))),
-                qrImg.isBlank() ? "" : "<img class=\"qr\" src=\"" + qrImg + "\" alt=\"Order QR\" />",
+                esc(str(invoice.get("invoiceNumber"))),
+                esc(str(invoice.get("orderNumber"))),
+                esc(formatDate(invoice.get("invoiceDate"), invoice.get("orderDate"))),
+                esc(formatDate(invoice.get("orderDate"), invoice.get("orderDate"))),
                 esc(str(seller.get("name"))),
                 esc(joinAddress(sellerAddress)),
-                sellerPhoneEmailGst(seller),
-                esc(formatCustomer(billing)),
-                esc(str(billing.get("name"))),
-                esc(formatCustomer(shipping)),
-                esc(str(shipping.get("name"))),
+                esc(str(seller.get("phone"))),
+                esc(str(seller.get("email"))),
                 itemRows,
+                esc(str(billing.get("name"))),
+                esc(formatCustomer(billing)),
+                esc(str(billing.get("phone"))),
+                esc(str(billing.get("email"))),
+                esc(str(shipping.get("name"))),
+                esc(formatCustomer(shipping)),
+                esc(str(shipping.get("phone"))),
+                esc(str(shipping.get("email"))),
                 money(totals.get("subtotal")),
-                isIntraState ? "CGST + SGST" : "IGST",
                 money(totals.get("tax")),
-                shippingLabel,
-                money(totals.get("grandTotal")),
                 money(gstBreakdown.get("cgst")),
                 money(gstBreakdown.get("sgst")),
                 money(gstBreakdown.get("igst")),
-                esc(str(payment.get("method"))),
-                esc(str(payment.get("status")))
+                gstBreakdownNote,
+                shippingLabel,
+                money(totals.get("grandTotal"))
         );
     }
 

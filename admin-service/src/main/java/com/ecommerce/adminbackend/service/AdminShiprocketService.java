@@ -1007,7 +1007,7 @@ public class AdminShiprocketService {
             return null;
         }
         if (s.contains("deliver")) {
-            return "delivered";
+            return "completed";
         }
         if (s.contains("rto")) {
             return "returned";

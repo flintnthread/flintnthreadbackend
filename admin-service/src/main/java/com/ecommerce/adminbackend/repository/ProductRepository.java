@@ -56,6 +56,16 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findBySellerId(Long sellerId);
 
     @Query("""
+            SELECT p.id, p.name, COALESCE(SUM(pv.stock), 0)
+            FROM Product p
+            LEFT JOIN ProductVariant pv ON pv.productId = p.id
+            WHERE p.sellerId = :sellerId
+            GROUP BY p.id, p.name
+            HAVING COALESCE(SUM(pv.stock), 0) > 0
+            """)
+    List<Object[]> findInStockProductsWithStockCount(@Param("sellerId") Long sellerId);
+
+    @Query("""
             SELECT LOWER(p.status), COUNT(p)
             FROM Product p
             WHERE p.sellerId = :sellerId

@@ -76,12 +76,14 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
     public Map<String, Object> payoutStats() {
         long pending = orderRepository.countBySellerPaymentStatusIgnoreCase("pending");
         long paid = orderRepository.countBySellerPaymentStatusIgnoreCase("paid");
+        long completed = orderRepository.countBySellerPaymentStatusIgnoreCase("completed");
         long cancelled = orderRepository.countBySellerPaymentStatusIgnoreCase("cancelled");
 
         Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("total", pending + paid + cancelled);
+        stats.put("total", pending + paid + completed + cancelled);
         stats.put("pending", pending);
         stats.put("paid", paid);
+        stats.put("completed", completed);
         stats.put("cancelled", cancelled);
         stats.put("totalPaidAmount", orderRepository.sumPaidSellerPaymentAmount());
         stats.put("greenCount", orderRepository.countPendingSellerPaymentsWithinDays(2));

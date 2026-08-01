@@ -317,7 +317,7 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
             case "picked_up", "shipped" -> "picked_up";
             case "in_transit", "intransit" -> "in_transit";
             case "out_for_delivery", "ofd" -> "out_for_delivery";
-            case "delivered" -> "delivered";
+            case "delivered" -> "completed";
             case "cancelled", "canceled" -> "cancelled";
             case "rto_initiated", "rto_in_transit" -> "rto_initiated";
             case "rto_delivered" -> "rto_delivered";

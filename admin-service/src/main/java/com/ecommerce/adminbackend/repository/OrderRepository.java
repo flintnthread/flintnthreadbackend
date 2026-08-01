@@ -86,13 +86,14 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             WHERE o.sellerPaymentStatus IS NOT NULL
               AND (
                 :status IS NULL OR :status = ''
-                OR (LOWER(:status) = 'paid-cancelled' AND LOWER(o.sellerPaymentStatus) IN ('paid', 'cancelled'))
+                OR (LOWER(:status) = 'paid-cancelled' AND LOWER(o.sellerPaymentStatus) IN ('paid', 'completed', 'cancelled'))
                 OR (LOWER(:status) <> 'paid-cancelled' AND LOWER(o.sellerPaymentStatus) = LOWER(:status))
               )
             ORDER BY
               CASE
                 WHEN LOWER(o.sellerPaymentStatus) = 'pending' THEN 0
                 WHEN LOWER(o.sellerPaymentStatus) = 'paid' THEN 1
+                WHEN LOWER(o.sellerPaymentStatus) = 'completed' THEN 1
                 ELSE 2
               END,
               o.updatedAt ASC,
@@ -104,7 +105,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("""
             SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o
-            WHERE LOWER(o.sellerPaymentStatus) = 'paid'
+            WHERE LOWER(o.sellerPaymentStatus) IN ('paid', 'completed')
             """)
     BigDecimal sumPaidSellerPaymentAmount();
 

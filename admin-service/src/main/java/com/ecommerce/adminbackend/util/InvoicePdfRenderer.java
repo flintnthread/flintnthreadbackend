@@ -14,6 +14,7 @@ public final class InvoicePdfRenderer {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
+            // Disable caching to ensure fresh PDF generation each time
             builder.withHtmlContent(html, null);
             builder.toStream(output);
             builder.run();
