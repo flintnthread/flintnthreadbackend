@@ -47,4 +47,7 @@ public class CartItemResponseDTO {
 
     // Flag to indicate if item is out of stock (quantity > availableStock or stock == 0)
     private Boolean outOfStock;
+private Boolean acceptCod;
+private Boolean acceptPrepaid;
+
 }
