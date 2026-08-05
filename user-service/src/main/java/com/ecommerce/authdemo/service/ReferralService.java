@@ -35,5 +35,8 @@ public interface ReferralService {
 
     BigDecimal getAvailableReferralDiscountPercentForUser(Long userId);
 
+    /** True if this user already redeemed inviter 10% via referral_order_discount_redemptions. */
+    boolean hasRedeemedInviterDiscount(Long userId);
+
     ReferralRewardStatusDto getRewardStatus(Long userId);
 }

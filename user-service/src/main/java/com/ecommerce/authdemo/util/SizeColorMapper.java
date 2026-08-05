@@ -1,12 +1,18 @@
 package com.ecommerce.authdemo.util;
 
+import com.ecommerce.authdemo.entity.Color;
+import com.ecommerce.authdemo.entity.Size;
 import com.ecommerce.authdemo.repository.ColorRepository;
 import com.ecommerce.authdemo.repository.SizeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -128,5 +134,121 @@ public class SizeColorMapper {
 
     public void addColorMapping(String id, String name) {
         COLOR_MAP.put(id, name);
+    }
+
+    /**
+     * Tokens that can appear on {@code product_variants.color}
+     * (numeric color id and/or free-text color name).
+     */
+    public List<String> resolveColorVariantTokens(
+            Collection<Long> colorIds,
+            Collection<String> colorNames
+    ) {
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+
+        if (colorIds != null) {
+            for (Long id : colorIds) {
+                if (id == null || id <= 0) continue;
+                tokens.add(String.valueOf(id));
+            }
+        }
+
+        if (colorNames != null) {
+            List<String> names = colorNames.stream()
+                    .filter(n -> n != null && !n.isBlank())
+                    .map(String::trim)
+                    .distinct()
+                    .toList();
+
+            List<String> loweredNames = new ArrayList<>();
+            for (String name : names) {
+                tokens.add(name);
+                if (name.matches("^-?\\d+(\\.\\d+)?$")) {
+                    String idKey = normalizeNumericIdKey(name);
+                    tokens.add(idKey);
+                } else {
+                    loweredNames.add(name.toLowerCase());
+                }
+            }
+
+            if (!loweredNames.isEmpty()) {
+                for (Color color : colorRepository.findByLowerNamesIn(loweredNames)) {
+                    if (color.getId() != null) {
+                        tokens.add(String.valueOf(color.getId()));
+                    }
+                    if (color.getName() != null && !color.getName().isBlank()) {
+                        tokens.add(color.getName().trim());
+                    }
+                }
+
+                // Fallback static map (legacy IDs) when DB lookup misses.
+                for (Map.Entry<String, String> entry : COLOR_MAP.entrySet()) {
+                    String mapped = entry.getValue();
+                    if (mapped != null && loweredNames.contains(mapped.toLowerCase())) {
+                        tokens.add(entry.getKey());
+                        tokens.add(mapped);
+                    }
+                }
+            }
+        }
+
+        return new ArrayList<>(tokens);
+    }
+
+    /**
+     * Tokens that can appear on {@code product_variants.size}
+     * (numeric size id and/or free-text size name).
+     */
+    public List<String> resolveSizeVariantTokens(
+            Collection<Long> sizeIds,
+            Collection<String> sizeNames
+    ) {
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
+
+        if (sizeIds != null) {
+            for (Long id : sizeIds) {
+                if (id == null || id <= 0) continue;
+                tokens.add(String.valueOf(id));
+            }
+        }
+
+        if (sizeNames != null) {
+            List<String> names = sizeNames.stream()
+                    .filter(n -> n != null && !n.isBlank())
+                    .map(String::trim)
+                    .distinct()
+                    .toList();
+
+            List<String> loweredNames = new ArrayList<>();
+            for (String name : names) {
+                tokens.add(name);
+                if (name.matches("^-?\\d+(\\.\\d+)?$")) {
+                    tokens.add(normalizeNumericIdKey(name));
+                } else {
+                    loweredNames.add(name.toLowerCase());
+                }
+            }
+
+            if (!loweredNames.isEmpty()) {
+                for (Size size : sizeRepository.findByLowerNamesIn(loweredNames)) {
+                    if (size.getId() != null) {
+                        tokens.add(String.valueOf(size.getId()));
+                    }
+                    if (size.getName() != null && !size.getName().isBlank()) {
+                        tokens.add(size.getName().trim());
+                    }
+                }
+
+                for (Map.Entry<String, String> entry : SIZE_MAP.entrySet()) {
+                    String mapped = entry.getValue();
+                    if (mapped != null && loweredNames.contains(mapped.toLowerCase())) {
+                        tokens.add(entry.getKey());
+                        tokens.add(mapped);
+                    }
+                }
+            }
+        }
+
+        return new ArrayList<>(tokens);
     }
 }

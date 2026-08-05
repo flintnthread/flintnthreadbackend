@@ -6,6 +6,7 @@ import com.ecommerce.authdemo.entity.ProductEmbedding;
 import com.ecommerce.authdemo.payload.ApiResponse;
 import com.ecommerce.authdemo.repository.ProductEmbeddingRepository;
 import com.ecommerce.authdemo.repository.ProductRepository;
+import com.ecommerce.authdemo.util.EmbeddingVectorMath;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,12 +17,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,26 +51,53 @@ public class AIImageSearchDecorator {
 
     @Transactional(readOnly = true)
     public ApiResponse<SearchResponseDTO> performImageSearch(MultipartFile image, Long userId, String sessionId) {
-        log.info("Starting AI camera search for image: {}", image != null ? image.getOriginalFilename() : "null");
-
         try {
             if (image == null || image.isEmpty()) {
                 return new ApiResponse<>(false, "Image file is required", null);
             }
+            return performImageSearchFromBytes(image.getBytes(), image.getOriginalFilename());
+        } catch (Exception e) {
+            log.error("Error during AI camera search", e);
+            // Soft-fail so local visual search in SearchServiceImpl can still run.
+            return new ApiResponse<>(
+                    true,
+                    "AI visual search unavailable; using local matching.",
+                    new SearchResponseDTO(
+                            Collections.emptyList(),
+                            Collections.emptyList(),
+                            Collections.emptyList()
+                    )
+            );
+        }
+    }
 
-            String queryEmbedding = generateEmbedding(image);
+    @Transactional(readOnly = true)
+    public ApiResponse<SearchResponseDTO> performImageSearchFromBytes(byte[] imageBytes, String filename) {
+        log.info("Starting AI camera search for image: {}", filename);
+
+        try {
+            if (imageBytes == null || imageBytes.length == 0) {
+                return new ApiResponse<>(false, "Image file is required", null);
+            }
+
+            String queryEmbedding = generateEmbeddingFromBytes(imageBytes);
             if (queryEmbedding == null) {
-                log.warn("Failed to generate embedding for query image");
+                log.warn("Failed to generate embedding for query image — AI service may be down");
                 return new ApiResponse<>(
-                        false,
-                        "Unable to analyze this image right now. Please try a clear product photo.",
-                        null
+                        true,
+                        "AI visual search unavailable; using local matching.",
+                        new SearchResponseDTO(
+                                Collections.emptyList(),
+                                Collections.emptyList(),
+                                Collections.emptyList()
+                        )
                 );
             }
 
-            List<Long> similarProductIds = findSimilarProductIds(queryEmbedding, SIMILAR_PRODUCT_LIMIT);
+            // Prefer durable DB embeddings; Python in-memory index is optional warm cache.
+            List<Long> similarProductIds = findSimilarProductIdsFromDatabase(queryEmbedding, SIMILAR_PRODUCT_LIMIT);
             if (similarProductIds.isEmpty()) {
-                similarProductIds = findSimilarProductIdsFromDatabase(queryEmbedding, SIMILAR_PRODUCT_LIMIT);
+                similarProductIds = findSimilarProductIds(queryEmbedding, SIMILAR_PRODUCT_LIMIT);
             }
 
             if (similarProductIds.isEmpty()) {
@@ -98,7 +126,15 @@ public class AIImageSearchDecorator {
 
         } catch (Exception e) {
             log.error("Error during AI camera search", e);
-            return new ApiResponse<>(false, "Camera search failed: " + e.getMessage(), null);
+            return new ApiResponse<>(
+                    true,
+                    "AI visual search unavailable; using local matching.",
+                    new SearchResponseDTO(
+                            Collections.emptyList(),
+                            Collections.emptyList(),
+                            Collections.emptyList()
+                    )
+            );
         }
     }
 
@@ -120,9 +156,15 @@ public class AIImageSearchDecorator {
         return ordered;
     }
 
-    private String generateEmbedding(MultipartFile image) {
+    private String generateEmbeddingFromBytes(byte[] imageBytes) {
         try {
-            String base64Image = encodeImageToBase64(image);
+            BufferedImage bufferedImage = ImageIO.read(new ByteArrayInputStream(imageBytes));
+            if (bufferedImage == null) {
+                throw new IOException("Unsupported or unreadable image format");
+            }
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(bufferedImage, "jpg", baos);
+            String base64Image = Base64.getEncoder().encodeToString(baos.toByteArray());
 
             Map<String, Object> request = Map.of(
                     "image", base64Image,
@@ -148,7 +190,7 @@ public class AIImageSearchDecorator {
             return null;
 
         } catch (Exception e) {
-            log.error("Error generating embedding", e);
+            log.error("Error generating embedding: {}", e.getMessage());
             return null;
         }
     }
@@ -158,7 +200,8 @@ public class AIImageSearchDecorator {
         try {
             Map<String, Object> request = Map.of(
                     "query_embedding", queryEmbedding,
-                    "limit", limit
+                    "limit", limit,
+                    "min_similarity", EmbeddingVectorMath.MIN_CAMERA_SIMILARITY
             );
 
             Map<String, Object> response = restTemplate.postForObject(
@@ -167,10 +210,35 @@ public class AIImageSearchDecorator {
                     Map.class
             );
 
-            if (response != null && response.containsKey("similar_product_ids")) {
-                return ((List<Integer>) response.get("similar_product_ids")).stream()
-                        .map(Long::valueOf)
-                        .collect(Collectors.toList());
+            if (response != null && response.get("similar_product_ids") instanceof List<?> ids) {
+                List<?> similarities = response.get("similarities") instanceof List<?> sims
+                        ? (List<?>) sims
+                        : List.of();
+                List<Long> result = new ArrayList<>();
+                for (int i = 0; i < ids.size(); i++) {
+                    Object v = ids.get(i);
+                    Long id = null;
+                    if (v instanceof Number n) {
+                        id = n.longValue();
+                    } else {
+                        try {
+                            id = Long.parseLong(String.valueOf(v).trim());
+                        } catch (NumberFormatException ignored) {
+                            // skip
+                        }
+                    }
+                    if (id == null || id <= 0) {
+                        continue;
+                    }
+                    if (i < similarities.size()) {
+                        double score = toDouble(similarities.get(i));
+                        if (score < EmbeddingVectorMath.MIN_CAMERA_SIMILARITY) {
+                            continue;
+                        }
+                    }
+                    result.add(id);
+                }
+                return result;
             }
 
             return Collections.emptyList();
@@ -181,8 +249,19 @@ public class AIImageSearchDecorator {
         }
     }
 
+    private static double toDouble(Object value) {
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     private List<Long> findSimilarProductIdsFromDatabase(String queryEmbedding, int limit) {
-        double[] queryVector = parseEmbeddingVector(queryEmbedding);
+        double[] queryVector = EmbeddingVectorMath.parseCsv(queryEmbedding);
         if (queryVector.length == 0) {
             return Collections.emptyList();
         }
@@ -192,77 +271,13 @@ public class AIImageSearchDecorator {
             return Collections.emptyList();
         }
 
-        List<Map.Entry<Long, Double>> scored = new ArrayList<>();
+        Map<Long, String> catalog = new LinkedHashMap<>();
         for (ProductEmbedding stored : storedEmbeddings) {
-            if (stored.getProduct() == null || stored.getEmbeddingVector() == null) {
+            if (stored.getProduct() == null || stored.getProduct().getId() == null || stored.getEmbeddingVector() == null) {
                 continue;
             }
-            double[] candidate = parseEmbeddingVector(stored.getEmbeddingVector());
-            if (candidate.length != queryVector.length) {
-                continue;
-            }
-            double similarity = cosineSimilarity(queryVector, candidate);
-            if (similarity > 0) {
-                scored.add(Map.entry(stored.getProduct().getId(), similarity));
-            }
+            catalog.put(stored.getProduct().getId(), stored.getEmbeddingVector());
         }
-
-        scored.sort(Comparator.comparingDouble(Map.Entry<Long, Double>::getValue).reversed());
-        return scored.stream()
-                .limit(limit)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toList());
-    }
-
-    private double[] parseEmbeddingVector(String csv) {
-        if (csv == null || csv.isBlank()) {
-            return new double[0];
-        }
-        String[] parts = csv.split(",");
-        double[] vector = new double[parts.length];
-        int length = 0;
-        for (String part : parts) {
-            String trimmed = part.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            try {
-                vector[length++] = Double.parseDouble(trimmed);
-            } catch (NumberFormatException ignored) {
-                return new double[0];
-            }
-        }
-        if (length == parts.length) {
-            return vector;
-        }
-        double[] resized = new double[length];
-        System.arraycopy(vector, 0, resized, 0, length);
-        return resized;
-    }
-
-    private double cosineSimilarity(double[] left, double[] right) {
-        double dot = 0;
-        double leftNorm = 0;
-        double rightNorm = 0;
-        for (int i = 0; i < left.length; i++) {
-            dot += left[i] * right[i];
-            leftNorm += left[i] * left[i];
-            rightNorm += right[i] * right[i];
-        }
-        if (leftNorm == 0 || rightNorm == 0) {
-            return 0;
-        }
-        return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
-    }
-
-    private String encodeImageToBase64(MultipartFile image) throws IOException {
-        BufferedImage bufferedImage = ImageIO.read(image.getInputStream());
-        if (bufferedImage == null) {
-            throw new IOException("Unsupported or unreadable image format");
-        }
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ImageIO.write(bufferedImage, "jpg", baos);
-        byte[] imageBytes = baos.toByteArray();
-        return Base64.getEncoder().encodeToString(imageBytes);
+        return EmbeddingVectorMath.topSimilarProductIds(queryVector, catalog, limit);
     }
 }

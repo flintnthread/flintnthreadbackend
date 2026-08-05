@@ -32,7 +32,11 @@ public interface OrderAdminService {
 
     byte[] generateShippingLabelPdf(Long id);
 
-    Map<String, Object> pushToShiprocket(Long id);
+    Map<String, Object> getOrderTracking(Long id);
+
+    Map<String, Object> pushToShiprocket(Long id, Long sellerId, String productIds, String sellerName);
+
+    Map<String, Object> getShiprocketLogs(Long id);
 
     Map<String, Object> syncFromShiprocket(Long id);
 

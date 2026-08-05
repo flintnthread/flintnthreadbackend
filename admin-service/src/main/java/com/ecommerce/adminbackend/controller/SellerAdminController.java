@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import com.ecommerce.adminbackend.common.PageResponse;
 import com.ecommerce.adminbackend.dto.common.NoteRequest;
 import com.ecommerce.adminbackend.dto.seller.SellerStatusUpdateRequest;
+import com.ecommerce.adminbackend.service.AdminSellerLifecycleService;
 import com.ecommerce.adminbackend.service.SellerAdminService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,6 +27,7 @@ public class SellerAdminController {
     private static final Logger log = LogFactory.getLogger(SellerAdminController.class);
 
     private final SellerAdminService sellerAdminService;
+    private final AdminSellerLifecycleService adminSellerLifecycleService;
 
     @PostMapping
     public Map<String, Object> createSeller(@RequestBody Map<String, Object> body) {
@@ -103,6 +105,13 @@ public class SellerAdminController {
         return sellerAdminService.analyticsYearOptions();
     }
 
+    @GetMapping("/lifecycle-requests")
+    public Map<String, Object> listLifecycleRequests(
+            @RequestParam(defaultValue = "deactivation") String type
+    ) {
+        return adminSellerLifecycleService.listRequests(type);
+    }
+
     @PostMapping("/{id}/block")
     public Map<String, Object> block(
             @PathVariable Long id,
@@ -177,6 +186,43 @@ public class SellerAdminController {
     public Map<String, Object> rejectBank(@PathVariable Long id, @RequestBody(required = false) NoteRequest request) {
         String note = request != null ? (request.getNote() != null ? request.getNote() : request.getReason()) : null;
         return sellerAdminService.rejectBank(id, note);
+    }
+
+    @GetMapping("/{id}/lifecycle-request")
+    public Map<String, Object> lifecycleRequestDetails(@PathVariable Long id) {
+        return adminSellerLifecycleService.getRequestDetails(id);
+    }
+
+    @PostMapping("/{id}/deactivation/approve")
+    public Map<String, Object> approveDeactivation(@PathVariable Long id) {
+        return adminSellerLifecycleService.approveDeactivation(id, null);
+    }
+
+    @PostMapping("/{id}/deactivation/reject")
+    public Map<String, Object> rejectDeactivation(
+            @PathVariable Long id,
+            @RequestBody(required = false) NoteRequest request
+    ) {
+        String reason = request != null
+                ? (request.getNote() != null ? request.getNote() : request.getReason())
+                : null;
+        return adminSellerLifecycleService.rejectDeactivation(id, null, reason);
+    }
+
+    @PostMapping("/{id}/activation/approve")
+    public Map<String, Object> approveActivation(@PathVariable Long id) {
+        return adminSellerLifecycleService.approveActivation(id, null);
+    }
+
+    @PostMapping("/{id}/activation/reject")
+    public Map<String, Object> rejectActivation(
+            @PathVariable Long id,
+            @RequestBody(required = false) NoteRequest request
+    ) {
+        String reason = request != null
+                ? (request.getNote() != null ? request.getNote() : request.getReason())
+                : null;
+        return adminSellerLifecycleService.rejectActivation(id, null, reason);
     }
 
     @PostMapping("/{id}/resend-verification")

@@ -5,6 +5,7 @@ import com.ecommerce.authdemo.dto.Enum.AdminStatus;
 import com.ecommerce.authdemo.dto.Enum.OrderStatus;
 import com.ecommerce.authdemo.entity.*;
 import com.ecommerce.authdemo.event.OrderPlacedEvent;
+import com.ecommerce.authdemo.event.ShiprocketAutoPushEvent;
 import com.ecommerce.authdemo.service.*;
 import com.ecommerce.authdemo.exception.ResourceNotFoundException;
 import com.ecommerce.authdemo.exception.OrderException;
@@ -21,8 +22,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -274,7 +273,7 @@ for (CartItemResponseDTO item : checkoutItems) {
             try {
                 long paidOrders = orderRepository.countByUserIdAndPaymentStatus(userId, "paid");
                 boolean noReferralPricingOrderYet =
-                        !orderRepository.existsByUserIdAndReferralInviterDiscountAppliedTrue(userId);
+                        !referralService.hasRedeemedInviterDiscount(userId);
 
                 if (noReferralPricingOrderYet) {
                     BigDecimal discountPercent = referralService
@@ -390,8 +389,11 @@ for (CartItemResponseDTO item : checkoutItems) {
                 clearCartSafely(userId);
             }
 
-            // Shiprocket is pushed only after seller confirms (via internal/seller API).
-            // Do not auto-push here — payment success alone must not create shipment.
+            // COD / already-paid (e.g. verified payment place): auto-push Shiprocket after commit.
+            // Online unpaid waits until markOrderAsPaid.
+            if (!pendingOnline) {
+                scheduleShiprocketAfterCommit(order);
+            }
 
             return buildOrderResponse(order, itemDTOList);
 
@@ -1158,9 +1160,9 @@ for (CartItemResponseDTO item : checkoutItems) {
             log.error("Error processing referral on order payment: {}", e.getMessage(), e);
         }
 
-        // Shiprocket push happens after seller confirms the order.
-
+        // Persist paid status first, then schedule Shiprocket after this transaction commits.
         order = orderRepository.save(order);
+        scheduleShiprocketAfterCommit(order);
         try {
             clearCartSafely(order.getUserId());
         } catch (Exception e) {
@@ -1294,70 +1296,50 @@ for (CartItemResponseDTO item : checkoutItems) {
         return saved;
     }
 
+    @Value("${shiprocket.auto-create-on-payment:true}")
+    private boolean shiprocketAutoCreateOnPayment;
+
     /**
-     * Push to Shiprocket only after DB commit, off the request thread.
-     * Online unpaid orders are skipped until markOrderAsPaid.
+     * Queue Shiprocket create after this transaction commits.
+     * {@link com.ecommerce.authdemo.event.ShiprocketAutoPushListener} runs the push off the request thread.
+     * Customer never waits on Shiprocket — payment/order success is immediate.
+     * On failure, order stays processing/paid; shiprocket_status=pending for admin retry.
      */
     private void scheduleShiprocketAfterCommit(Order order) {
+        if (!shiprocketAutoCreateOnPayment) {
+            log.info("Shiprocket auto-create disabled — skip order {}",
+                    order != null ? order.getOrderNumber() : null);
+            return;
+        }
         if (order == null || order.getId() == null) {
             return;
         }
-        final Long orderId = order.getId();
-        final String orderNumber = order.getOrderNumber();
-
-        Runnable push = () -> {
-            try {
-                Order fresh = orderRepository.findById(orderId).orElse(null);
-                if (fresh == null) {
-                    return;
-                }
-                if (fresh.getShiprocketOrderId() != null && !fresh.getShiprocketOrderId().isBlank()) {
-                    return;
-                }
-                boolean isCod = isCodPaymentMethod(fresh.getPaymentMethod());
-                String paymentStatus = fresh.getPaymentStatus() != null
-                        ? fresh.getPaymentStatus().trim().toLowerCase()
-                        : "";
-                boolean paymentConfirmed = paymentStatus.equals("paid")
-                        || paymentStatus.equals("completed")
-                        || paymentStatus.equals("success")
-                        || paymentStatus.equals("captured");
-                if (!isCod && !paymentConfirmed) {
-                    log.info("Skipping Shiprocket for unpaid online order {}", orderNumber);
-                    return;
-                }
-                shiprocketService.createShipment(fresh);
-                log.info("Shiprocket shipment created for order {}", orderNumber);
-            } catch (Exception e) {
-                log.error(
-                        "Shiprocket shipment creation failed for order {} reason {}",
-                        orderNumber,
-                        e.getMessage(),
-                        e
-                );
+        // Visible in admin while background push runs (cleared on success / pending: on failure).
+        if (order.getShiprocketOrderId() == null || order.getShiprocketOrderId().isBlank()) {
+            String current = order.getShiprocketStatus();
+            if (current == null || current.isBlank()
+                    || current.trim().equalsIgnoreCase("pending")
+                    || current.trim().toLowerCase(Locale.ENGLISH).startsWith("pending:")) {
+                order.setShiprocketStatus("queued");
                 try {
-                    markShiprocketCreateFailed(orderNumber, e.getMessage());
-                } catch (Exception ignore) {
-                    // ignore
+                    orderRepository.save(order);
+                } catch (Exception e) {
+                    log.warn(
+                            "Could not mark shiprocket queued for order {}: {}",
+                            order.getOrderNumber(),
+                            e.getMessage()
+                    );
                 }
             }
-        };
-
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            Thread t = new Thread(push, "shiprocket-push-" + orderId);
-            t.setDaemon(true);
-            t.start();
-            return;
         }
-
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                Thread t = new Thread(push, "shiprocket-push-" + orderId);
-                t.setDaemon(true);
-                t.start();
-            }
-        });
+        applicationEventPublisher.publishEvent(
+                new ShiprocketAutoPushEvent(order.getId(), order.getOrderNumber())
+        );
+        log.info(
+                "Shiprocket auto-push queued orderNumber={} orderId={}",
+                order.getOrderNumber(),
+                order.getId()
+        );
     }
 
     @Override
@@ -1366,26 +1348,9 @@ for (CartItemResponseDTO item : checkoutItems) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        // Already linked: sync AWB if missing instead of creating a duplicate.
-        if (order.getShiprocketOrderId() != null && !order.getShiprocketOrderId().isBlank()) {
-            if (order.getShiprocketAwbCode() == null || order.getShiprocketAwbCode().isBlank()
-                    || order.getShiprocketTrackingUrl() == null || order.getShiprocketTrackingUrl().isBlank()) {
-                log.info(
-                        "Shiprocket already linked for orderNumber={} without AWB — syncing",
-                        order.getOrderNumber()
-                );
-                return shiprocketService.syncShipmentDetails(order);
-            }
-            return ShiprocketShipmentResult.builder()
-                    .shipmentId(order.getShiprocketShipmentId())
-                    .awbCode(order.getShiprocketAwbCode())
-                    .trackingUrl(order.getShiprocketTrackingUrl())
-                    .courierName(order.getShiprocketCourierName() != null
-                            ? order.getShiprocketCourierName()
-                            : "Shiprocket")
-                    .alreadyExists(true)
-                    .message("Shipment already exists on Shiprocket")
-                    .build();
+        if (order.getOrderStatus() != null
+                && order.getOrderStatus().toLowerCase(Locale.ENGLISH).contains("cancel")) {
+            throw new OrderException("Cancelled orders cannot be pushed to Shiprocket.");
         }
 
         String paymentStatus = order.getPaymentStatus() != null
@@ -1403,13 +1368,18 @@ for (CartItemResponseDTO item : checkoutItems) {
             );
         }
 
+        // Match admin push: createShipment handles
+        // - AWB already present → return/sync (no duplicate)
+        // - linked without AWB (often old Ashvi/work pickup) → cancel + recreate with seller warehouse
+        // - not linked → create with seller warehouse pickup + FNT totalAmount as sub_total
         try {
             ShiprocketShipmentResult result = shiprocketService.createShipment(order);
             log.info(
-                    "Shiprocket push retry OK orderNumber={} shipmentId={} awb={}",
+                    "Shiprocket push OK orderNumber={} shipmentId={} awb={} alreadyExists={}",
                     order.getOrderNumber(),
                     result.getShipmentId(),
-                    result.getAwbCode()
+                    result.getAwbCode(),
+                    Boolean.TRUE.equals(result.getAlreadyExists())
             );
             return result;
         } catch (Exception e) {
@@ -1570,8 +1540,8 @@ for (CartItemResponseDTO item : checkoutItems) {
                                     ));
 
             String status = reason == null || reason.isBlank()
-                    ? "shipment_creation_failed"
-                    : ("failed: " + reason);
+                    ? "pending"
+                    : ("pending: " + reason);
             // orders.shiprocket_status is VARCHAR(500) on live DB
             if (status.length() > 500) {
                 status = status.substring(0, 500);
@@ -2785,7 +2755,7 @@ for (CartItemResponseDTO item : checkoutItems) {
                 ? publicWebBaseUrl.replaceAll("/+$", "")
                 : "https://flintnthread.in";
         String orderNumber = order.getOrderNumber() != null ? order.getOrderNumber() : "";
-        return base + "/order-view.html?orderId=" + order.getId()
+        return base + "/order-view-app.html?orderId=" + order.getId()
                 + "&orderNumber=" + java.net.URLEncoder.encode(
                 orderNumber,
                 java.nio.charset.StandardCharsets.UTF_8
@@ -3163,7 +3133,7 @@ for (CartItemResponseDTO item : checkoutItems) {
 
         boolean shouldSendConfirmationEmail = isPendingOnlinePayment(order);
 
-        order.setPaymentStatus("PAID");
+        order.setPaymentStatus("paid");
 
         order.setOrderStatus("processing");
 
@@ -3172,6 +3142,8 @@ for (CartItemResponseDTO item : checkoutItems) {
         );
 
         order = orderRepository.save(order);
+        // Same path as markOrderAsPaid — auto-push Shiprocket after commit.
+        scheduleShiprocketAfterCommit(order);
         if (shouldSendConfirmationEmail) {
             sendOrderConfirmationEmailForOrder(order);
         }
@@ -3273,6 +3245,35 @@ for (CartItemResponseDTO item : checkoutItems) {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void assertCheckoutSellersAcceptingOrders(List<CartItemResponseDTO> checkoutItems) {
+        if (checkoutItems == null || checkoutItems.isEmpty()) {
+            return;
+        }
+        Set<Long> sellerIds = new LinkedHashSet<>();
+        for (CartItemResponseDTO item : checkoutItems) {
+            if (item.getProductId() == null) {
+                continue;
+            }
+            productRepository.findById(item.getProductId()).ifPresent(p -> {
+                if (p.getSellerId() != null && p.getSellerId() > 0) {
+                    sellerIds.add(p.getSellerId());
+                }
+            });
+        }
+        for (Long sellerId : sellerIds) {
+            Seller seller = sellerRepository.findById(sellerId).orElse(null);
+            if (seller == null || seller.getStatus() == null) {
+                continue;
+            }
+            String status = seller.getStatus().trim().toLowerCase(Locale.ENGLISH);
+            if ("inactive".equals(status) || "act_req".equals(status) || "suspended".equals(status)) {
+                throw new OrderException(
+                        "One or more sellers in your cart are currently unavailable. Please remove their products and try again."
+                );
+            }
+        }
     }
 
     private void notifySellersOfAddressUpdate(Order order, List<OrderItem> items) {

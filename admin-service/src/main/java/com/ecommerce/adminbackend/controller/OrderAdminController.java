@@ -98,6 +98,11 @@ public class OrderAdminController {
         return orderAdminService.generateShippingLabel(id);
     }
 
+    @GetMapping("/{id}/tracking")
+    public Map<String, Object> getOrderTracking(@PathVariable Long id) {
+        return orderAdminService.getOrderTracking(id);
+    }
+
     @GetMapping("/{id}/shipping-label/pdf")
     public ResponseEntity<byte[]> downloadShippingLabelPdf(@PathVariable Long id) {
         byte[] pdf = orderAdminService.generateShippingLabelPdf(id);
@@ -108,8 +113,17 @@ public class OrderAdminController {
     }
 
     @PostMapping("/{id}/shiprocket/push")
-    public Map<String, Object> pushToShiprocket(@PathVariable Long id) {
-        return orderAdminService.pushToShiprocket(id);
+    public Map<String, Object> pushToShiprocket(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long sellerId,
+            @RequestParam(required = false) String productIds,
+            @RequestParam(required = false) String sellerName) {
+        return orderAdminService.pushToShiprocket(id, sellerId, productIds, sellerName);
+    }
+
+    @GetMapping("/{id}/shiprocket/logs")
+    public Map<String, Object> getShiprocketLogs(@PathVariable Long id) {
+        return orderAdminService.getShiprocketLogs(id);
     }
 
     @PostMapping("/{id}/shiprocket/sync")

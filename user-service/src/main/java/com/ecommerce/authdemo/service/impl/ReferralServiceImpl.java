@@ -302,12 +302,17 @@ public class ReferralServiceImpl implements ReferralService {
     }
 
     private boolean inviterDiscountEligible(User user, Long userId) {
-        if (orderRepository.existsByUserIdAndReferralInviterDiscountAppliedTrue(userId)) {
+        if (discountRepository.existsByUserId(userId)) {
             return false;
         }
         return Boolean.TRUE.equals(user.getRewardUnlocked())
                 && Boolean.TRUE.equals(user.getDiscountAvailable())
                 && !Boolean.TRUE.equals(user.getFirstOrderCompleted());
+    }
+
+    @Override
+    public boolean hasRedeemedInviterDiscount(Long userId) {
+        return discountRepository.existsByUserId(userId);
     }
 
     @Override
@@ -379,7 +384,7 @@ public class ReferralServiceImpl implements ReferralService {
         boolean used = Boolean.TRUE.equals(user.getFirstOrderCompleted());
 
         boolean anotherOrderHasReferralDiscount =
-                orderRepository.existsByUserIdAndReferralInviterDiscountAppliedTrue(userId);
+                discountRepository.existsByUserId(userId);
 
         boolean eligible = rewardUnlocked && discountAvailable && !used
                 && !anotherOrderHasReferralDiscount;

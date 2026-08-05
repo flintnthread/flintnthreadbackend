@@ -126,9 +126,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
         if (status == SellerAccountStatus.suspended) {
             throw new ForbiddenException("Your account is suspended. Please contact support.");
         }
-        if (status == SellerAccountStatus.inactive) {
-            throw new ForbiddenException("Your account is inactive. Please contact support.");
-        }
+        // inactive / act_req / deact_req sellers may still reset password.
     }
 
     private boolean isTokenExpired(Seller seller) {

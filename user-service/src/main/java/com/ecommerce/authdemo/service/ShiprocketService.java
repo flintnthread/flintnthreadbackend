@@ -37,6 +37,12 @@ public interface ShiprocketService {
             String awb
     );
 
+    /**
+     * Get unified tracking details from database (single source of truth for all panels).
+     * Fetches from order_status_history and orders table - no direct Shiprocket API call.
+     */
+    OrderTrackingResponseDTO getTrackingFromDatabase(Long orderId);
+
 
     boolean cancelShipment(String shiprocketOrderId);
 

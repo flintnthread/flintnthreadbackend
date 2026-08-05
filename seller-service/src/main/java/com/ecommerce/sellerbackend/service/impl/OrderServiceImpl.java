@@ -270,8 +270,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     /**
-     * Create Shiprocket shipment only after seller confirms (Processing / Confirmed)
-     * and order is paid or COD. Payment alone must not trigger Shiprocket.
+     * Backup only: if payment-time auto-create failed, seller confirm retries push once.
+     * Primary flow is user-service auto-create after payment/COD (no courier assign).
      */
     private void maybePushToShiprocketAfterSellerConfirm(Order order, String newDbStatus) {
         if (order == null || order.getId() == null) {
@@ -837,6 +837,7 @@ public class OrderServiceImpl implements OrderService {
         }
         return switch (status.trim().toLowerCase(Locale.ROOT)) {
             case "paid" -> "Paid";
+            case "completed" -> "Completed";
             case "cancelled", "canceled" -> "Cancelled";
             default -> capitalize(status);
         };
@@ -1063,6 +1064,7 @@ public class OrderServiceImpl implements OrderService {
             case "Processing" -> "processing";
             case "Shipped" -> "in_transit";
             case "Delivered" -> "delivered";
+            case "Completed" -> "completed";
             case "Returned" -> "returned";
             case "Cancelled" -> "cancelled";
             default -> uiStatus.trim().toLowerCase(Locale.ROOT);

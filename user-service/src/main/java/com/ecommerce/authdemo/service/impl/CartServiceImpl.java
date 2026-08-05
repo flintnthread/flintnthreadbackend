@@ -61,6 +61,7 @@ public class CartServiceImpl implements CartService {
                 dto.getProductId(), dto.getVariantId(), dto.getQuantity());
         
         validateAddToCartRequest(dto);
+        assertSellerAcceptingOrders(dto.getProductId());
         
         Long userId = securityUtil.getCurrentUserId();
         LinePricing linePricing = resolveLinePricing(dto.getProductId(), dto.getVariantId(), null);
@@ -473,6 +474,25 @@ if (productForStrike != null) {
             throw new CartException("Valid variant ID is required");
         }
         validateQuantity(dto.getQuantity());
+    }
+
+    /** Block new purchases when seller is temporarily deactivated (inactive / act_req). */
+    private void assertSellerAcceptingOrders(Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new CartException("Product not found"));
+        if (product.getSellerId() == null) {
+            return;
+        }
+        Seller seller = sellerRepository.findById(product.getSellerId()).orElse(null);
+        if (seller == null || seller.getStatus() == null) {
+            return;
+        }
+        String status = seller.getStatus().trim().toLowerCase();
+        if ("inactive".equals(status) || "act_req".equals(status) || "suspended".equals(status)) {
+            throw new CartException(
+                    "This seller is currently unavailable. Please try another product."
+            );
+        }
     }
 
     private void validateQuantity(Integer quantity) {
