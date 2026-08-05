@@ -304,7 +304,10 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
             dto.setImageUrl(getProductImageUrl(cart.getProductId()));
             dto.setQuantity(cart.getQuantity());
             dto.setTotal(unitCustomer.multiply(BigDecimal.valueOf(cart.getQuantity())));
-
+if (productForStrike != null) {
+    dto.setAcceptCod(Boolean.TRUE.equals(productForStrike.getAcceptCod()));
+    dto.setAcceptPrepaid(Boolean.TRUE.equals(productForStrike.getAcceptPrepaid()));
+}
             if (variant != null) {
                 dto.setSize(sizeColorMapper.getSizeName(variant.getSize()));
                 dto.setColor(sizeColorMapper.getColorName(variant.getColor()));
@@ -312,6 +315,7 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
             }
 
             itemDTOs.add(dto);
+            
         }
 
         BigDecimal subtotal = cartItems.stream()

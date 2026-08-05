@@ -187,7 +187,32 @@ public class OrderServiceImpl implements OrderService {
             if (checkoutItems.isEmpty()) {
                 throw new OrderException("Cart is empty");
             }
+// Validate payment method for every product
+String paymentMethod = dto.getPaymentMethod() != null
+        ? dto.getPaymentMethod().trim().toLowerCase()
+        : "";
 
+boolean isCod = paymentMethod.contains("cod")
+        || paymentMethod.contains("cash");
+
+boolean isPrepaid = paymentMethod.contains("upi")
+        || paymentMethod.contains("online")
+        || paymentMethod.contains("razorpay");
+
+for (CartItemResponseDTO item : checkoutItems) {
+
+    if (isCod && Boolean.FALSE.equals(item.getAcceptCod())) {
+        throw new OrderException(
+                item.getProductName() + " is not available for Cash on Delivery."
+        );
+    }
+
+    if (isPrepaid && Boolean.FALSE.equals(item.getAcceptPrepaid())) {
+        throw new OrderException(
+                item.getProductName() + " is not available for Online Payment."
+        );
+    }
+}
             boolean partialCheckout =
                     dto.getItemIds() != null && !dto.getItemIds().isEmpty();
 
