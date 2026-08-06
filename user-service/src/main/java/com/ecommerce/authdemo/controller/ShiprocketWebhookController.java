@@ -5,10 +5,13 @@ import com.ecommerce.authdemo.service.ShiprocketService;
 import com.ecommerce.authdemo.service.ShiprocketWebhookService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -124,6 +127,67 @@ public class ShiprocketWebhookController {
             return ResponseEntity.internalServerError().body(Map.of(
                     "success", false,
                     "message", e.getMessage() != null ? e.getMessage() : "Failed to sync shipment"
+            ));
+        }
+    }
+
+    /**
+     * Manual catch-up for recent active Shiprocket orders when webhook updates were missed.
+     * Example: POST /api/shiprocket/sync-active?limit=200&lookbackHours=168
+     */
+    @PostMapping("/sync-active")
+    public ResponseEntity<Map<String, Object>> syncRecentActiveOrders(
+            @RequestParam(defaultValue = "200") int limit,
+            @RequestParam(defaultValue = "168") int lookbackHours,
+            @RequestParam(defaultValue = "30") int minSyncAgeMinutes
+    ) {
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        int safeLookback = Math.max(1, Math.min(lookbackHours, 24 * 30));
+        int safeMinAge = Math.max(1, Math.min(minSyncAgeMinutes, 24 * 60));
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime createdAfter = now.minusHours(safeLookback);
+        LocalDateTime syncedBefore = now.minusMinutes(safeMinAge);
+        log.info("[SHIPROCKET:API] HTTP POST /api/shiprocket/sync-active limit={} lookbackHours={} minSyncAgeMinutes={}",
+                safeLimit, safeLookback, safeMinAge);
+        try {
+            List<com.ecommerce.authdemo.entity.Order> candidates =
+                    orderRepository.findShiprocketStatusSyncCandidates(
+                            createdAfter,
+                            syncedBefore,
+                            PageRequest.of(0, safeLimit)
+                    );
+
+            int success = 0;
+            int failed = 0;
+            for (com.ecommerce.authdemo.entity.Order order : candidates) {
+                try {
+                    shiprocketService.syncShipmentDetails(order);
+                    success++;
+                } catch (Exception ex) {
+                    failed++;
+                    log.warn("[SHIPROCKET:API] sync-active orderId={} orderNumber={} failed={}",
+                            order.getId(), order.getOrderNumber(), ex.getMessage());
+                }
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Shiprocket catch-up sync completed",
+                    "data", Map.of(
+                            "requestedLimit", safeLimit,
+                            "candidates", candidates.size(),
+                            "synced", success,
+                            "failed", failed,
+                            "lookbackHours", safeLookback,
+                            "minSyncAgeMinutes", safeMinAge
+                    )
+            ));
+        } catch (Exception e) {
+            log.error("[SHIPROCKET:API] sync-active FAILED msg={}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", e.getMessage() != null ? e.getMessage() : "Failed to run catch-up sync"
             ));
         }
     }
