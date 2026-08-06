@@ -117,6 +117,10 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         order.setShiprocketStatus(status);
         order.setShiprocketTrackingUrl(trackingUrl);
         order.setShiprocketSyncedAt(syncedAt);
+        String mappedOrderStatus = mapShiprocketToOrderStatus(status, awb);
+        if (mappedOrderStatus != null && !mappedOrderStatus.isBlank()) {
+            order.setOrderStatus(mappedOrderStatus);
+        }
         if (order.getId() != null && orderRepository.existsById(order.getId())) {
             orderRepository.save(order);
         }
@@ -282,5 +286,25 @@ public class ShiprocketServiceImpl implements ShiprocketService {
     }
 
     public record TrackingActivity(String date, String status, String location) {
+    }
+
+    private static String mapShiprocketToOrderStatus(String shiprocketStatus, String awb) {
+        if (shiprocketStatus == null || shiprocketStatus.isBlank()) {
+            return (awb != null && !awb.isBlank()) ? "awb_assigned" : null;
+        }
+        String s = shiprocketStatus.trim().toLowerCase(Locale.ENGLISH)
+                .replace("-", "_")
+                .replace(" ", "_");
+        if (s.contains("deliver")) return "delivered";
+        if (s.contains("rto")) return "returned";
+        if (s.contains("return")) return "returned";
+        if (s.contains("cancel")) return "cancelled";
+        if (s.contains("out_for_delivery")) return "out_for_delivery";
+        if (s.contains("in_transit")) return "in_transit";
+        if (s.contains("picked_up") || s.contains("pickup")) return "picked_up";
+        if (s.contains("shipped")) return "in_transit";
+        if (s.contains("awb")) return "awb_assigned";
+        if (s.contains("pack") || s.contains("process") || s.contains("confirm")) return "processing";
+        return (awb != null && !awb.isBlank()) ? "awb_assigned" : null;
     }
 }
