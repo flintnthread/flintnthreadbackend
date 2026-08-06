@@ -29,4 +29,7 @@ public class RegistrationPaymentStatusResponse {
     private final long daysRemainingInGrace;
     /** True when never paid and grace has ended — first annual fee is due. */
     private final boolean firstPaymentDue;
+
+    /** Grace length in months (3 for new sellers, 12 for existing). */
+    private final int gracePeriodMonths;
 }

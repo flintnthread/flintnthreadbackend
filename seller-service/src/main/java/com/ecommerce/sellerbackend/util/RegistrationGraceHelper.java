@@ -4,7 +4,11 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
 /**
- * First annual registration fee is deferred for {@code graceMonths} from seller join ({@code createdAt}).
+ * First annual registration fee is deferred from seller join ({@code createdAt}):
+ * <ul>
+ *   <li>New sellers (joined on/after cutoff): {@code newSellerGraceMonths} (default 3)</li>
+ *   <li>Existing sellers (joined before cutoff): {@code existingSellerGraceMonths} (default 12)</li>
+ * </ul>
  */
 public final class RegistrationGraceHelper {
 
@@ -16,8 +20,23 @@ public final class RegistrationGraceHelper {
             LocalDateTime graceEndsAt,
             boolean graceActive,
             boolean firstPaymentDue,
-            long daysRemainingInGrace
+            long daysRemainingInGrace,
+            int gracePeriodMonths
     ) {
+    }
+
+    public static int resolveGraceMonths(
+            LocalDateTime joinedAt,
+            LocalDateTime newSellerAfter,
+            int newSellerGraceMonths,
+            int existingSellerGraceMonths
+    ) {
+        int neu = Math.max(newSellerGraceMonths, 0);
+        int existing = Math.max(existingSellerGraceMonths, 0);
+        if (joinedAt == null || newSellerAfter == null || !joinedAt.isBefore(newSellerAfter)) {
+            return neu;
+        }
+        return existing;
     }
 
     public static GraceSnapshot compute(
@@ -38,12 +57,9 @@ public final class RegistrationGraceHelper {
                 daysRemaining = 1;
             }
         }
-        return new GraceSnapshot(joined, graceEndsAt, graceActive, firstPaymentDue, daysRemaining);
+        return new GraceSnapshot(joined, graceEndsAt, graceActive, firstPaymentDue, daysRemaining, months);
     }
 
-    /**
-     * Subscription treated as active for access control when paid-active or still in unpaid grace.
-     */
     public static boolean resolveSubscriptionActive(
             boolean profileCompleted,
             boolean subscriptionRowActive,
@@ -55,9 +71,6 @@ public final class RegistrationGraceHelper {
         return subscriptionRowActive || graceActive;
     }
 
-    /**
-     * Payment is forced when first fee is due after grace, or when a prior subscription expired.
-     */
     public static boolean resolvePaymentPending(
             boolean profileCompleted,
             boolean subscriptionRowActive,

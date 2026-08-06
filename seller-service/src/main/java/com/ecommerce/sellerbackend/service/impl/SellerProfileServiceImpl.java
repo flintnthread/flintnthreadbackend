@@ -93,6 +93,26 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     @Value("${app.registration.grace.months:3}")
     private int registrationGraceMonths;
 
+    @Value("${app.registration.existing-grace.months:12}")
+    private int existingSellerGraceMonths;
+
+    @Value("${app.registration.new-seller-after:2026-08-06T00:00:00}")
+    private String newSellerAfterRaw;
+
+    private int graceMonthsFor(Seller seller) {
+        LocalDateTime cutoff;
+        try {
+            cutoff = LocalDateTime.parse(newSellerAfterRaw.trim());
+        } catch (Exception ex) {
+            cutoff = LocalDateTime.of(2026, 8, 6, 0, 0);
+        }
+        return RegistrationGraceHelper.resolveGraceMonths(
+                seller.getCreatedAt(),
+                cutoff,
+                registrationGraceMonths,
+                existingSellerGraceMonths);
+    }
+
     @Override
     @Transactional
     public SellerProfileResponse getProfile(Long sellerId) {
@@ -415,13 +435,13 @@ public class SellerProfileServiceImpl implements SellerProfileService {
         boolean hasEverPaid = registrationPaymentRepository.hasEverPaid(sellerId);
         RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
                 seller.getCreatedAt(),
-                registrationGraceMonths,
+                graceMonthsFor(seller),
                 hasEverPaid,
                 LocalDateTime.now());
         if (grace.graceActive()) {
             throw new IllegalArgumentException(
                     "Annual registration fee can be paid after your "
-                            + registrationGraceMonths
+                            + grace.gracePeriodMonths()
                             + "-month grace period ends on "
                             + grace.graceEndsAt().toLocalDate()
                             + ".");
@@ -559,7 +579,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
         );
         RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
                 seller.getCreatedAt(),
-                registrationGraceMonths,
+                graceMonthsFor(seller),
                 true,
                 LocalDateTime.now());
         return RegistrationPaymentStatusResponse.builder()
@@ -583,6 +603,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .graceActive(false)
                 .daysRemainingInGrace(0)
                 .firstPaymentDue(false)
+                .gracePeriodMonths(grace.gracePeriodMonths())
                 .build();
     }
 
@@ -688,11 +709,12 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .invoiceEmailSent(invoiceEmailSent)
                 .joinedAt(seller.getCreatedAt() != null ? seller.getCreatedAt().toString() : null)
                 .graceEndsAt(seller.getCreatedAt() != null
-                        ? seller.getCreatedAt().plusMonths(registrationGraceMonths).toString()
+                        ? seller.getCreatedAt().plusMonths(graceMonthsFor(seller)).toString()
                         : null)
                 .graceActive(false)
                 .daysRemainingInGrace(0)
                 .firstPaymentDue(false)
+                .gracePeriodMonths(graceMonthsFor(seller))
                 .build();
     }
 
@@ -800,7 +822,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
         boolean profileCompleted = Boolean.TRUE.equals(seller.getProfileCompleted());
         RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
                 seller.getCreatedAt(),
-                registrationGraceMonths,
+                graceMonthsFor(seller),
                 hasEverPaid,
                 LocalDateTime.now());
         boolean subscriptionActive = RegistrationGraceHelper.resolveSubscriptionActive(
@@ -828,6 +850,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                     .graceActive(grace.graceActive())
                     .daysRemainingInGrace(grace.daysRemainingInGrace())
                     .firstPaymentDue(grace.firstPaymentDue())
+                    .gracePeriodMonths(grace.gracePeriodMonths())
                     .build();
         }
         String responseOrderId = record.getDisplayOrderNumber() != null && !record.getDisplayOrderNumber().isBlank()
@@ -857,6 +880,7 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .graceActive(grace.graceActive())
                 .daysRemainingInGrace(grace.daysRemainingInGrace())
                 .firstPaymentDue(grace.firstPaymentDue())
+                .gracePeriodMonths(grace.gracePeriodMonths())
                 .build();
     }
 
