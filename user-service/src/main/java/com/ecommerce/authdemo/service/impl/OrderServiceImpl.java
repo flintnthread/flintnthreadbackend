@@ -200,13 +200,13 @@ boolean isPrepaid = paymentMethod.contains("upi")
 
 for (CartItemResponseDTO item : checkoutItems) {
 
-    if (isCod && Boolean.FALSE.equals(item.getAcceptCod())) {
+    if (isCod && !Boolean.TRUE.equals(item.getAcceptCod())) {
         throw new OrderException(
                 item.getProductName() + " is not available for Cash on Delivery."
         );
     }
 
-    if (isPrepaid && Boolean.FALSE.equals(item.getAcceptPrepaid())) {
+    if (isPrepaid && !Boolean.TRUE.equals(item.getAcceptPrepaid())) {
         throw new OrderException(
                 item.getProductName() + " is not available for Online Payment."
         );
