@@ -618,6 +618,55 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         }
     }
 
+    @Override
+    @Transactional
+    public Map<String, Object> syncAllFromShiprocket(int limit, int lookbackHours, int minSyncAgeMinutes) {
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        int safeLookback = Math.max(1, Math.min(lookbackHours, 24 * 30));
+        int safeMinAge = Math.max(1, Math.min(minSyncAgeMinutes, 24 * 60));
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime createdAfter = now.minusHours(safeLookback);
+        LocalDateTime syncedBefore = now.minusMinutes(safeMinAge);
+
+        List<Order> candidates = orderRepository.findShiprocketStatusSyncCandidates(
+                createdAfter,
+                syncedBefore,
+                PageRequest.of(0, safeLimit)
+        );
+
+        int success = 0;
+        int failed = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (Order order : candidates) {
+            try {
+                adminShiprocketService.syncShipment(order);
+                success++;
+            } catch (Exception ex) {
+                failed++;
+                Map<String, Object> failure = new LinkedHashMap<>();
+                failure.put("orderId", order.getId());
+                failure.put("orderNumber", order.getOrderNumber());
+                failure.put("error", friendlyShiprocketError(ex));
+                failures.add(failure);
+                log.warn("Admin Shiprocket bulk sync failed orderId={} orderNumber={} msg={}",
+                        order.getId(), order.getOrderNumber(), ex.getMessage());
+            }
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("message", "Shiprocket bulk status sync completed");
+        response.put("requestedLimit", safeLimit);
+        response.put("lookbackHours", safeLookback);
+        response.put("minSyncAgeMinutes", safeMinAge);
+        response.put("candidates", candidates.size());
+        response.put("synced", success);
+        response.put("failed", failed);
+        response.put("failures", failures);
+        return response;
+    }
+
     private static String friendlyShiprocketError(Throwable e) {
         String raw = rootMessage(e);
         String lower = raw.toLowerCase(Locale.ENGLISH);

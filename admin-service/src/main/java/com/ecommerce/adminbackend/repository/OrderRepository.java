@@ -148,4 +148,18 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("SELECT MIN(o.id) FROM Order o WHERE LOWER(o.shippingEmail) = LOWER(:email)")
     java.util.Optional<Long> findMinIdByShippingEmailIgnoreCase(@Param("email") String email);
+
+    @Query("""
+            SELECT o FROM Order o
+            WHERE (o.shiprocketShipmentId IS NOT NULL OR o.shiprocketOrderId IS NOT NULL OR o.shiprocketAwbCode IS NOT NULL)
+              AND (o.orderStatus IS NULL OR LOWER(o.orderStatus) NOT IN ('delivered', 'cancelled', 'returned', 'rto_delivered'))
+              AND o.createdAt >= :createdAfter
+              AND (o.shiprocketSyncedAt IS NULL OR o.shiprocketSyncedAt <= :syncedBefore)
+            ORDER BY o.createdAt DESC
+            """)
+    List<Order> findShiprocketStatusSyncCandidates(
+            @Param("createdAfter") LocalDateTime createdAfter,
+            @Param("syncedBefore") LocalDateTime syncedBefore,
+            Pageable pageable
+    );
 }

@@ -130,4 +130,13 @@ public class OrderAdminController {
     public Map<String, Object> syncFromShiprocket(@PathVariable Long id) {
         return orderAdminService.syncFromShiprocket(id);
     }
+
+    @PostMapping("/shiprocket/sync-all")
+    public Map<String, Object> syncAllFromShiprocket(
+            @RequestParam(defaultValue = "200") int limit,
+            @RequestParam(defaultValue = "168") int lookbackHours,
+            @RequestParam(defaultValue = "30") int minSyncAgeMinutes
+    ) {
+        return orderAdminService.syncAllFromShiprocket(limit, lookbackHours, minSyncAgeMinutes);
+    }
 }
