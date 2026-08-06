@@ -25,6 +25,8 @@ public class SellerProfileResponse {
     private final boolean profileCompleted;
     private final boolean kycCompleted;
     private final LocalDateTime kycSubmittedAt;
+    /** Account join / registration timestamp. */
+    private final LocalDateTime createdAt;
     private final SellerAccountStatusResponse accountStatus;
 
     private final PersonalSection personal;
@@ -142,6 +144,7 @@ public class SellerProfileResponse {
                 .profileCompleted(Boolean.TRUE.equals(seller.getProfileCompleted()))
                 .kycCompleted(Boolean.TRUE.equals(seller.getKycCompleted()))
                 .kycSubmittedAt(seller.getKycSubmittedAt())
+                .createdAt(seller.getCreatedAt())
                 .accountStatus(SellerAccountStatusHelper.build(seller))
                 .personal(PersonalSection.builder()
                         .profilePicUrl(resolveMediaUrl(mediaStorage, seller.getProfilePic()))
