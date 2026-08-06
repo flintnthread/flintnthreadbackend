@@ -551,6 +551,59 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
         return shiprocketService.syncTracking(order);
     }
 
+    @Override
+    @Transactional
+    public Map<String, Object> syncAllShiprocket(Long sellerId, int limit) {
+        SellerContext ctx = loadContext(sellerId);
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+
+        List<OrderItem> items = ctx.items();
+        java.util.LinkedHashSet<Long> uniqueOrderIds = new java.util.LinkedHashSet<>();
+        for (OrderItem item : items) {
+            if (item.getOrderId() != null) {
+                uniqueOrderIds.add(item.getOrderId());
+            }
+            if (uniqueOrderIds.size() >= safeLimit) {
+                break;
+            }
+        }
+
+        int success = 0;
+        int failed = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (Long orderId : uniqueOrderIds) {
+            Order order = ctx.order(orderId);
+            if (order == null) {
+                List<OrderItem> sellerItems = items.stream()
+                        .filter(i -> orderId.equals(i.getOrderId()))
+                        .toList();
+                if (sellerItems.isEmpty()) continue;
+                order = buildSyntheticOrder(orderId, sellerItems);
+            }
+            try {
+                shiprocketService.syncTracking(order);
+                success++;
+            } catch (Exception ex) {
+                failed++;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("orderId", orderId);
+                row.put("orderNumber", order.getOrderNumber());
+                row.put("error", ex.getMessage());
+                failures.add(row);
+            }
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        out.put("message", "Seller Shiprocket sync-all completed");
+        out.put("requestedLimit", safeLimit);
+        out.put("candidates", uniqueOrderIds.size());
+        out.put("synced", success);
+        out.put("failed", failed);
+        out.put("failures", failures);
+        return out;
+    }
+
     private Order buildSyntheticOrder(Long orderId, List<OrderItem> items) {
         Order order = new Order();
         order.setId(orderId);

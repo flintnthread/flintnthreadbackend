@@ -3,12 +3,15 @@ package com.ecommerce.sellerbackend.service.impl;
 import com.ecommerce.sellerbackend.dto.financial.ShiprocketSyncResponse;
 import com.ecommerce.sellerbackend.dto.financial.ShiprocketTrackingEventDto;
 import com.ecommerce.sellerbackend.entity.Order;
+import com.ecommerce.sellerbackend.entity.OrderItem;
+import com.ecommerce.sellerbackend.repository.OrderItemRepository;
 import com.ecommerce.sellerbackend.repository.OrderRepository;
 import com.ecommerce.sellerbackend.service.PlatformIntegrationSettings;
 import com.ecommerce.sellerbackend.service.ShiprocketService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,16 +26,17 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ShiprocketServiceImpl implements ShiprocketService {
 
     private static final DateTimeFormatter DISPLAY_DATE_TIME =
             DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH);
 
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final ObjectMapper objectMapper;
     private final PlatformIntegrationSettings integrationSettings;
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -52,57 +56,70 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         String shiprocketOrderId = order.getShiprocketOrderId();
         String shipmentId = order.getShiprocketShipmentId();
         String courierName = order.getShiprocketCourierName();
+        Exception lastError = null;
 
-        if (order.getShiprocketAwbCode() != null && !order.getShiprocketAwbCode().isBlank()) {
-            try {
-                String token = authenticate();
-                JsonNode track = fetchTracking(token, order.getShiprocketAwbCode());
-                if (track != null) {
-                    TrackingSnapshot snapshot = parseTrackingSnapshot(track);
-                    if (snapshot != null) {
-                        if (snapshot.status() != null) {
-                            status = snapshot.status();
-                        }
-                        if (snapshot.trackingUrl() != null) {
-                            trackingUrl = snapshot.trackingUrl();
-                        }
-                        if (snapshot.awb() != null) {
-                            awb = snapshot.awb();
-                        }
-                        if (snapshot.shiprocketOrderId() != null) {
-                            shiprocketOrderId = snapshot.shiprocketOrderId();
-                        }
-                        if (snapshot.shipmentId() != null) {
-                            shipmentId = snapshot.shipmentId();
-                        }
-                        if (snapshot.courierName() != null) {
-                            courierName = snapshot.courierName();
-                        }
-                        for (int idx = 0; idx < snapshot.activities().size(); idx++) {
-                            TrackingActivity activity = snapshot.activities().get(idx);
-                            events.add(ShiprocketTrackingEventDto.builder()
-                                    .date(activity.date() != null ? activity.date() : "")
-                                    .time("")
-                                    .status(activity.status() != null ? activity.status() : "Update")
-                                    .location(activity.location() != null ? activity.location() : "")
-                                    .description(activity.status() != null ? activity.status() : "")
-                                    .type(idx == 0 ? "active" : "done")
-                                    .build());
-                        }
+        try {
+            String token = authenticate();
+            JsonNode track = null;
+            if (awb != null && !awb.isBlank()) {
+                track = fetchTracking(token, "/courier/track/awb/" + awb.trim());
+            }
+            if (track == null && shipmentId != null && shipmentId.trim().matches("^\\d+$")) {
+                track = fetchTracking(token, "/courier/track/shipment/" + shipmentId.trim());
+            }
+            if (track != null) {
+                TrackingSnapshot snapshot = parseTrackingSnapshot(track);
+                if (snapshot != null) {
+                    if (snapshot.status() != null) {
+                        status = snapshot.status();
+                    }
+                    if (snapshot.trackingUrl() != null) {
+                        trackingUrl = snapshot.trackingUrl();
+                    }
+                    if (snapshot.awb() != null) {
+                        awb = snapshot.awb();
+                    }
+                    if (snapshot.shiprocketOrderId() != null) {
+                        shiprocketOrderId = snapshot.shiprocketOrderId();
+                    }
+                    if (snapshot.shipmentId() != null) {
+                        shipmentId = snapshot.shipmentId();
+                    }
+                    if (snapshot.courierName() != null) {
+                        courierName = snapshot.courierName();
+                    }
+                    for (int idx = 0; idx < snapshot.activities().size(); idx++) {
+                        TrackingActivity activity = snapshot.activities().get(idx);
+                        events.add(ShiprocketTrackingEventDto.builder()
+                                .date(activity.date() != null ? activity.date() : "")
+                                .time("")
+                                .status(activity.status() != null ? activity.status() : "Update")
+                                .location(activity.location() != null ? activity.location() : "")
+                                .description(activity.status() != null ? activity.status() : "")
+                                .type(idx == 0 ? "active" : "done")
+                                .build());
                     }
                 }
-            } catch (Exception ignored) {
-                // Keep stored values when live sync fails.
             }
+        } catch (Exception ex) {
+            lastError = ex;
+            log.warn("Shiprocket live sync failed orderId={} awb={} msg={}",
+                    order.getId(), awb, ex.getMessage());
         }
 
-        if (events.isEmpty() && order.getShiprocketStatus() != null) {
+        // Normalize numeric / mixed Shiprocket statuses into readable labels before save.
+        String normalizedShiprocketStatus = normalizeShiprocketStatusLabel(status, awb);
+        if (normalizedShiprocketStatus != null) {
+            status = normalizedShiprocketStatus;
+        }
+
+        if (events.isEmpty() && status != null) {
             events.add(ShiprocketTrackingEventDto.builder()
                     .date(order.getShiprocketSyncedAt() != null
                             ? DISPLAY_DATE_TIME.format(order.getShiprocketSyncedAt())
                             : "")
                     .time("")
-                    .status(order.getShiprocketStatus())
+                    .status(status)
                     .location("")
                     .description("Latest known shipment status")
                     .type("active")
@@ -117,12 +134,26 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         order.setShiprocketStatus(status);
         order.setShiprocketTrackingUrl(trackingUrl);
         order.setShiprocketSyncedAt(syncedAt);
+
+        // Must be values allowed by orders.order_status MySQL ENUM.
         String mappedOrderStatus = mapShiprocketToOrderStatus(status, awb);
         if (mappedOrderStatus != null && !mappedOrderStatus.isBlank()) {
             order.setOrderStatus(mappedOrderStatus);
+            syncOrderItemsStatus(order.getId(), mappedOrderStatus);
         }
+
         if (order.getId() != null && orderRepository.existsById(order.getId())) {
-            orderRepository.save(order);
+            try {
+                orderRepository.save(order);
+            } catch (Exception ex) {
+                log.error("Failed saving Shiprocket sync for orderId={} status={} mapped={} msg={}",
+                        order.getId(), status, mappedOrderStatus, ex.getMessage());
+                throw ex;
+            }
+        } else if (lastError != null) {
+            throw new IllegalStateException(
+                    "Shiprocket sync failed and order row missing: " + lastError.getMessage(),
+                    lastError);
         }
 
         return ShiprocketSyncResponse.builder()
@@ -137,6 +168,20 @@ public class ShiprocketServiceImpl implements ShiprocketService {
                 .build();
     }
 
+    private void syncOrderItemsStatus(Long orderId, String mappedOrderStatus) {
+        if (orderId == null || mappedOrderStatus == null || mappedOrderStatus.isBlank()) {
+            return;
+        }
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        if (items.isEmpty()) {
+            return;
+        }
+        for (OrderItem item : items) {
+            item.setStatus(mappedOrderStatus);
+        }
+        orderItemRepository.saveAll(items);
+    }
+
     public static TrackingSnapshot parseTrackingSnapshot(JsonNode response) {
         JsonNode trackingData = firstNode(
                 response.path("tracking_data"),
@@ -148,11 +193,32 @@ public class ShiprocketServiceImpl implements ShiprocketService {
             return null;
         }
 
-        String resolvedStatus = firstText(
-                trackingData.path("shipment_status"),
-                trackingData.path("track_status"),
-                trackingData.path("status")
+        String resolvedStatus = null;
+        JsonNode shipmentTrack = firstNode(
+                trackingData.path("shipment_track"),
+                trackingData.path("shipmentTrack")
         );
+        if (shipmentTrack != null && shipmentTrack.isArray() && shipmentTrack.size() > 0) {
+            JsonNode first = shipmentTrack.get(0);
+            resolvedStatus = firstText(
+                    first.path("current_status"),
+                    first.path("current_status_code"),
+                    first.path("status")
+            );
+            if (resolvedStatus == null) {
+                resolvedStatus = textOrNull(first.path("shipment_status"));
+            }
+        }
+
+        if (resolvedStatus == null) {
+            resolvedStatus = firstText(
+                    trackingData.path("shipment_status"),
+                    trackingData.path("track_status"),
+                    trackingData.path("status"),
+                    trackingData.path("current_status")
+            );
+        }
+
         String resolvedTrackingUrl = firstText(
                 trackingData.path("track_url"),
                 trackingData.path("tracking_url"),
@@ -166,6 +232,12 @@ public class ShiprocketServiceImpl implements ShiprocketService {
                 response.path("awb_code"),
                 response.path("data").path("awb")
         );
+        if (resolvedAwb == null && shipmentTrack != null && shipmentTrack.isArray() && shipmentTrack.size() > 0) {
+            resolvedAwb = firstText(
+                    shipmentTrack.get(0).path("awb_code"),
+                    shipmentTrack.get(0).path("awb")
+            );
+        }
         String resolvedShiprocketOrderId = firstText(
                 response.path("order_id"),
                 response.path("data").path("order_id"),
@@ -185,6 +257,12 @@ public class ShiprocketServiceImpl implements ShiprocketService {
                 response.path("courier_name"),
                 response.path("courier")
         );
+        if (resolvedCourierName == null && shipmentTrack != null && shipmentTrack.isArray() && shipmentTrack.size() > 0) {
+            resolvedCourierName = firstText(
+                    shipmentTrack.get(0).path("courier_name"),
+                    shipmentTrack.get(0).path("sr_courier_name")
+            );
+        }
 
         List<TrackingActivity> activities = new ArrayList<>();
         JsonNode activitiesNode = firstNode(
@@ -193,7 +271,6 @@ public class ShiprocketServiceImpl implements ShiprocketService {
                 trackingData.path("events")
         );
         if (activitiesNode != null && activitiesNode.isArray()) {
-            int idx = 0;
             for (JsonNode activity : activitiesNode) {
                 String activityDate = textOrNull(activity.path("date"));
                 String activityStatus = textOrNull(activity.path("activity"));
@@ -202,7 +279,6 @@ public class ShiprocketServiceImpl implements ShiprocketService {
                         activityDate,
                         activityStatus != null ? activityStatus : "Update",
                         location));
-                idx++;
             }
         }
 
@@ -241,15 +317,16 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         return token;
     }
 
-    private JsonNode fetchTracking(String token, String awb) throws Exception {
+    private JsonNode fetchTracking(String token, String path) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/courier/track/awb/" + awb))
+                .uri(URI.create(baseUrl + path))
                 .header("Authorization", "Bearer " + token)
                 .GET()
                 .timeout(Duration.ofSeconds(20))
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() >= 400) {
+            log.warn("Shiprocket track GET {} failed status={}", path, response.statusCode());
             return null;
         }
         return objectMapper.readTree(response.body());
@@ -276,8 +353,11 @@ public class ShiprocketServiceImpl implements ShiprocketService {
 
     private static String textOrNull(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) return null;
-        String text = node.asText();
-        return text == null || text.isBlank() ? null : text;
+        String text = node.isNumber() ? node.asText() : node.asText();
+        if (text == null || text.isBlank() || "null".equalsIgnoreCase(text)) {
+            return null;
+        }
+        return text.trim();
     }
 
     public record TrackingSnapshot(String status, String trackingUrl, String awb,
@@ -288,23 +368,63 @@ public class ShiprocketServiceImpl implements ShiprocketService {
     public record TrackingActivity(String date, String status, String location) {
     }
 
-    private static String mapShiprocketToOrderStatus(String shiprocketStatus, String awb) {
+    /**
+     * Convert Shiprocket numeric codes / free-text into a readable status label.
+     */
+    public static String normalizeShiprocketStatusLabel(String shiprocketStatus, String awb) {
         if (shiprocketStatus == null || shiprocketStatus.isBlank()) {
-            return (awb != null && !awb.isBlank()) ? "awb_assigned" : null;
+            return (awb != null && !awb.isBlank()) ? "AWB Assigned" : null;
         }
-        String s = shiprocketStatus.trim().toLowerCase(Locale.ENGLISH)
+        String raw = shiprocketStatus.trim();
+        if (raw.matches("^\\d+$")) {
+            return switch (raw) {
+                case "1" -> "AWB Assigned";
+                case "2" -> "Label Generated";
+                case "3" -> "Pickup Scheduled";
+                case "4" -> "Pickup Queued";
+                case "5", "8", "16", "45" -> "Cancelled";
+                case "6", "18", "19", "20", "38", "39", "40", "41", "42", "43" -> "In Transit";
+                case "7", "23", "26" -> "Delivered";
+                case "9", "10", "14", "46" -> "RTO";
+                case "12" -> "Lost";
+                case "13", "21", "22" -> "Undelivered";
+                case "15" -> "Pickup Rescheduled";
+                case "17" -> "Out For Delivery";
+                case "24", "25" -> "Damaged";
+                default -> "In Transit";
+            };
+        }
+        return raw;
+    }
+
+    /**
+     * Map Shiprocket status into values allowed by orders.order_status ENUM:
+     * pending, sent_to_seller, processing, completed, cancelled, refunded, returned,
+     * replacement, awaiting_processing, awaiting_payment, shipped, delivered
+     */
+    public static String mapShiprocketToOrderStatus(String shiprocketStatus, String awb) {
+        String label = normalizeShiprocketStatusLabel(shiprocketStatus, awb);
+        if (label == null || label.isBlank()) {
+            return null;
+        }
+        String s = label.trim().toLowerCase(Locale.ENGLISH)
                 .replace("-", "_")
                 .replace(" ", "_");
+
         if (s.contains("deliver")) return "delivered";
-        if (s.contains("rto")) return "returned";
-        if (s.contains("return")) return "returned";
+        if (s.contains("rto") || s.contains("return")) return "returned";
         if (s.contains("cancel")) return "cancelled";
-        if (s.contains("out_for_delivery")) return "out_for_delivery";
-        if (s.contains("in_transit")) return "in_transit";
-        if (s.contains("picked_up") || s.contains("pickup")) return "picked_up";
-        if (s.contains("shipped")) return "in_transit";
-        if (s.contains("awb")) return "awb_assigned";
-        if (s.contains("pack") || s.contains("process") || s.contains("confirm")) return "processing";
-        return (awb != null && !awb.isBlank()) ? "awb_assigned" : null;
+        if (s.contains("out_for_delivery") || s.contains("ofd")) return "shipped";
+        if (s.contains("in_transit") || s.contains("shipped") || s.contains("picked")
+                || s.contains("pickup") || s.contains("undelivered") || s.contains("lost")
+                || s.contains("damaged") || s.contains("flight") || s.contains("warehouse")
+                || s.contains("courier") || s.contains("connection") || s.contains("reached")) {
+            return "shipped";
+        }
+        if (s.contains("awb") || s.contains("label") || s.contains("process")
+                || s.contains("pack") || s.contains("confirm") || s.contains("new")) {
+            return "processing";
+        }
+        return (awb != null && !awb.isBlank()) ? "processing" : null;
     }
 }

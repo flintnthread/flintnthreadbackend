@@ -82,6 +82,13 @@ public class OrderController {
         return sellerFinancialService.syncShiprocket(requireSellerId(sellerId), orderKey);
     }
 
+    @PostMapping("/shiprocket/sync-all")
+    public java.util.Map<String, Object> syncAllShiprocket(
+            @RequestHeader(SELLER_ID_HEADER) Long sellerId,
+            @RequestParam(defaultValue = "200") int limit) {
+        return sellerFinancialService.syncAllShiprocket(requireSellerId(sellerId), limit);
+    }
+
     @GetMapping("/{orderKey}/tracking")
     public ShiprocketSyncResponse getTracking(
             @RequestHeader(SELLER_ID_HEADER) Long sellerId,

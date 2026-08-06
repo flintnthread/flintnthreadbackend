@@ -1003,26 +1003,34 @@ public class AdminShiprocketService {
      */
     static String mapShiprocketToOrderStatus(String shiprocketStatus, String awb) {
         String s = shiprocketStatus != null ? shiprocketStatus.trim().toLowerCase(Locale.ENGLISH) : "";
+        // Numeric Shiprocket shipment_status codes
+        if (s.matches("^\\d+$")) {
+            return switch (s) {
+                case "5", "8", "16", "45" -> "cancelled";
+                case "7", "23", "26" -> "delivered";
+                case "9", "10", "14", "46" -> "returned";
+                case "6", "12", "13", "15", "17", "18", "19", "20", "21", "22",
+                        "24", "25", "38", "39", "40", "41", "42", "43" -> "shipped";
+                case "1", "2", "3", "4" -> "processing";
+                default -> "shipped";
+            };
+        }
         if (s.contains("cancel")) {
-            return null;
+            return "cancelled";
         }
         if (s.contains("deliver")) {
             return "delivered";
         }
-        if (s.contains("rto")) {
+        if (s.contains("rto") || s.contains("return")) {
             return "returned";
         }
-        if (s.contains("out for delivery") || s.contains("out_for_delivery")) {
-            return "out_for_delivery";
+        if (s.contains("out for delivery") || s.contains("out_for_delivery")
+                || s.contains("in transit") || s.contains("in_transit")
+                || s.contains("shipped") || s.contains("picked") || s.contains("pickup")) {
+            return "shipped";
         }
-        if (s.contains("in transit") || s.contains("in_transit") || s.contains("shipped")) {
-            return "in_transit";
-        }
-        if (s.contains("picked") || s.contains("pickup")) {
-            return "picked_up";
-        }
-        if (!isBlank(awb) || s.contains("awb")) {
-            return "awb_assigned";
+        if (!isBlank(awb) || s.contains("awb") || s.contains("process") || s.contains("label")) {
+            return "processing";
         }
         // Shipment created, courier not assigned yet — keep processing.
         return null;

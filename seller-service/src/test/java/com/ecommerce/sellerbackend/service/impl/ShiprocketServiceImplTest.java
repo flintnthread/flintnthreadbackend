@@ -46,4 +46,13 @@ class ShiprocketServiceImplTest {
         assertEquals("Booked", snapshot.activities().get(0).status());
         assertEquals("Delhi", snapshot.activities().get(0).location());
     }
+
+    @Test
+    void shouldMapNumericDeliveredCodeToDbEnum() {
+        assertEquals("delivered", ShiprocketServiceImpl.mapShiprocketToOrderStatus("7", "AWB1"));
+        assertEquals("shipped", ShiprocketServiceImpl.mapShiprocketToOrderStatus("17", "AWB1"));
+        assertEquals("shipped", ShiprocketServiceImpl.mapShiprocketToOrderStatus("6", "AWB1"));
+        assertEquals("processing", ShiprocketServiceImpl.mapShiprocketToOrderStatus("1", "AWB1"));
+        assertEquals("Delivered", ShiprocketServiceImpl.normalizeShiprocketStatusLabel("7", null));
+    }
 }

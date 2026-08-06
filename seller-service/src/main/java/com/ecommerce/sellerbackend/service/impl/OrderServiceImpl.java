@@ -176,14 +176,7 @@ public class OrderServiceImpl implements OrderService {
                 order = buildSyntheticOrder(item.getOrderId(), List.of(item));
             }
             List<OrderStatusHistory> history = historyByOrder.getOrDefault(item.getOrderId(), List.of());
-            String rawStatus;
-            if (order != null && isCancelledStatus(order.getOrderStatus())) {
-                rawStatus = "cancelled";
-            } else if (item.getStatus() != null && !item.getStatus().isBlank()) {
-                rawStatus = item.getStatus();
-            } else {
-                rawStatus = resolveRawStatus(order, orderItems, history);
-            }
+            String rawStatus = resolveRawStatus(order, orderItems, history);
             String uiStatus = toUiStatus(rawStatus);
             switch (uiStatus) {
                 case "Pending" -> pending++;
@@ -1012,14 +1005,23 @@ public class OrderServiceImpl implements OrderService {
         if (order != null && isCancelledStatus(order.getOrderStatus())) {
             return "cancelled";
         }
+        // Prefer canonical Shiprocket status when present, so list view matches tracking timeline.
+        if (order != null && order.getShiprocketStatus() != null && !order.getShiprocketStatus().isBlank()) {
+            String fromShiprocket = ShiprocketServiceImpl.mapShiprocketToOrderStatus(
+                    order.getShiprocketStatus(), order.getShiprocketAwbCode());
+            if (fromShiprocket != null && !fromShiprocket.isBlank()) {
+                return fromShiprocket;
+            }
+        }
+        // Prefer current order header over stale history (history enum is limited and often stuck).
+        if (order != null && order.getOrderStatus() != null && !order.getOrderStatus().isBlank()) {
+            return order.getOrderStatus().trim();
+        }
         if (history != null && !history.isEmpty()) {
             OrderStatusHistory latest = history.get(history.size() - 1);
             if (latest.getStatus() != null && !latest.getStatus().isBlank()) {
                 return latest.getStatus().trim();
             }
-        }
-        if (order != null && order.getOrderStatus() != null && !order.getOrderStatus().isBlank()) {
-            return order.getOrderStatus().trim();
         }
         return items.stream()
                 .map(OrderItem::getStatus)
@@ -1043,15 +1045,30 @@ public class OrderServiceImpl implements OrderService {
         if (raw == null || raw.isBlank()) {
             return "Pending";
         }
-        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        // Numeric Shiprocket codes that may still be stored in shiprocket_status / order fields.
+        if (normalized.matches("^\\d+$")) {
+            String mapped = ShiprocketServiceImpl.mapShiprocketToOrderStatus(normalized, null);
+            if (mapped != null) {
+                normalized = mapped;
+            }
+        }
+        return switch (normalized) {
             case "pending", "sent_to_seller", "awaiting_payment", "awaiting_processing",
-                    "new", "placed" -> "Pending";
+                    "new", "placed", "active" -> "Pending";
             case "confirmed", "processing", "packed", "awb_assigned", "pickup_scheduled", "accepted" -> "Processing";
             case "picked_up", "in_transit", "out_for_delivery", "shipped", "ready_to_ship" -> "Shipped";
             case "delivered", "completed" -> "Delivered";
             case "returned", "return", "refunded", "rto_initiated", "rto_delivered", "replacement" -> "Returned";
             case "cancelled", "canceled", "rejected" -> "Cancelled";
-            default -> capitalize(raw.replace('_', ' '));
+            default -> {
+                if (normalized.contains("deliver")) yield "Delivered";
+                if (normalized.contains("ship") || normalized.contains("transit") || normalized.contains("ofd")) yield "Shipped";
+                if (normalized.contains("process") || normalized.contains("awb") || normalized.contains("pickup")) yield "Processing";
+                if (normalized.contains("return") || normalized.contains("rto")) yield "Returned";
+                if (normalized.contains("cancel")) yield "Cancelled";
+                yield capitalize(raw.replace('_', ' '));
+            }
         };
     }
 
@@ -1059,10 +1076,11 @@ public class OrderServiceImpl implements OrderService {
         if (uiStatus == null || uiStatus.isBlank()) {
             throw new IllegalArgumentException("Status is required.");
         }
+        // Must match orders.order_status MySQL ENUM values.
         return switch (uiStatus.trim()) {
-            case "Pending" -> "confirmed";
+            case "Pending" -> "pending";
             case "Processing" -> "processing";
-            case "Shipped" -> "in_transit";
+            case "Shipped" -> "shipped";
             case "Delivered" -> "delivered";
             case "Completed" -> "completed";
             case "Returned" -> "returned";

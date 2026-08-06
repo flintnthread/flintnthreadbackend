@@ -54,6 +54,8 @@ public interface SellerFinancialService {
 
     ShiprocketSyncResponse getTracking(Long sellerId, String orderKey);
 
+    Map<String, Object> syncAllShiprocket(Long sellerId, int limit);
+
     BankEditResponse submitBankEditRequest(Long sellerId, BankEditRequest request);
 
     List<BankEditResponse> listBankEditRequests(Long sellerId);
