@@ -36,9 +36,8 @@ public class ShiprocketWebhookController {
                 ));
             }
 
+            // Single handler to avoid conflicting/double status transitions.
             shiprocketWebhookService.handleWebhook(payload);
-            // Legacy flat webhook handler (awb + status only)
-            shiprocketService.handleWebhook(payload);
 
             Map<String, Object> ok = new HashMap<>();
             ok.put("success", true);
