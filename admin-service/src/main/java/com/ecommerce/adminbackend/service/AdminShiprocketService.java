@@ -1008,7 +1008,7 @@ public class AdminShiprocketService {
     /**
      * Map Shiprocket logistics status → shop order_status (never invent shipped without AWB).
      */
-    static String mapShiprocketToOrderStatus(String shiprocketStatus, String awb) {
+    public static String mapShiprocketToOrderStatus(String shiprocketStatus, String awb) {
         String s = shiprocketStatus != null ? shiprocketStatus.trim().toLowerCase(Locale.ENGLISH) : "";
         // Numeric Shiprocket shipment_status codes
         if (s.matches("^\\d+$")) {
