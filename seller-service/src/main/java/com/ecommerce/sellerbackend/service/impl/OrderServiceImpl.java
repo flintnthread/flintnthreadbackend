@@ -714,11 +714,15 @@ public class OrderServiceImpl implements OrderService {
             LineCatalog catalog) {
         BigDecimal amount = lineAmount(item);
         BigDecimal subtotal = lineSubtotal(item);
+        // Prefer order-level / Shiprocket-resolved status so stale line "processing"/"active"
+        // does not keep the Orders list stuck while tracking already shows Delivered.
         String effectiveStatus = isCancelledStatus(orderRawStatus)
                 ? "cancelled"
-                : (item.getStatus() != null && !item.getStatus().isBlank()
-                        ? item.getStatus()
-                        : orderRawStatus);
+                : (orderRawStatus != null && !orderRawStatus.isBlank()
+                        ? orderRawStatus
+                        : (item.getStatus() != null && !item.getStatus().isBlank()
+                                ? item.getStatus()
+                                : "pending"));
         String color = resolveLineColor(item, catalog);
         String size = resolveLineSize(item, catalog);
         String sku = resolveLineSku(item, catalog);
@@ -941,28 +945,33 @@ public class OrderServiceImpl implements OrderService {
                     dates.put(stepKey, formatStepDate(entry.getCreatedAt()));
                 }
             }
-            if (!dates.isEmpty()) {
-                return dates;
-            }
         }
 
         LocalDateTime created = order.getCreatedAt() != null ? order.getCreatedAt() : items.get(0).getCreatedAt();
         if (created != null) {
-            dates.put("pending", formatStepDate(created));
+            dates.putIfAbsent("pending", formatStepDate(created));
         }
-        if (order.getUpdatedAt() != null) {
-            String formatted = formatStepDate(order.getUpdatedAt());
+
+        LocalDateTime logisticsAt = order.getShiprocketSyncedAt() != null
+                ? order.getShiprocketSyncedAt()
+                : order.getUpdatedAt();
+        if (logisticsAt != null) {
+            String formatted = formatStepDate(logisticsAt);
             switch (uiStatus) {
-                case "Processing" -> dates.put("processing", formatted);
+                case "Processing" -> dates.putIfAbsent("processing", formatted);
                 case "Shipped" -> {
-                    dates.put("processing", formatted);
+                    dates.putIfAbsent("processing", formatted);
                     dates.put("shipped", formatted);
                 }
-                case "Delivered", "Returned", "Cancelled" -> {
-                    dates.put("processing", formatted);
-                    dates.put("shipped", formatted);
-                    dates.put(uiStatus.equals("Delivered") ? "delivered"
-                            : uiStatus.equals("Returned") ? "returned" : "cancelled", formatted);
+                case "Delivered" -> {
+                    dates.putIfAbsent("processing", formatted);
+                    dates.putIfAbsent("shipped", formatted);
+                    dates.put("delivered", formatted);
+                }
+                case "Returned", "Cancelled" -> {
+                    dates.putIfAbsent("processing", formatted);
+                    dates.putIfAbsent("shipped", formatted);
+                    dates.put(uiStatus.equals("Returned") ? "returned" : "cancelled", formatted);
                 }
                 default -> { }
             }
@@ -976,8 +985,9 @@ public class OrderServiceImpl implements OrderService {
         }
         return switch (historyStatus.trim().toLowerCase(Locale.ROOT)) {
             case "pending", "sent_to_seller", "awaiting_payment", "awaiting_processing" -> "pending";
-            case "processing" -> "processing";
-            case "completed" -> "delivered";
+            case "processing", "confirmed", "packed", "awb_assigned" -> "processing";
+            case "shipped", "in_transit", "picked_up", "out_for_delivery" -> "shipped";
+            case "completed", "delivered" -> "delivered";
             case "cancelled" -> "cancelled";
             case "returned", "refunded", "replacement" -> "returned";
             default -> null;
