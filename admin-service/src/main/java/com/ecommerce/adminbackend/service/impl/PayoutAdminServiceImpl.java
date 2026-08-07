@@ -85,9 +85,10 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
         stats.put("paid", paid);
         stats.put("cancelled", cancelled);
         stats.put("totalPaidAmount", orderRepository.sumPaidDeliveredSellerPaymentAmount());
-        stats.put("greenCount", orderRepository.countPendingSellerPaymentsWithinDays(2));
-        stats.put("orangeCount", orderRepository.countPendingSellerPaymentsDaysBetween(3, 4));
-        stats.put("redCount", orderRepository.countPendingSellerPaymentsAtLeastDays(5));
+        // 7-day seller payment window from delivery date
+        stats.put("greenCount", orderRepository.countPendingSellerPaymentsWithinDays(3));
+        stats.put("orangeCount", orderRepository.countPendingSellerPaymentsDaysBetween(4, 6));
+        stats.put("redCount", orderRepository.countPendingSellerPaymentsAtLeastDays(7));
         return stats;
     }
 
@@ -186,7 +187,7 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
                 && ("paid".equalsIgnoreCase(payStatus) || "cancelled".equalsIgnoreCase(payStatus))) {
             return 0;
         }
-        LocalDateTime reference = isDelivered(order) ? order.getUpdatedAt() : order.getCreatedAt();
+        LocalDateTime reference = resolveDeliveryAt(order);
         if (reference == null) {
             return 0;
         }
@@ -198,13 +199,24 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
                 && ("paid".equalsIgnoreCase(paymentStatus) || "cancelled".equalsIgnoreCase(paymentStatus))) {
             return "green";
         }
-        if (days >= 5) {
+        // Track from delivery date through a 7-day payment window
+        if (days >= OVERDUE_DAYS) {
             return "red";
         }
-        if (days >= 3) {
+        if (days >= 4) {
             return "orange";
         }
         return "green";
+    }
+
+    private LocalDateTime resolveDeliveryAt(Order order) {
+        if (!isDelivered(order)) {
+            return null;
+        }
+        if (order.getShiprocketSyncedAt() != null) {
+            return order.getShiprocketSyncedAt();
+        }
+        return order.getUpdatedAt();
     }
 
     @Override
@@ -286,7 +298,7 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
                 ? primaryItem.getSellerName()
                 : seller != null ? seller.getFullName() : null;
 
-        LocalDateTime deliveryAt = isDelivered(order) ? order.getUpdatedAt() : null;
+        LocalDateTime deliveryAt = resolveDeliveryAt(order);
 
         Map<String, Object> amountBreakdown = new LinkedHashMap<>();
         amountBreakdown.put("orderAmount", orderLinesAmount);
@@ -296,6 +308,11 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
         amountBreakdown.put("commissionRate", commissionRate);
         amountBreakdown.put("commissionAmount", commissionAmount);
         amountBreakdown.put("finalPayableAmount", finalPayable);
+
+        String paymentStatus = order.getSellerPaymentStatus();
+        if (paymentStatus == null || paymentStatus.isBlank()) {
+            paymentStatus = "pending";
+        }
 
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("id", order.getId());
@@ -311,11 +328,11 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
         detail.put("customerPaidAmount", order.getTotalAmount());
         detail.put("customerName", order.getShippingName());
         detail.put("customerEmail", order.getShippingEmail());
-        detail.put("status", order.getSellerPaymentStatus());
+        detail.put("status", paymentStatus);
         detail.put("walletBalance", seller != null ? seller.getWalletBalance() : BigDecimal.ZERO);
         detail.put("requestedAt", order.getCreatedAt());
         detail.put("deliveryDate", deliveryAt);
-        detail.put("paidAt", "paid".equalsIgnoreCase(order.getSellerPaymentStatus()) ? order.getUpdatedAt() : null);
+        detail.put("paidAt", "paid".equalsIgnoreCase(paymentStatus) ? order.getUpdatedAt() : null);
         detail.put("transactionRef", payoutRequest.map(SellerPayoutRequest::getTransactionRef).orElse(null));
         detail.put("adminNote", payoutRequest.map(SellerPayoutRequest::getAdminNote).orElse(null));
         detail.put("sellerNote", payoutRequest.map(SellerPayoutRequest::getSellerNote).orElse(null));
