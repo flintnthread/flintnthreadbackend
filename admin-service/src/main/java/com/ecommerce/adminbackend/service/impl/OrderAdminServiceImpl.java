@@ -987,7 +987,9 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("id", order.getId());
         summary.put("orderNumber", order.getOrderNumber());
-        summary.put("orderStatus", order.getOrderStatus());
+        String resolvedStatus = resolveDisplayOrderStatus(order);
+        summary.put("orderStatus", resolvedStatus);
+        summary.put("dbOrderStatus", order.getOrderStatus());
         summary.put("paymentStatus", order.getPaymentStatus());
         summary.put("paymentMethod", order.getPaymentMethod());
         summary.put("totalAmount", order.getTotalAmount());
@@ -1005,7 +1007,40 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         summary.put("shiprocketAwbCode", order.getShiprocketAwbCode());
         summary.put("shiprocketCourierName", order.getShiprocketCourierName());
         summary.put("shiprocketTrackingUrl", order.getShiprocketTrackingUrl());
+        summary.put("shiprocketStatus", order.getShiprocketStatus());
         return summary;
+    }
+
+    /**
+     * Prefer Shiprocket logistics status when it is further along than the stored order_status,
+     * so All / Completed tabs stay consistent with Shiprocket delivered counts.
+     */
+    private String resolveDisplayOrderStatus(Order order) {
+        String current = order.getOrderStatus() != null ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH) : "";
+        if (current.contains("cancel")) {
+            return order.getOrderStatus();
+        }
+        String fromShiprocket = AdminShiprocketService.mapShiprocketToOrderStatus(
+                order.getShiprocketStatus(),
+                order.getShiprocketAwbCode()
+        );
+        if (fromShiprocket == null || fromShiprocket.isBlank()) {
+            return order.getOrderStatus();
+        }
+        int currentRank = statusRank(current);
+        int shipRank = statusRank(fromShiprocket);
+        return shipRank >= currentRank ? fromShiprocket : order.getOrderStatus();
+    }
+
+    private static int statusRank(String status) {
+        if (status == null || status.isBlank()) return 0;
+        String s = status.trim().toLowerCase(Locale.ENGLISH);
+        if (s.contains("cancel")) return 50;
+        if (s.contains("return") || s.contains("rto") || s.contains("refund")) return 40;
+        if (s.contains("deliver") || s.equals("completed")) return 30;
+        if (s.contains("ship") || s.contains("transit") || s.contains("ofd") || s.contains("picked")) return 20;
+        if (s.contains("process") || s.contains("confirm") || s.contains("awb") || s.contains("pack")) return 10;
+        return 0;
     }
 
     private void enrichOrderDocumentFlags(

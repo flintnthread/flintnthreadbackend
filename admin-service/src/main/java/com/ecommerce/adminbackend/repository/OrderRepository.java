@@ -15,7 +15,34 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("""
             SELECT o FROM Order o
-            WHERE (:status IS NULL OR :status = '' OR LOWER(o.orderStatus) = LOWER(:status))
+            WHERE (
+                   :status IS NULL OR :status = ''
+                   OR (
+                        LOWER(:status) IN ('delivered', 'completed')
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('delivered', 'completed')
+                   )
+                   OR (
+                        LOWER(:status) IN ('cancelled', 'canceled')
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('cancelled', 'canceled')
+                   )
+                   OR (
+                        LOWER(:status) = 'returned'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('returned', 'refunded', 'rto_delivered', 'rto_initiated', 'replacement')
+                   )
+                   OR (
+                        LOWER(:status) = 'shipped'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('shipped', 'in_transit', 'out_for_delivery', 'picked_up', 'ready_to_ship')
+                   )
+                   OR (
+                        LOWER(:status) = 'processing'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('processing', 'confirmed', 'packed', 'awb_assigned', 'pickup_scheduled', 'accepted')
+                   )
+                   OR (
+                        LOWER(:status) = 'pending'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('pending', 'awaiting_payment', 'awaiting_processing', 'sent_to_seller', 'new', 'placed')
+                   )
+                   OR LOWER(COALESCE(o.orderStatus, '')) = LOWER(:status)
+              )
               AND (:paymentStatus IS NULL OR :paymentStatus = '' OR LOWER(o.paymentStatus) = LOWER(:paymentStatus))
               AND (:paymentMethod IS NULL OR :paymentMethod = '' OR
                    LOWER(COALESCE(o.paymentMethod, '')) LIKE LOWER(CONCAT('%', :paymentMethod, '%')))
