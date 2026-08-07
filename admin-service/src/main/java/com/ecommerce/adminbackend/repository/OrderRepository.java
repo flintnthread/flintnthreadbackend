@@ -152,7 +152,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("""
             SELECT o FROM Order o
             WHERE (o.shiprocketShipmentId IS NOT NULL OR o.shiprocketOrderId IS NOT NULL OR o.shiprocketAwbCode IS NOT NULL)
-              AND (o.orderStatus IS NULL OR LOWER(o.orderStatus) NOT IN ('delivered', 'cancelled', 'returned', 'rto_delivered'))
+              AND (o.orderStatus IS NULL OR LOWER(o.orderStatus) NOT IN ('delivered', 'completed', 'cancelled', 'returned', 'rto_delivered'))
               AND o.createdAt >= :createdAfter
               AND (o.shiprocketSyncedAt IS NULL OR o.shiprocketSyncedAt <= :syncedBefore)
             ORDER BY o.createdAt DESC

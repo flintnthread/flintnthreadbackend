@@ -203,7 +203,10 @@ public class AdminShiprocketService {
         if (order == null || order.getId() == null) {
             throw new IllegalStateException("Order is required.");
         }
-        if (isBlank(order.getShiprocketOrderId()) && isBlank(order.getShiprocketShipmentId())) {
+        boolean hasShipment = !isBlank(order.getShiprocketShipmentId());
+        boolean hasSrOrder = !isBlank(order.getShiprocketOrderId());
+        boolean hasAwb = !isBlank(order.getShiprocketAwbCode());
+        if (!hasShipment && !hasSrOrder && !hasAwb) {
             throw new IllegalStateException("Order is not linked to Shiprocket yet. Push first.");
         }
 
@@ -211,29 +214,31 @@ public class AdminShiprocketService {
             String token = getToken();
             Map<String, Object> merged = new HashMap<>();
 
-            if (!isBlank(order.getShiprocketShipmentId())
-                    && order.getShiprocketShipmentId().trim().matches("^\\d+$")) {
+            if (hasAwb) {
+                Map<?, ?> trackAwb = getJson(token, "/courier/track/awb/" + order.getShiprocketAwbCode().trim());
+                mergeDeep(merged, trackAwb);
+            }
+            if (hasShipment && order.getShiprocketShipmentId().trim().matches("^\\d+$")) {
                 Map<?, ?> track = getJson(token, "/courier/track/shipment/" + order.getShiprocketShipmentId().trim());
                 mergeDeep(merged, track);
                 Map<?, ?> shipment = unwrapData(getJson(token, "/shipments/" + order.getShiprocketShipmentId().trim()));
                 mergeDeep(merged, shipment);
             }
-            if (!isBlank(order.getShiprocketOrderId())
-                    && order.getShiprocketOrderId().trim().matches("^\\d+$")) {
+            if (hasSrOrder && order.getShiprocketOrderId().trim().matches("^\\d+$")) {
                 Map<?, ?> show = unwrapData(getJson(token, "/orders/show/" + order.getShiprocketOrderId().trim()));
                 mergeDeep(merged, show);
             }
 
             String awb = firstString(merged, "awb", "awb_code", "awbCode");
             String courier = firstString(merged, "courier_name", "courier", "sr_courier_name");
-            String status = firstString(merged, "status", "current_status", "shipment_status");
+            String status = firstString(merged, "current_status", "status", "shipment_status");
             String trackingUrl = firstString(merged, "tracking_url", "track_url", "trackingUrl");
             if (isBlank(trackingUrl) && !isBlank(awb)) {
                 trackingUrl = "https://shiprocket.co/tracking/" + awb;
             }
 
             if (!isBlank(awb)) {
-                order.setShiprocketAwbCode(awb);
+                order.setShiprocketAwbCode(awb.trim().replaceAll("\\.0$", ""));
             }
             if (!isBlank(courier)) {
                 order.setShiprocketCourierName(courier);
@@ -244,7 +249,7 @@ public class AdminShiprocketService {
             if (!isBlank(status)) {
                 order.setShiprocketStatus(trimStatus(status));
             } else if (!isBlank(order.getShiprocketAwbCode())) {
-                order.setShiprocketStatus("awb_assigned");
+                order.setShiprocketStatus("processing");
             }
             order.setShiprocketSyncedAt(LocalDateTime.now());
 
@@ -257,7 +262,9 @@ public class AdminShiprocketService {
                 String current = order.getOrderStatus() != null
                         ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
                         : "";
-                if (!current.contains("cancel") && !"delivered".equals(current)) {
+                if (!current.contains("cancel")
+                        && !"delivered".equals(current)
+                        && !"completed".equals(current)) {
                     order.setOrderStatus(mappedOrderStatus);
                 }
             }

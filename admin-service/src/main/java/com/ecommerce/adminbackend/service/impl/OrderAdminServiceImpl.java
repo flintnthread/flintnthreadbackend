@@ -621,34 +621,59 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
     @Override
     @Transactional
     public Map<String, Object> syncAllFromShiprocket(int limit, int lookbackHours, int minSyncAgeMinutes) {
-        int safeLimit = Math.max(1, Math.min(limit, 500));
-        int safeLookback = Math.max(1, Math.min(lookbackHours, 24 * 30));
-        int safeMinAge = Math.max(1, Math.min(minSyncAgeMinutes, 24 * 60));
+        // Up to 2 years by default; allow up to 3 years for catch-up of historical deliveries.
+        int safeLimit = Math.max(1, Math.min(limit, 5000));
+        int safeLookback = Math.max(24, Math.min(lookbackHours, 24 * 365 * 3));
+        int safeMinAge = Math.max(0, Math.min(minSyncAgeMinutes, 24 * 60));
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime createdAfter = now.minusHours(safeLookback);
-        LocalDateTime syncedBefore = now.minusMinutes(safeMinAge);
+        LocalDateTime syncedBefore = safeMinAge == 0 ? now.plusMinutes(1) : now.minusMinutes(safeMinAge);
 
-        List<Order> candidates = orderRepository.findShiprocketStatusSyncCandidates(
-                createdAfter,
-                syncedBefore,
-                PageRequest.of(0, safeLimit)
-        );
+        List<Order> allCandidates = new ArrayList<>();
+        java.util.Set<Long> seenIds = new java.util.HashSet<>();
+        int page = 0;
+        int pageSize = 200;
+        while (allCandidates.size() < safeLimit) {
+            int batchSize = Math.min(pageSize, safeLimit - allCandidates.size());
+            List<Order> batch = orderRepository.findShiprocketStatusSyncCandidates(
+                    createdAfter,
+                    syncedBefore,
+                    PageRequest.of(page, batchSize)
+            );
+            if (batch.isEmpty()) {
+                break;
+            }
+            for (Order order : batch) {
+                if (order.getId() != null && seenIds.add(order.getId())) {
+                    allCandidates.add(order);
+                    if (allCandidates.size() >= safeLimit) {
+                        break;
+                    }
+                }
+            }
+            if (batch.size() < batchSize) {
+                break;
+            }
+            page++;
+        }
 
         int success = 0;
         int failed = 0;
         List<Map<String, Object>> failures = new ArrayList<>();
-        for (Order order : candidates) {
+        for (Order order : allCandidates) {
             try {
                 adminShiprocketService.syncShipment(order);
                 success++;
             } catch (Exception ex) {
                 failed++;
-                Map<String, Object> failure = new LinkedHashMap<>();
-                failure.put("orderId", order.getId());
-                failure.put("orderNumber", order.getOrderNumber());
-                failure.put("error", friendlyShiprocketError(ex));
-                failures.add(failure);
+                if (failures.size() < 50) {
+                    Map<String, Object> failure = new LinkedHashMap<>();
+                    failure.put("orderId", order.getId());
+                    failure.put("orderNumber", order.getOrderNumber());
+                    failure.put("error", friendlyShiprocketError(ex));
+                    failures.add(failure);
+                }
                 log.warn("Admin Shiprocket bulk sync failed orderId={} orderNumber={} msg={}",
                         order.getId(), order.getOrderNumber(), ex.getMessage());
             }
@@ -656,11 +681,13 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("success", true);
-        response.put("message", "Shiprocket bulk status sync completed");
+        response.put("message", "Shiprocket bulk status sync completed (lookback up to "
+                + (safeLookback / 24) + " days)");
         response.put("requestedLimit", safeLimit);
         response.put("lookbackHours", safeLookback);
+        response.put("lookbackDays", safeLookback / 24);
         response.put("minSyncAgeMinutes", safeMinAge);
-        response.put("candidates", candidates.size());
+        response.put("candidates", allCandidates.size());
         response.put("synced", success);
         response.put("failed", failed);
         response.put("failures", failures);
