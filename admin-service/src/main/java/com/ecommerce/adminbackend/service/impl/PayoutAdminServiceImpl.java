@@ -15,6 +15,7 @@ import com.ecommerce.adminbackend.repository.ProductRepository;
 import com.ecommerce.adminbackend.repository.ProductVariantRepository;
 import com.ecommerce.adminbackend.repository.SellerPayoutRequestRepository;
 import com.ecommerce.adminbackend.repository.SellerRepository;
+import com.ecommerce.adminbackend.service.AdminShiprocketService;
 import com.ecommerce.adminbackend.service.MailService;
 import com.ecommerce.adminbackend.service.PayoutAdminService;
 import com.ecommerce.adminbackend.service.support.BaseAdminService;
@@ -74,16 +75,16 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
     @Override
     @Transactional(readOnly = true)
     public Map<String, Object> payoutStats() {
-        long pending = orderRepository.countBySellerPaymentStatusIgnoreCase("pending");
-        long paid = orderRepository.countBySellerPaymentStatusIgnoreCase("paid");
-        long cancelled = orderRepository.countBySellerPaymentStatusIgnoreCase("cancelled");
+        long pending = orderRepository.countDeliveredSellerPaymentsByStatus("pending");
+        long paid = orderRepository.countDeliveredSellerPaymentsByStatus("paid");
+        long cancelled = orderRepository.countDeliveredSellerPaymentsByStatus("cancelled");
 
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("total", pending + paid + cancelled);
         stats.put("pending", pending);
         stats.put("paid", paid);
         stats.put("cancelled", cancelled);
-        stats.put("totalPaidAmount", orderRepository.sumPaidSellerPaymentAmount());
+        stats.put("totalPaidAmount", orderRepository.sumPaidDeliveredSellerPaymentAmount());
         stats.put("greenCount", orderRepository.countPendingSellerPaymentsWithinDays(2));
         stats.put("orangeCount", orderRepository.countPendingSellerPaymentsDaysBetween(3, 4));
         stats.put("redCount", orderRepository.countPendingSellerPaymentsAtLeastDays(5));
@@ -304,7 +305,8 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
         detail.put("sellerPhone", seller != null ? seller.getMobile() : null);
         detail.put("orderId", order.getId());
         detail.put("orderNumber", order.getOrderNumber());
-        detail.put("orderStatus", order.getOrderStatus());
+        detail.put("orderStatus", resolveDisplayOrderStatus(order));
+        detail.put("shiprocketStatus", order.getShiprocketStatus());
         detail.put("requestedAmount", finalPayable);
         detail.put("customerPaidAmount", order.getTotalAmount());
         detail.put("customerName", order.getShippingName());
@@ -460,8 +462,32 @@ public class PayoutAdminServiceImpl extends BaseAdminService implements PayoutAd
     }
 
     private boolean isDelivered(Order order) {
-        return order.getOrderStatus() != null
-                && "delivered".equalsIgnoreCase(order.getOrderStatus().trim());
+        if (order == null) {
+            return false;
+        }
+        String status = order.getOrderStatus() != null ? order.getOrderStatus().trim().toLowerCase() : "";
+        if ("delivered".equals(status) || "completed".equals(status)) {
+            return true;
+        }
+        String mapped = AdminShiprocketService.mapShiprocketToOrderStatus(
+                order.getShiprocketStatus(),
+                order.getShiprocketAwbCode()
+        );
+        return "delivered".equalsIgnoreCase(mapped);
+    }
+
+    private String resolveDisplayOrderStatus(Order order) {
+        if (isDelivered(order)) {
+            return "delivered";
+        }
+        String mapped = AdminShiprocketService.mapShiprocketToOrderStatus(
+                order.getShiprocketStatus(),
+                order.getShiprocketAwbCode()
+        );
+        if (mapped != null && !mapped.isBlank()) {
+            return mapped;
+        }
+        return order.getOrderStatus();
     }
 
     @Override

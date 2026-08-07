@@ -112,6 +112,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             SELECT o FROM Order o
             WHERE o.sellerPaymentStatus IS NOT NULL
               AND (
+                LOWER(COALESCE(o.orderStatus, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocketStatus, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocketStatus, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.orderStatus, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND (
                 :status IS NULL OR :status = ''
                 OR (LOWER(:status) = 'paid-cancelled' AND LOWER(o.sellerPaymentStatus) IN ('paid', 'cancelled'))
                 OR (LOWER(:status) <> 'paid-cancelled' AND LOWER(o.sellerPaymentStatus) = LOWER(:status))
@@ -127,17 +136,48 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     Page<Order> findSellerPayments(@Param("status") String status, Pageable pageable);
 
-    long countBySellerPaymentStatusIgnoreCase(String sellerPaymentStatus);
+    @Query("""
+            SELECT COUNT(o) FROM Order o
+            WHERE LOWER(COALESCE(o.sellerPaymentStatus, '')) = LOWER(:sellerPaymentStatus)
+              AND (
+                LOWER(COALESCE(o.orderStatus, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocketStatus, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocketStatus, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.orderStatus, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+            """)
+    long countDeliveredSellerPaymentsByStatus(@Param("sellerPaymentStatus") String sellerPaymentStatus);
 
     @Query("""
             SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o
             WHERE LOWER(o.sellerPaymentStatus) = 'paid'
+              AND (
+                LOWER(COALESCE(o.orderStatus, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocketStatus, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocketStatus, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.orderStatus, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
             """)
-    BigDecimal sumPaidSellerPaymentAmount();
+    BigDecimal sumPaidDeliveredSellerPaymentAmount();
 
     @Query(value = """
             SELECT COUNT(*) FROM orders o
             WHERE LOWER(o.seller_payment_status) = 'pending'
+              AND (
+                LOWER(COALESCE(o.order_status, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.order_status, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
               AND DATEDIFF(CURDATE(), DATE(o.updated_at)) <= :maxDays
             """, nativeQuery = true)
     long countPendingSellerPaymentsWithinDays(@Param("maxDays") int maxDays);
@@ -145,6 +185,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = """
             SELECT COUNT(*) FROM orders o
             WHERE LOWER(o.seller_payment_status) = 'pending'
+              AND (
+                LOWER(COALESCE(o.order_status, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.order_status, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
               AND DATEDIFF(CURDATE(), DATE(o.updated_at)) BETWEEN :minDays AND :maxDays
             """, nativeQuery = true)
     long countPendingSellerPaymentsDaysBetween(@Param("minDays") int minDays, @Param("maxDays") int maxDays);
@@ -152,6 +201,15 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query(value = """
             SELECT COUNT(*) FROM orders o
             WHERE LOWER(o.seller_payment_status) = 'pending'
+              AND (
+                LOWER(COALESCE(o.order_status, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.order_status, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
               AND DATEDIFF(CURDATE(), DATE(o.updated_at)) >= :minDays
             """, nativeQuery = true)
     long countPendingSellerPaymentsAtLeastDays(@Param("minDays") int minDays);
@@ -160,7 +218,16 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             SELECT COUNT(*) FROM orders o
             WHERE LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
               AND LOWER(COALESCE(o.payment_status, '')) IN ('paid', 'success', 'captured', 'completed')
-              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.created_at, o.updated_at))) >= :minDays
+              AND (
+                LOWER(COALESCE(o.order_status, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.order_status, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.updated_at, o.created_at))) >= :minDays
             """, nativeQuery = true)
     long countOverdueSellerPayoutsAfterCustomerPaid(@Param("minDays") int minDays);
 
@@ -168,8 +235,17 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             SELECT * FROM orders o
             WHERE LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
               AND LOWER(COALESCE(o.payment_status, '')) IN ('paid', 'success', 'captured', 'completed')
-              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.created_at, o.updated_at))) >= :minDays
-            ORDER BY o.created_at ASC
+              AND (
+                LOWER(COALESCE(o.order_status, '')) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) LIKE '%deliver%'
+              )
+              AND LOWER(COALESCE(o.order_status, '')) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.updated_at, o.created_at))) >= :minDays
+            ORDER BY o.updated_at ASC
             """, nativeQuery = true)
     List<Order> findOverdueSellerPayoutsAfterCustomerPaid(@Param("minDays") int minDays, Pageable pageable);
 
