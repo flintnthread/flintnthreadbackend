@@ -45,4 +45,15 @@ public class Category {
     @Column(name="created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "seo_title")
+    private String seoTitle;
+
+    @Column(name = "seo_description", columnDefinition = "TEXT")
+    private String seoDescription;
+
+    @Column(name = "seo_keywords", length = 500)
+    private String seoKeywords;
+
+    @Column(name = "url_slug", length = 255)
+    private String urlSlug;
 }

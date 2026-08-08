@@ -15,5 +15,9 @@ import lombok.Data;
         private Double gstPercentage;
         private Integer status;
         private Long sellerId;
+        private String seoTitle;
+        private String seoDescription;
+        private String seoKeywords;
+        private String urlSlug;
     }
 
