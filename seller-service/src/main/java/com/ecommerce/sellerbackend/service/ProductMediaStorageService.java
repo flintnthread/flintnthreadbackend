@@ -77,7 +77,7 @@ public class ProductMediaStorageService {
             return trimmed.startsWith("/") ? trimmed.substring(1) : trimmed;
         }
         if (trimmed.startsWith("data:")) {
-            return uploadBytes(decodeDataUrl(trimmed), buildFolder("size_charts"));
+            return uploadBytes(decodeDataUrl(trimmed), buildFolder("size_charts"), "image");
         }
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
             String relative = extractUploadsRelativePath(trimmed);
@@ -96,7 +96,7 @@ public class ProductMediaStorageService {
             throw new IllegalArgumentException("Image file is required.");
         }
         try {
-            return uploadBytes(file.getBytes(), buildFolder("products"));
+            return uploadBytes(file.getBytes(), buildFolder("products"), "image");
         } catch (IllegalArgumentException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -114,11 +114,36 @@ public class ProductMediaStorageService {
             throw new IllegalArgumentException("Profile photo must be an image (JPG, PNG, or WEBP).");
         }
         try {
-            return uploadBytes(file.getBytes(), buildFolder("sellers/profile"));
+            return uploadBytes(file.getBytes(), buildFolder("sellers/profile"), "image");
         } catch (IllegalArgumentException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new IllegalArgumentException("Failed to upload profile photo: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Seller KYC / identity documents (images or PDF) — absolute Cloudinary secure_url
+     * stored on seller document columns (aadhar, pan, bank proof, etc.).
+     */
+    public String uploadSellerDocument(MultipartFile file, String documentToken) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Document file is required.");
+        }
+        String token = documentToken == null || documentToken.isBlank() ? "document" : documentToken.trim();
+        String contentType = file.getContentType() == null ? "" : file.getContentType().toLowerCase(Locale.ROOT);
+        String original = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(Locale.ROOT);
+        boolean pdf = contentType.contains("pdf") || original.endsWith(".pdf");
+        try {
+            return uploadBytes(
+                    file.getBytes(),
+                    buildFolder("sellers/documents/" + token),
+                    pdf ? "raw" : "image"
+            );
+        } catch (IllegalArgumentException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Failed to upload seller document: " + ex.getMessage());
         }
     }
 
@@ -131,7 +156,7 @@ public class ProductMediaStorageService {
     }
 
     private String uploadBase64DataUrl(String dataUrl) {
-        return uploadBytes(decodeDataUrl(dataUrl), buildFolder("products"));
+        return uploadBytes(decodeDataUrl(dataUrl), buildFolder("products"), "image");
     }
 
     private byte[] decodeDataUrl(String dataUrl) {
@@ -143,14 +168,15 @@ public class ProductMediaStorageService {
     }
 
     @SuppressWarnings("rawtypes")
-    private String uploadBytes(byte[] bytes, String folder) {
+    private String uploadBytes(byte[] bytes, String folder, String resourceType) {
         if (bytes == null || bytes.length == 0) {
             throw new IllegalArgumentException("Image bytes are empty.");
         }
+        String type = resourceType == null || resourceType.isBlank() ? "image" : resourceType.trim();
         try {
             Map options = ObjectUtils.asMap(
                     "folder", folder,
-                    "resource_type", "image",
+                    "resource_type", type,
                     "overwrite", false
             );
             Map result = cloudinary.uploader().upload(bytes, options);

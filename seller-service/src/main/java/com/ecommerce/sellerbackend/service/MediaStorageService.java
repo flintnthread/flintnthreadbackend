@@ -10,10 +10,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Set;
 
+/**
+ * Seller KYC / identity document storage.
+ * New uploads go to Cloudinary (secure_url stored in DB). Legacy local files under
+ * {@code uploads/seller_documents} remain readable via {@link #toPublicUrl(String)}.
+ */
 @Service
 public class MediaStorageService {
 
@@ -22,12 +26,15 @@ public class MediaStorageService {
 
     private final Path uploadRoot;
     private final String publicBaseUrl;
+    private final ProductMediaStorageService productMediaStorageService;
 
     public MediaStorageService(
             @Value("${app.upload.directory:uploads/seller_documents}") String uploadDirectory,
-            @Value("${app.media.public-base-url:https://flintnthread.com}") String publicBaseUrl) {
+            @Value("${app.media.public-base-url:https://flintnthread.com}") String publicBaseUrl,
+            ProductMediaStorageService productMediaStorageService) {
         this.uploadRoot = Paths.get(uploadDirectory).toAbsolutePath().normalize();
         this.publicBaseUrl = publicBaseUrl == null ? "" : publicBaseUrl.trim().replaceAll("/$", "");
+        this.productMediaStorageService = productMediaStorageService;
         try {
             Files.createDirectories(this.uploadRoot);
         } catch (IOException e) {
@@ -35,36 +42,15 @@ public class MediaStorageService {
         }
     }
 
-    public StoredFile storeSellerDocument(Long sellerId, SellerDocumentType type, MultipartFile file)
-            throws IOException {
+    public StoredFile storeSellerDocument(Long sellerId, SellerDocumentType type, MultipartFile file) {
         validateFile(file);
-
-        String extension = resolveExtension(file);
-        int sequence = type.isAllowMultiple() ? nextSequence(sellerId, type) : 0;
-        String fileName = buildFileName(sellerId, type, sequence, extension);
-        Path target = uploadRoot.resolve(fileName);
-
-        try (var input = file.getInputStream()) {
-            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+        String cloudUrl = productMediaStorageService.uploadSellerDocument(file, type.getFileToken());
+        if (cloudUrl == null || cloudUrl.isBlank()) {
+            throw new IllegalStateException("Cloudinary did not return a secure_url for seller document.");
         }
-
-        String publicUrl = toAbsolutePublicUrl(fileName);
-        if (publicUrl == null || publicUrl.isBlank()) {
-            publicUrl = toPublicUrl(fileName);
-        }
-        return new StoredFile(fileName, publicUrl);
-    }
-
-    private int nextSequence(Long sellerId, SellerDocumentType type) {
-        String prefix = sellerId + "_" + type.getFileToken() + "_";
-        try (var stream = Files.list(uploadRoot)) {
-            return (int) stream
-                    .map(path -> path.getFileName().toString())
-                    .filter(name -> name.startsWith(prefix))
-                    .count() + 1;
-        } catch (IOException e) {
-            return 1;
-        }
+        String trimmed = cloudUrl.trim();
+        // DB stores the Cloudinary absolute URL (same pattern as profile_pic / products).
+        return new StoredFile(trimmed, trimmed);
     }
 
     private void validateFile(MultipartFile file) {
@@ -103,23 +89,15 @@ public class MediaStorageService {
         return "jpg";
     }
 
-    private String buildFileName(Long sellerId, SellerDocumentType type, int sequence, String extension) {
-        long timestamp = System.currentTimeMillis() / 1000L;
-        if (type.isAllowMultiple()) {
-            return sellerId + "_" + type.getFileToken() + "_" + sequence + "_" + timestamp + "." + extension;
-        }
-        return sellerId + "_" + type.getFileToken() + "_" + timestamp + "." + extension;
-    }
-
     /**
      * Relative public path for seller profile / KYC documents.
-     * Production CDN path: {@code /uploads/seller_documents/...}
+     * Cloudinary absolute URLs are returned unchanged.
      */
     public String toPublicUrl(String fileName) {
         return SellerMediaUrlHelper.toPublicPath(fileName);
     }
 
-    /** Full CDN URL when {@code app.media.public-base-url} is set (e.g. https://flintnthread.com). */
+    /** Full public URL — Cloudinary URLs unchanged; legacy disk paths use CDN. */
     public String toAbsolutePublicUrl(String fileName) {
         return SellerMediaUrlHelper.toAbsoluteUrl(fileName, publicBaseUrl);
     }

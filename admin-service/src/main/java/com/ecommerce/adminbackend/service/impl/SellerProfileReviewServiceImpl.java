@@ -138,6 +138,8 @@ public class SellerProfileReviewServiceImpl extends BaseAdminService implements 
         detail.put("warehouseCity", seller.getWarehouseCity());
         detail.put("warehouseArea", seller.getWarehouseArea());
         detail.put("profilePicUrl", mediaUrlHelper.toPublicUrl(seller.getProfilePic()));
+        detail.put("profilePicPath", blankToNull(seller.getProfilePic()));
+        detail.put("liveSelfieUrl", mediaUrlHelper.toPublicUrl(seller.getLiveSelfie()));
         detail.put("profileNeedsVerification", seller.getProfileNeedsVerification());
         detail.put("documents", buildDocuments(seller));
         return detail;
@@ -145,13 +147,18 @@ public class SellerProfileReviewServiceImpl extends BaseAdminService implements 
 
     private List<Map<String, Object>> buildDocuments(Seller seller) {
         List<Map<String, Object>> docs = new ArrayList<>();
+        addDoc(docs, "Profile Picture", seller.getProfilePic());
         addDoc(docs, "Aadhaar Front", seller.getAadharFront());
         addDoc(docs, "Aadhaar Back", seller.getAadharBack());
         addDoc(docs, "PAN Card", seller.getPanCard());
         addDoc(docs, "Cancelled Cheque", seller.getCancelledCheque());
         addDoc(docs, "Business Proof", seller.getBusinessProof());
         addDoc(docs, "Bank Proof", seller.getBankProof());
+        addDoc(docs, "Company PAN Doc", seller.getCompanyPanDoc());
         addDoc(docs, "MSME Certificate", seller.getMsmeCertificate());
+        addDoc(docs, "Incorporation Certificate", seller.getIncorporationCertificate());
+        addDoc(docs, "Partnership Deed", seller.getPartnershipDeed());
+        addDoc(docs, "IEC Certificate", seller.getIecCertificate());
         addDoc(docs, "Live Selfie", seller.getLiveSelfie());
         return docs;
     }
@@ -160,9 +167,13 @@ public class SellerProfileReviewServiceImpl extends BaseAdminService implements 
         if (path == null || path.isBlank()) {
             return;
         }
+        String trimmed = path.trim();
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("name", name);
-        doc.put("url", mediaUrlHelper.toPublicUrl(path));
+        // Keep raw DB value so frontend can prefer Cloudinary when present.
+        doc.put("path", trimmed);
+        doc.put("url", mediaUrlHelper.toPublicUrl(trimmed));
+        doc.put("available", true);
         docs.add(doc);
     }
 
