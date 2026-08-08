@@ -273,6 +273,12 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         if ("cancelled".equalsIgnoreCase(dbStatus)) {
             boolean cancelledRemote = adminShiprocketService.cancelRemoteShipment(order.getShiprocketOrderId());
             order.setShiprocketStatus(cancelledRemote ? "cancelled" : "cancel_failed");
+        } else if ("shipped".equalsIgnoreCase(dbStatus)
+                || "delivered".equalsIgnoreCase(dbStatus)
+                || "returned".equalsIgnoreCase(dbStatus)
+                || "processing".equalsIgnoreCase(dbStatus)
+                || "confirmed".equalsIgnoreCase(dbStatus)) {
+            order.setShiprocketStatus(dbStatus.toLowerCase(java.util.Locale.ENGLISH));
         }
         order.setUpdatedAt(now);
         orderRepository.save(order);

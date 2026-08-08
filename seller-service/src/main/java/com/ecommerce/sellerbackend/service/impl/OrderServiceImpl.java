@@ -245,20 +245,18 @@ public class OrderServiceImpl implements OrderService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        for (OrderItem item : items) {
-            item.setStatus(dbStatus);
-        }
-        orderItemRepository.saveAll(items);
-
-        // Cancel is order-wide: flip every line so admin/user views match immediately.
-        if ("cancelled".equalsIgnoreCase(dbStatus)) {
-            List<OrderItem> allItems = orderItemRepository.findByOrderId(orderId);
+        // Whole-order status: flip every line so admin/user/seller views stay aligned.
+        List<OrderItem> allItems = orderItemRepository.findByOrderId(orderId);
+        if (!allItems.isEmpty()) {
             for (OrderItem item : allItems) {
-                item.setStatus("cancelled");
+                item.setStatus(dbStatus);
             }
-            if (!allItems.isEmpty()) {
-                orderItemRepository.saveAll(allItems);
+            orderItemRepository.saveAll(allItems);
+        } else {
+            for (OrderItem item : items) {
+                item.setStatus(dbStatus);
             }
+            orderItemRepository.saveAll(items);
         }
 
         Order order = resolveOrder(orderId, items);
@@ -266,6 +264,12 @@ public class OrderServiceImpl implements OrderService {
         if ("cancelled".equalsIgnoreCase(dbStatus)) {
             // Optimistic local flag so admin/user UIs flip immediately; async call confirms SR.
             order.setShiprocketStatus("cancelled");
+        } else if ("shipped".equalsIgnoreCase(dbStatus)
+                || "delivered".equalsIgnoreCase(dbStatus)
+                || "returned".equalsIgnoreCase(dbStatus)
+                || "processing".equalsIgnoreCase(dbStatus)) {
+            // Keep shiprocket_status readable in all panels until live SR sync overwrites.
+            order.setShiprocketStatus(dbStatus.toLowerCase(Locale.ROOT));
         }
         order.setUpdatedAt(now);
         orderRepository.save(order);

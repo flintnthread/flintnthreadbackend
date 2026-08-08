@@ -1356,6 +1356,7 @@ import java.util.Locale;
                 applyRemoteShiprocketFields(order, remote);
                 order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
                 orderRepository.save(order);
+                syncOrderItemsToHeaderStatus(order);
 
                 // Store tracking timeline from Shiprocket API response
                 storeTrackingTimelineFromRemote(order, remote);
@@ -2007,8 +2008,17 @@ import java.util.Locale;
 
                 String mappedStatus = mapWebhookStatusToOrderStatus(currentStatus);
                 if (!isBlank(mappedStatus)) {
-                    order.setShiprocketStatus(mappedStatus);
-                    order.setOrderStatus(mappedStatus);
+                    String current = order.getOrderStatus() != null
+                            ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                            : "";
+                    boolean locallyCancelled = current.contains("cancel");
+                    boolean mappedCancelled = mappedStatus.toLowerCase(Locale.ENGLISH).contains("cancel");
+                    if (locallyCancelled && !mappedCancelled) {
+                        order.setShiprocketStatus("cancelled");
+                    } else {
+                        order.setShiprocketStatus(mappedStatus);
+                        order.setOrderStatus(mappedStatus);
+                    }
                 } else if (!isBlank(resolvedAwb)
                         && isBlank(order.getShiprocketStatus())) {
                     order.setShiprocketStatus("processing");
@@ -2021,6 +2031,7 @@ import java.util.Locale;
 
                 order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
                 orderRepository.save(order);
+                syncOrderItemsToHeaderStatus(order);
 
                 log.info(
                         "Shiprocket webhook saved orderNumber={} awb={} trackingUrl={} status={}",
@@ -2155,6 +2166,22 @@ import java.util.Locale;
                     || s.equals("processing")
                     || s.equals("packed")
                     || s.equals("accepted");
+        }
+
+        /** Mirror header order_status onto all line items for seller/admin/user UIs. */
+        private void syncOrderItemsToHeaderStatus(Order order) {
+            if (order == null || order.getId() == null || isBlank(order.getOrderStatus())) {
+                return;
+            }
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+            if (items == null || items.isEmpty()) {
+                return;
+            }
+            String status = order.getOrderStatus().trim().toLowerCase(Locale.ROOT);
+            for (OrderItem item : items) {
+                item.setStatus(status);
+            }
+            orderItemRepository.saveAll(items);
         }
 
         private String firstNonBlank(Map<String, Object> source, String... keys) {

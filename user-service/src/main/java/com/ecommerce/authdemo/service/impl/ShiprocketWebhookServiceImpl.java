@@ -2,8 +2,10 @@ package com.ecommerce.authdemo.service.impl;
 
 import com.ecommerce.authdemo.dto.Enum.OrderStatus;
 import com.ecommerce.authdemo.entity.Order;
+import com.ecommerce.authdemo.entity.OrderItem;
 import com.ecommerce.authdemo.entity.OrderStatusHistory;
 import com.ecommerce.authdemo.entity.ShiprocketWebhook;
+import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.OrderStatusHistoryRepository;
 import com.ecommerce.authdemo.repository.ShiprocketWebhookRepository;
@@ -29,6 +31,7 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
 
     private final ShiprocketWebhookRepository shiprocketWebhookRepository;
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final ShiprocketSyncLogService shiprocketSyncLogService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -142,6 +145,7 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
 
             order.setShiprocketSyncedAt(LocalDateTime.now());
             orderRepository.save(order);
+            syncOrderItemsStatus(order.getId(), order.getOrderStatus());
             orderRepository.updateShipment(
                     order.getOrderNumber(),
                     order.getShiprocketAwbCode(),
@@ -383,5 +387,20 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    /** Keep order_items in sync so seller/admin/user line UIs match header status. */
+    private void syncOrderItemsStatus(Long orderId, String status) {
+        if (orderId == null || isBlank(status)) {
+            return;
+        }
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        if (items.isEmpty()) {
+            return;
+        }
+        for (OrderItem item : items) {
+            item.setStatus(status.trim().toLowerCase(Locale.ROOT));
+        }
+        orderItemRepository.saveAll(items);
     }
 }

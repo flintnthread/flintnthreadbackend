@@ -266,6 +266,11 @@ public class AdminShiprocketService {
                         && !"delivered".equals(current)
                         && !"completed".equals(current)) {
                     order.setOrderStatus(mappedOrderStatus);
+                    syncOrderItemsStatus(order.getId(), mappedOrderStatus);
+                } else if (current.contains("cancel")) {
+                    syncOrderItemsStatus(order.getId(), "cancelled");
+                } else if ("delivered".equals(current) || "completed".equals(current)) {
+                    syncOrderItemsStatus(order.getId(), current);
                 }
             }
 
@@ -1310,5 +1315,20 @@ public class AdminShiprocketService {
             }
         }
         return null;
+    }
+
+    private void syncOrderItemsStatus(Long orderId, String status) {
+        if (orderId == null || isBlank(status)) {
+            return;
+        }
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        String normalized = status.trim().toLowerCase(Locale.ENGLISH);
+        for (OrderItem item : items) {
+            item.setStatus(normalized);
+        }
+        orderItemRepository.saveAll(items);
     }
 }
