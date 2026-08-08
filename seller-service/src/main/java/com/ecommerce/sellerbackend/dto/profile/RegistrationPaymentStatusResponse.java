@@ -19,4 +19,17 @@ public class RegistrationPaymentStatusResponse {
     private final double totalAmount;
     private final String currency;
     private final boolean invoiceEmailSent;
+
+    /** Seller account createdAt (join date). */
+    private final String joinedAt;
+    /** When the 3-month (configurable) unpaid grace ends. */
+    private final String graceEndsAt;
+    /** True when seller has never paid and is still within grace. */
+    private final boolean graceActive;
+    private final long daysRemainingInGrace;
+    /** True when never paid and grace has ended — first annual fee is due. */
+    private final boolean firstPaymentDue;
+
+    /** Grace length in months (3 for new sellers, 12 for existing). */
+    private final int gracePeriodMonths;
 }

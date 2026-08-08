@@ -57,6 +57,12 @@ public class ProductDTO {
     private String status;
     private LocalDateTime createdAt;
 
+    /** When false, Cash on Delivery is not offered for this product. */
+    private Boolean acceptCod;
+
+    /** When false, online/UPI payment is not offered for this product. */
+    private Boolean acceptPrepaid;
+
     /**
      * Convenience primary image URL for list cards (also present in {@code images[].imageUrl}).
      */

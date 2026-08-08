@@ -114,6 +114,9 @@ public class ProductMapper {
         dto.setIsCustomizedProduct(customizedProduct);
         dto.setIsCustomized(customizedProduct);
         dto.setCustomRequiredFields(p.getCustomRequiredFields());
+        // Default true when unset (matches entity defaults) so clients can hide COD/online reliably.
+        dto.setAcceptCod(p.getAcceptCod() == null || Boolean.TRUE.equals(p.getAcceptCod()));
+        dto.setAcceptPrepaid(p.getAcceptPrepaid() == null || Boolean.TRUE.equals(p.getAcceptPrepaid()));
 
         // ------------------------
         // VARIANTS (always non-null for list/detail APIs)
@@ -176,7 +179,7 @@ public class ProductMapper {
                         vd.setStock(stock);
                         vd.setInStock(inStock);
 
-                        vd.setVideoPath(v.getVideoPath());
+                        vd.setVideoPath(resolveImageUrl(v.getVideoPath()));
                         vd.setWeight(v.getWeight());
 
                         return vd;

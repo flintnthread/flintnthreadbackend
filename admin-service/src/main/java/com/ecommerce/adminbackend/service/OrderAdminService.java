@@ -40,6 +40,8 @@ public interface OrderAdminService {
 
     Map<String, Object> syncFromShiprocket(Long id);
 
+    Map<String, Object> syncAllFromShiprocket(int limit, int lookbackHours, int minSyncAgeMinutes);
+
     String exportOrdersCsv(
             String status,
             String paymentStatus,

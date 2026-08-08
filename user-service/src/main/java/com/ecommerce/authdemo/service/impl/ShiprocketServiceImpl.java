@@ -1356,6 +1356,7 @@ import java.util.Locale;
                 applyRemoteShiprocketFields(order, remote);
                 order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
                 orderRepository.save(order);
+                syncOrderItemsToHeaderStatus(order);
 
                 // Store tracking timeline from Shiprocket API response
                 storeTrackingTimelineFromRemote(order, remote);
@@ -1775,18 +1776,25 @@ import java.util.Locale;
             String mappedStatus = mapWebhookStatusToOrderStatus(status);
             if (!isBlank(mappedStatus)) {
                 order.setShiprocketStatus(mappedStatus);
-                if (isEarlyFulfillmentStatus(order.getOrderStatus())
-                        || "awb_assigned".equalsIgnoreCase(mappedStatus)
-                        || "pickup_scheduled".equalsIgnoreCase(mappedStatus)
-                        || "picked_up".equalsIgnoreCase(mappedStatus)
-                        || "in_transit".equalsIgnoreCase(mappedStatus)
-                        || "out_for_delivery".equalsIgnoreCase(mappedStatus)
-                        || "delivered".equalsIgnoreCase(mappedStatus)) {
+                String current = order.getOrderStatus() != null
+                        ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                        : "";
+                boolean locallyCancelled = current.contains("cancel");
+                boolean mappedCancelled = mappedStatus.toLowerCase(Locale.ENGLISH).contains("cancel");
+                if (locallyCancelled && !mappedCancelled) {
+                    // Keep Cancelled — do not revive from stale SR tracking.
+                    order.setShiprocketStatus("cancelled");
+                } else if (isEarlyFulfillmentStatus(order.getOrderStatus())
+                        || "processing".equalsIgnoreCase(mappedStatus)
+                        || "shipped".equalsIgnoreCase(mappedStatus)
+                        || "delivered".equalsIgnoreCase(mappedStatus)
+                        || "returned".equalsIgnoreCase(mappedStatus)
+                        || mappedCancelled) {
                     order.setOrderStatus(mappedStatus);
                 }
             } else if (!isBlank(resolvedAwb) && isEarlyFulfillmentStatus(order.getOrderStatus())) {
-                order.setShiprocketStatus("awb_assigned");
-                order.setOrderStatus("awb_assigned");
+                order.setShiprocketStatus("processing");
+                order.setOrderStatus("processing");
             }
 
             if (isBlank(resolvedAwb)) {
@@ -2000,21 +2008,30 @@ import java.util.Locale;
 
                 String mappedStatus = mapWebhookStatusToOrderStatus(currentStatus);
                 if (!isBlank(mappedStatus)) {
-                    order.setShiprocketStatus(mappedStatus);
-                    order.setOrderStatus(mappedStatus);
+                    String current = order.getOrderStatus() != null
+                            ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                            : "";
+                    boolean locallyCancelled = current.contains("cancel");
+                    boolean mappedCancelled = mappedStatus.toLowerCase(Locale.ENGLISH).contains("cancel");
+                    if (locallyCancelled && !mappedCancelled) {
+                        order.setShiprocketStatus("cancelled");
+                    } else {
+                        order.setShiprocketStatus(mappedStatus);
+                        order.setOrderStatus(mappedStatus);
+                    }
                 } else if (!isBlank(resolvedAwb)
                         && isBlank(order.getShiprocketStatus())) {
-                    order.setShiprocketStatus("awb_assigned");
-                    order.setOrderStatus("awb_assigned");
+                    order.setShiprocketStatus("processing");
+                    order.setOrderStatus("processing");
                 } else if (!isBlank(resolvedAwb)
-                        && !"awb_assigned".equalsIgnoreCase(order.getOrderStatus())
                         && isEarlyFulfillmentStatus(order.getOrderStatus())) {
-                    order.setShiprocketStatus("awb_assigned");
-                    order.setOrderStatus("awb_assigned");
+                    order.setShiprocketStatus("processing");
+                    order.setOrderStatus("processing");
                 }
 
                 order.setShiprocketSyncedAt(java.time.LocalDateTime.now());
                 orderRepository.save(order);
+                syncOrderItemsToHeaderStatus(order);
 
                 log.info(
                         "Shiprocket webhook saved orderNumber={} awb={} trackingUrl={} status={}",
@@ -2102,22 +2119,40 @@ import java.util.Locale;
                     .replace("-", "_")
                     .replace(" ", "_");
 
+            // Shiprocket often returns numeric shipment_status codes.
+            if (normalized.matches("^\\d+$")) {
+                return switch (normalized) {
+                    case "5", "8", "16", "45" -> "cancelled";
+                    case "7", "23", "26" -> "delivered";
+                    case "9", "10", "14", "46" -> "returned";
+                    case "6", "12", "13", "15", "17", "18", "19", "20", "21", "22",
+                            "24", "25", "38", "39", "40", "41", "42", "43" -> "shipped";
+                    case "1", "2", "3", "4" -> "processing";
+                    default -> "shipped";
+                };
+            }
+
+            // Return only values allowed by orders.order_status ENUM.
             return switch (normalized) {
-                case "new" -> "new";
-                case "confirmed" -> "confirmed";
-                case "processing" -> "processing";
-                case "packed" -> "packed";
-                case "awb_assigned", "awbassigned" -> "awb_assigned";
-                case "pickup_scheduled", "pickup_generated", "pickup_queued" -> "pickup_scheduled";
-                case "picked_up", "shipped" -> "picked_up";
-                case "in_transit", "intransit" -> "in_transit";
-                case "out_for_delivery", "ofd" -> "out_for_delivery";
-                case "delivered" -> "delivered";
+                case "new", "confirmed", "processing", "packed", "awb_assigned", "awbassigned",
+                        "pickup_scheduled", "pickup_generated", "pickup_queued", "label_generated"
+                        -> "processing";
+                case "picked_up", "shipped", "in_transit", "intransit", "out_for_delivery", "ofd"
+                        -> "shipped";
+                case "delivered", "fulfilled", "completed" -> "delivered";
                 case "cancelled", "canceled" -> "cancelled";
-                case "rto_initiated", "rto_in_transit" -> "rto_initiated";
-                case "rto_delivered" -> "rto_delivered";
-                case "return_initiated", "returned" -> "returned";
-                default -> null;
+                case "rto_initiated", "rto_in_transit", "rto_delivered", "return_initiated", "returned"
+                        -> "returned";
+                default -> {
+                    if (normalized.contains("deliver")) yield "delivered";
+                    if (normalized.contains("rto") || normalized.contains("return")) yield "returned";
+                    if (normalized.contains("cancel")) yield "cancelled";
+                    if (normalized.contains("transit") || normalized.contains("ship")
+                            || normalized.contains("pick") || normalized.contains("ofd")) yield "shipped";
+                    if (normalized.contains("awb") || normalized.contains("process")
+                            || normalized.contains("pack")) yield "processing";
+                    yield null;
+                }
             };
         }
 
@@ -2131,6 +2166,22 @@ import java.util.Locale;
                     || s.equals("processing")
                     || s.equals("packed")
                     || s.equals("accepted");
+        }
+
+        /** Mirror header order_status onto all line items for seller/admin/user UIs. */
+        private void syncOrderItemsToHeaderStatus(Order order) {
+            if (order == null || order.getId() == null || isBlank(order.getOrderStatus())) {
+                return;
+            }
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getId());
+            if (items == null || items.isEmpty()) {
+                return;
+            }
+            String status = order.getOrderStatus().trim().toLowerCase(Locale.ROOT);
+            for (OrderItem item : items) {
+                item.setStatus(status);
+            }
+            orderItemRepository.saveAll(items);
         }
 
         private String firstNonBlank(Map<String, Object> source, String... keys) {

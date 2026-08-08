@@ -33,6 +33,7 @@ import com.ecommerce.sellerbackend.service.RegistrationInvoicePdfService;
 import com.ecommerce.sellerbackend.service.SellerGstDetailsService;
 import com.ecommerce.sellerbackend.service.SellerProfileService;
 import com.ecommerce.sellerbackend.service.SellerUniqueIdService;
+import com.ecommerce.sellerbackend.util.RegistrationGraceHelper;
 import com.ecommerce.sellerbackend.util.RegistrationReferenceNumberHelper;
 import com.ecommerce.sellerbackend.util.SellerAccountStatusHelper;
 import com.razorpay.Order;
@@ -88,6 +89,29 @@ public class SellerProfileServiceImpl implements SellerProfileService {
 
     @Value("${app.registration.fee.currency:INR}")
     private String registrationFeeCurrency;
+
+    @Value("${app.registration.grace.months:3}")
+    private int registrationGraceMonths;
+
+    @Value("${app.registration.existing-grace.months:12}")
+    private int existingSellerGraceMonths;
+
+    @Value("${app.registration.new-seller-after:2026-08-06T00:00:00}")
+    private String newSellerAfterRaw;
+
+    private int graceMonthsFor(Seller seller) {
+        LocalDateTime cutoff;
+        try {
+            cutoff = LocalDateTime.parse(newSellerAfterRaw.trim());
+        } catch (Exception ex) {
+            cutoff = LocalDateTime.of(2026, 8, 6, 0, 0);
+        }
+        return RegistrationGraceHelper.resolveGraceMonths(
+                seller.getCreatedAt(),
+                cutoff,
+                registrationGraceMonths,
+                existingSellerGraceMonths);
+    }
 
     @Override
     @Transactional
@@ -377,15 +401,6 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     public ProfileSubmitResponse submitProfile(Long sellerId) {
         Seller seller = requireSeller(sellerId);
 
-        if (!registrationPaymentRepository.isPaid(sellerId)) {
-            return ProfileSubmitResponse.builder()
-                    .submitted(false)
-                    .profileCompleted(false)
-                    .message("Please complete the registration payment to submit your profile.")
-                    .errors(List.of("Registration payment of Rs " + registrationFeeInr + " is pending."))
-                    .accountStatus(SellerAccountStatusHelper.build(seller))
-                    .build();
-        }
         List<String> errors = SellerProfileValidator.validateForSubmit(seller);
         if (!errors.isEmpty()) {
             return ProfileSubmitResponse.builder()
@@ -425,6 +440,20 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     public RegistrationPaymentOrderResponse createRegistrationPaymentOrder(Long sellerId) {
         Seller seller = requireSeller(sellerId);
         registrationPaymentRepository.ensureTable();
+        boolean hasEverPaid = registrationPaymentRepository.hasEverPaid(sellerId);
+        RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
+                seller.getCreatedAt(),
+                graceMonthsFor(seller),
+                hasEverPaid,
+                LocalDateTime.now());
+        if (grace.graceActive()) {
+            throw new IllegalArgumentException(
+                    "Annual registration fee can be paid after your "
+                            + grace.gracePeriodMonths()
+                            + "-month grace period ends on "
+                            + grace.graceEndsAt().toLocalDate()
+                            + ".");
+        }
         SellerRegistrationPaymentRepository.PaymentRecord existing =
                 registrationPaymentRepository.findBySellerId(sellerId);
         double gstAmount = registrationFeeInr * registrationGstPercent / 100.0;
@@ -556,6 +585,11 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 expectedAmountPaise,
                 invoicePdf
         );
+        RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
+                seller.getCreatedAt(),
+                graceMonthsFor(seller),
+                true,
+                LocalDateTime.now());
         return RegistrationPaymentStatusResponse.builder()
                 .paid(true)
                 .subscriptionActive(true)
@@ -572,6 +606,12 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .totalAmount(totalAmount)
                 .currency(paidRecord.getCurrency())
                 .invoiceEmailSent(invoiceEmailSent)
+                .joinedAt(grace.joinedAt() != null ? grace.joinedAt().toString() : null)
+                .graceEndsAt(grace.graceEndsAt() != null ? grace.graceEndsAt().toString() : null)
+                .graceActive(false)
+                .daysRemainingInGrace(0)
+                .firstPaymentDue(false)
+                .gracePeriodMonths(grace.gracePeriodMonths())
                 .build();
     }
 
@@ -675,6 +715,14 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .totalAmount(totalAmount)
                 .currency(currency)
                 .invoiceEmailSent(invoiceEmailSent)
+                .joinedAt(seller.getCreatedAt() != null ? seller.getCreatedAt().toString() : null)
+                .graceEndsAt(seller.getCreatedAt() != null
+                        ? seller.getCreatedAt().plusMonths(graceMonthsFor(seller)).toString()
+                        : null)
+                .graceActive(false)
+                .daysRemainingInGrace(0)
+                .firstPaymentDue(false)
+                .gracePeriodMonths(graceMonthsFor(seller))
                 .build();
     }
 
@@ -772,17 +820,29 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     @Override
     @Transactional(readOnly = true)
     public RegistrationPaymentStatusResponse getRegistrationPaymentStatus(Long sellerId) {
-        requireSeller(sellerId);
+        Seller seller = requireSeller(sellerId);
         registrationPaymentRepository.ensureTable();
         double gstAmount = registrationFeeInr * registrationGstPercent / 100.0;
         double totalAmount = registrationFeeInr + gstAmount;
         int expectedAmountPaise = (int) Math.round(totalAmount * 100);
+        boolean hasEverPaid = registrationPaymentRepository.hasEverPaid(sellerId);
+        boolean subscriptionRowActive = registrationPaymentRepository.isSubscriptionActive(sellerId);
+        boolean profileCompleted = Boolean.TRUE.equals(seller.getProfileCompleted());
+        RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
+                seller.getCreatedAt(),
+                graceMonthsFor(seller),
+                hasEverPaid,
+                LocalDateTime.now());
+        boolean subscriptionActive = RegistrationGraceHelper.resolveSubscriptionActive(
+                profileCompleted, subscriptionRowActive, grace.graceActive());
+        boolean paymentPending = RegistrationGraceHelper.resolvePaymentPending(
+                profileCompleted, subscriptionRowActive, hasEverPaid, grace.firstPaymentDue());
         SellerRegistrationPaymentRepository.PaymentRecord record = registrationPaymentRepository.findBySellerId(sellerId);
         if (record == null) {
             return RegistrationPaymentStatusResponse.builder()
-                    .paid(false)
-                    .subscriptionActive(false)
-                    .paymentPending(false)
+                    .paid(subscriptionRowActive)
+                    .subscriptionActive(subscriptionActive)
+                    .paymentPending(paymentPending)
                     .orderId(null)
                     .paymentId(null)
                     .paidAt(null)
@@ -793,18 +853,22 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                     .totalAmount(totalAmount)
                     .currency(registrationFeeCurrency)
                     .invoiceEmailSent(false)
+                    .joinedAt(grace.joinedAt() != null ? grace.joinedAt().toString() : null)
+                    .graceEndsAt(grace.graceEndsAt() != null ? grace.graceEndsAt().toString() : null)
+                    .graceActive(grace.graceActive())
+                    .daysRemainingInGrace(grace.daysRemainingInGrace())
+                    .firstPaymentDue(grace.firstPaymentDue())
+                    .gracePeriodMonths(grace.gracePeriodMonths())
                     .build();
         }
-        boolean subscriptionActive = registrationPaymentRepository.isSubscriptionActive(sellerId);
-        boolean paymentPending = registrationPaymentRepository.hasEverPaid(sellerId) && !subscriptionActive;
         String responseOrderId = record.getDisplayOrderNumber() != null && !record.getDisplayOrderNumber().isBlank()
                 ? record.getDisplayOrderNumber()
                 : record.getOrderId();
-        int displayAmount = subscriptionActive && record.getAmount() > 0
+        int displayAmount = subscriptionRowActive && record.getAmount() > 0
                 ? record.getAmount()
                 : expectedAmountPaise;
         return RegistrationPaymentStatusResponse.builder()
-                .paid(subscriptionActive)
+                .paid(subscriptionRowActive)
                 .subscriptionActive(subscriptionActive)
                 .paymentPending(paymentPending)
                 .orderId(responseOrderId)
@@ -818,7 +882,13 @@ public class SellerProfileServiceImpl implements SellerProfileService {
                 .gstAmount(gstAmount)
                 .totalAmount(totalAmount)
                 .currency(record.getCurrency() != null ? record.getCurrency() : registrationFeeCurrency)
-                .invoiceEmailSent(subscriptionActive)
+                .invoiceEmailSent(subscriptionRowActive)
+                .joinedAt(grace.joinedAt() != null ? grace.joinedAt().toString() : null)
+                .graceEndsAt(grace.graceEndsAt() != null ? grace.graceEndsAt().toString() : null)
+                .graceActive(grace.graceActive())
+                .daysRemainingInGrace(grace.daysRemainingInGrace())
+                .firstPaymentDue(grace.firstPaymentDue())
+                .gracePeriodMonths(grace.gracePeriodMonths())
                 .build();
     }
 

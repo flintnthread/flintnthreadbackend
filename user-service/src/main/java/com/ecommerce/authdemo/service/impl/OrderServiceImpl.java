@@ -186,9 +186,32 @@ public class OrderServiceImpl implements OrderService {
             if (checkoutItems.isEmpty()) {
                 throw new OrderException("Cart is empty");
             }
+// Validate payment method for every product
+String paymentMethod = dto.getPaymentMethod() != null
+        ? dto.getPaymentMethod().trim().toLowerCase()
+        : "";
 
-            assertCheckoutSellersAcceptingOrders(checkoutItems);
+boolean isCod = paymentMethod.contains("cod")
+        || paymentMethod.contains("cash");
 
+boolean isPrepaid = paymentMethod.contains("upi")
+        || paymentMethod.contains("online")
+        || paymentMethod.contains("razorpay");
+
+for (CartItemResponseDTO item : checkoutItems) {
+
+    if (isCod && !Boolean.TRUE.equals(item.getAcceptCod())) {
+        throw new OrderException(
+                item.getProductName() + " is not available for Cash on Delivery."
+        );
+    }
+
+    if (isPrepaid && !Boolean.TRUE.equals(item.getAcceptPrepaid())) {
+        throw new OrderException(
+                item.getProductName() + " is not available for Online Payment."
+        );
+    }
+}
             boolean partialCheckout =
                     dto.getItemIds() != null && !dto.getItemIds().isEmpty();
 
@@ -1381,6 +1404,82 @@ public class OrderServiceImpl implements OrderService {
             );
         }
         return shiprocketService.syncShipmentDetails(order);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> cancelOrderInShiprocket(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        boolean shiprocketCancelled = false;
+        boolean shiprocketCancelAttempted = false;
+        String shiprocketOrderId = order.getShiprocketOrderId();
+
+        try {
+            if (shiprocketOrderId != null && !shiprocketOrderId.isBlank()) {
+                shiprocketCancelAttempted = true;
+                shiprocketCancelled = shiprocketService.cancelShipment(shiprocketOrderId);
+                log.info(
+                        "[INTERNAL:SHIPROCKET] cancel orderId={} srOrderId={} success={}",
+                        orderId,
+                        shiprocketOrderId,
+                        shiprocketCancelled
+                );
+            } else {
+                shiprocketCancelled = true;
+                log.info(
+                        "[INTERNAL:SHIPROCKET] cancel orderId={} — no Shiprocket id, local cancel only",
+                        orderId
+                );
+            }
+        } catch (Exception e) {
+            log.error(
+                    "[INTERNAL:SHIPROCKET] cancel FAILED orderId={} srOrderId={}: {}",
+                    orderId,
+                    shiprocketOrderId,
+                    e.getMessage(),
+                    e
+            );
+        }
+
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        for (OrderItem item : items) {
+            item.setStatus("cancelled");
+        }
+        if (!items.isEmpty()) {
+            orderItemRepository.saveAll(items);
+        }
+
+        order.setOrderStatus("cancelled");
+        if (shiprocketCancelled || !shiprocketCancelAttempted) {
+            order.setShiprocketStatus("cancelled");
+        } else {
+            order.setShiprocketStatus("cancel_failed");
+        }
+        order.setUpdatedAt(LocalDateTime.now());
+        orderRepository.save(order);
+
+        try {
+            OrderStatusHistory history = OrderStatusHistory.builder()
+                    .order(order)
+                    .status(OrderStatus.CANCELLED)
+                    .comment("Cancelled via seller/admin — Shiprocket sync")
+                    .createdBy(null)
+                    .build();
+            orderStatusHistoryRepository.save(history);
+        } catch (Exception e) {
+            log.warn("Skipping status history for internal cancel orderId={}", orderId, e);
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("orderId", orderId);
+        body.put("orderStatus", "cancelled");
+        body.put("shiprocketOrderId", shiprocketOrderId);
+        body.put("shiprocketStatus", order.getShiprocketStatus());
+        body.put("shiprocketCancelled", shiprocketCancelled);
+        body.put("shiprocketCancelAttempted", shiprocketCancelAttempted);
+        return body;
     }
 
     private boolean isPaidPaymentStatus(String paymentStatus) {

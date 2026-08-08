@@ -176,14 +176,7 @@ public class OrderServiceImpl implements OrderService {
                 order = buildSyntheticOrder(item.getOrderId(), List.of(item));
             }
             List<OrderStatusHistory> history = historyByOrder.getOrDefault(item.getOrderId(), List.of());
-            String rawStatus;
-            if (order != null && isCancelledStatus(order.getOrderStatus())) {
-                rawStatus = "cancelled";
-            } else if (item.getStatus() != null && !item.getStatus().isBlank()) {
-                rawStatus = item.getStatus();
-            } else {
-                rawStatus = resolveRawStatus(order, orderItems, history);
-            }
+            String rawStatus = resolveRawStatus(order, orderItems, history);
             String uiStatus = toUiStatus(rawStatus);
             switch (uiStatus) {
                 case "Pending" -> pending++;
@@ -252,19 +245,39 @@ public class OrderServiceImpl implements OrderService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        for (OrderItem item : items) {
-            item.setStatus(dbStatus);
+        // Whole-order status: flip every line so admin/user/seller views stay aligned.
+        List<OrderItem> allItems = orderItemRepository.findByOrderId(orderId);
+        if (!allItems.isEmpty()) {
+            for (OrderItem item : allItems) {
+                item.setStatus(dbStatus);
+            }
+            orderItemRepository.saveAll(allItems);
+        } else {
+            for (OrderItem item : items) {
+                item.setStatus(dbStatus);
+            }
+            orderItemRepository.saveAll(items);
         }
-        orderItemRepository.saveAll(items);
 
         Order order = resolveOrder(orderId, items);
         order.setOrderStatus(dbStatus);
+        if ("cancelled".equalsIgnoreCase(dbStatus)) {
+            // Optimistic local flag so admin/user UIs flip immediately; async call confirms SR.
+            order.setShiprocketStatus("cancelled");
+        } else if ("shipped".equalsIgnoreCase(dbStatus)
+                || "delivered".equalsIgnoreCase(dbStatus)
+                || "returned".equalsIgnoreCase(dbStatus)
+                || "processing".equalsIgnoreCase(dbStatus)) {
+            // Keep shiprocket_status readable in all panels until live SR sync overwrites.
+            order.setShiprocketStatus(dbStatus.toLowerCase(Locale.ROOT));
+        }
         order.setUpdatedAt(now);
         orderRepository.save(order);
 
         recordStatusHistory(orderId, historyStatus, comment, sellerId, now);
 
         maybePushToShiprocketAfterSellerConfirm(order, dbStatus);
+        maybeCancelShiprocketAfterSellerCancel(order, dbStatus);
 
         return toDetail(order, items);
     }
@@ -297,6 +310,18 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
         userServiceShiprocketClient.pushOrderAsync(order.getId());
+    }
+
+    /** When seller marks Cancelled, cancel linked Shiprocket order so admin/user stay in sync. */
+    private void maybeCancelShiprocketAfterSellerCancel(Order order, String newDbStatus) {
+        if (order == null || order.getId() == null) {
+            return;
+        }
+        String normalized = newDbStatus != null ? newDbStatus.trim().toLowerCase(Locale.ROOT) : "";
+        if (!"cancelled".equals(normalized) && !"canceled".equals(normalized)) {
+            return;
+        }
+        userServiceShiprocketClient.cancelOrderAsync(order.getId());
     }
 
     private void recordStatusHistory(
@@ -721,11 +746,15 @@ public class OrderServiceImpl implements OrderService {
             LineCatalog catalog) {
         BigDecimal amount = lineAmount(item);
         BigDecimal subtotal = lineSubtotal(item);
+        // Prefer order-level / Shiprocket-resolved status so stale line "processing"/"active"
+        // does not keep the Orders list stuck while tracking already shows Delivered.
         String effectiveStatus = isCancelledStatus(orderRawStatus)
                 ? "cancelled"
-                : (item.getStatus() != null && !item.getStatus().isBlank()
-                        ? item.getStatus()
-                        : orderRawStatus);
+                : (orderRawStatus != null && !orderRawStatus.isBlank()
+                        ? orderRawStatus
+                        : (item.getStatus() != null && !item.getStatus().isBlank()
+                                ? item.getStatus()
+                                : "pending"));
         String color = resolveLineColor(item, catalog);
         String size = resolveLineSize(item, catalog);
         String sku = resolveLineSku(item, catalog);
@@ -837,6 +866,7 @@ public class OrderServiceImpl implements OrderService {
         }
         return switch (status.trim().toLowerCase(Locale.ROOT)) {
             case "paid" -> "Paid";
+            case "completed" -> "Completed";
             case "cancelled", "canceled" -> "Cancelled";
             default -> capitalize(status);
         };
@@ -947,28 +977,33 @@ public class OrderServiceImpl implements OrderService {
                     dates.put(stepKey, formatStepDate(entry.getCreatedAt()));
                 }
             }
-            if (!dates.isEmpty()) {
-                return dates;
-            }
         }
 
         LocalDateTime created = order.getCreatedAt() != null ? order.getCreatedAt() : items.get(0).getCreatedAt();
         if (created != null) {
-            dates.put("pending", formatStepDate(created));
+            dates.putIfAbsent("pending", formatStepDate(created));
         }
-        if (order.getUpdatedAt() != null) {
-            String formatted = formatStepDate(order.getUpdatedAt());
+
+        LocalDateTime logisticsAt = order.getShiprocketSyncedAt() != null
+                ? order.getShiprocketSyncedAt()
+                : order.getUpdatedAt();
+        if (logisticsAt != null) {
+            String formatted = formatStepDate(logisticsAt);
             switch (uiStatus) {
-                case "Processing" -> dates.put("processing", formatted);
+                case "Processing" -> dates.putIfAbsent("processing", formatted);
                 case "Shipped" -> {
-                    dates.put("processing", formatted);
+                    dates.putIfAbsent("processing", formatted);
                     dates.put("shipped", formatted);
                 }
-                case "Delivered", "Returned", "Cancelled" -> {
-                    dates.put("processing", formatted);
-                    dates.put("shipped", formatted);
-                    dates.put(uiStatus.equals("Delivered") ? "delivered"
-                            : uiStatus.equals("Returned") ? "returned" : "cancelled", formatted);
+                case "Delivered" -> {
+                    dates.putIfAbsent("processing", formatted);
+                    dates.putIfAbsent("shipped", formatted);
+                    dates.put("delivered", formatted);
+                }
+                case "Returned", "Cancelled" -> {
+                    dates.putIfAbsent("processing", formatted);
+                    dates.putIfAbsent("shipped", formatted);
+                    dates.put(uiStatus.equals("Returned") ? "returned" : "cancelled", formatted);
                 }
                 default -> { }
             }
@@ -982,8 +1017,9 @@ public class OrderServiceImpl implements OrderService {
         }
         return switch (historyStatus.trim().toLowerCase(Locale.ROOT)) {
             case "pending", "sent_to_seller", "awaiting_payment", "awaiting_processing" -> "pending";
-            case "processing" -> "processing";
-            case "completed" -> "delivered";
+            case "processing", "confirmed", "packed", "awb_assigned" -> "processing";
+            case "shipped", "in_transit", "picked_up", "out_for_delivery" -> "shipped";
+            case "completed", "delivered" -> "delivered";
             case "cancelled" -> "cancelled";
             case "returned", "refunded", "replacement" -> "returned";
             default -> null;
@@ -1011,14 +1047,23 @@ public class OrderServiceImpl implements OrderService {
         if (order != null && isCancelledStatus(order.getOrderStatus())) {
             return "cancelled";
         }
+        // Prefer canonical Shiprocket status when present, so list view matches tracking timeline.
+        if (order != null && order.getShiprocketStatus() != null && !order.getShiprocketStatus().isBlank()) {
+            String fromShiprocket = ShiprocketServiceImpl.mapShiprocketToOrderStatus(
+                    order.getShiprocketStatus(), order.getShiprocketAwbCode());
+            if (fromShiprocket != null && !fromShiprocket.isBlank()) {
+                return fromShiprocket;
+            }
+        }
+        // Prefer current order header over stale history (history enum is limited and often stuck).
+        if (order != null && order.getOrderStatus() != null && !order.getOrderStatus().isBlank()) {
+            return order.getOrderStatus().trim();
+        }
         if (history != null && !history.isEmpty()) {
             OrderStatusHistory latest = history.get(history.size() - 1);
             if (latest.getStatus() != null && !latest.getStatus().isBlank()) {
                 return latest.getStatus().trim();
             }
-        }
-        if (order != null && order.getOrderStatus() != null && !order.getOrderStatus().isBlank()) {
-            return order.getOrderStatus().trim();
         }
         return items.stream()
                 .map(OrderItem::getStatus)
@@ -1042,15 +1087,30 @@ public class OrderServiceImpl implements OrderService {
         if (raw == null || raw.isBlank()) {
             return "Pending";
         }
-        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        // Numeric Shiprocket codes that may still be stored in shiprocket_status / order fields.
+        if (normalized.matches("^\\d+$")) {
+            String mapped = ShiprocketServiceImpl.mapShiprocketToOrderStatus(normalized, null);
+            if (mapped != null) {
+                normalized = mapped;
+            }
+        }
+        return switch (normalized) {
             case "pending", "sent_to_seller", "awaiting_payment", "awaiting_processing",
-                    "new", "placed" -> "Pending";
+                    "new", "placed", "active" -> "Pending";
             case "confirmed", "processing", "packed", "awb_assigned", "pickup_scheduled", "accepted" -> "Processing";
             case "picked_up", "in_transit", "out_for_delivery", "shipped", "ready_to_ship" -> "Shipped";
             case "delivered", "completed" -> "Delivered";
             case "returned", "return", "refunded", "rto_initiated", "rto_delivered", "replacement" -> "Returned";
             case "cancelled", "canceled", "rejected" -> "Cancelled";
-            default -> capitalize(raw.replace('_', ' '));
+            default -> {
+                if (normalized.contains("deliver")) yield "Delivered";
+                if (normalized.contains("ship") || normalized.contains("transit") || normalized.contains("ofd")) yield "Shipped";
+                if (normalized.contains("process") || normalized.contains("awb") || normalized.contains("pickup")) yield "Processing";
+                if (normalized.contains("return") || normalized.contains("rto")) yield "Returned";
+                if (normalized.contains("cancel")) yield "Cancelled";
+                yield capitalize(raw.replace('_', ' '));
+            }
         };
     }
 
@@ -1058,11 +1118,13 @@ public class OrderServiceImpl implements OrderService {
         if (uiStatus == null || uiStatus.isBlank()) {
             throw new IllegalArgumentException("Status is required.");
         }
+        // Must match orders.order_status MySQL ENUM values.
         return switch (uiStatus.trim()) {
-            case "Pending" -> "confirmed";
+            case "Pending" -> "pending";
             case "Processing" -> "processing";
-            case "Shipped" -> "in_transit";
+            case "Shipped" -> "shipped";
             case "Delivered" -> "delivered";
+            case "Completed" -> "completed";
             case "Returned" -> "returned";
             case "Cancelled" -> "cancelled";
             default -> uiStatus.trim().toLowerCase(Locale.ROOT);

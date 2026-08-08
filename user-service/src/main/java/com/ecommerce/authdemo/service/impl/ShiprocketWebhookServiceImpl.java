@@ -2,8 +2,10 @@ package com.ecommerce.authdemo.service.impl;
 
 import com.ecommerce.authdemo.dto.Enum.OrderStatus;
 import com.ecommerce.authdemo.entity.Order;
+import com.ecommerce.authdemo.entity.OrderItem;
 import com.ecommerce.authdemo.entity.OrderStatusHistory;
 import com.ecommerce.authdemo.entity.ShiprocketWebhook;
+import com.ecommerce.authdemo.repository.OrderItemRepository;
 import com.ecommerce.authdemo.repository.OrderRepository;
 import com.ecommerce.authdemo.repository.OrderStatusHistoryRepository;
 import com.ecommerce.authdemo.repository.ShiprocketWebhookRepository;
@@ -29,6 +31,7 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
 
     private final ShiprocketWebhookRepository shiprocketWebhookRepository;
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final ShiprocketSyncLogService shiprocketSyncLogService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -120,19 +123,29 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
             }
 
             String mappedOrderStatus = mapToOrderStatusForOrderTable(currentStatus);
-            if (!isBlank(mappedOrderStatus)) {
+            String existing = order.getOrderStatus() != null
+                    ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                    : "";
+            boolean locallyCancelled = existing.contains("cancel");
+            boolean mappedCancelled = !isBlank(mappedOrderStatus)
+                    && mappedOrderStatus.toLowerCase(Locale.ENGLISH).contains("cancel");
+            if (locallyCancelled && !mappedCancelled) {
+                order.setShiprocketStatus("cancelled");
+                mappedOrderStatus = "cancelled";
+            } else if (!isBlank(mappedOrderStatus)) {
                 order.setOrderStatus(mappedOrderStatus);
                 order.setShiprocketStatus(mappedOrderStatus);
             } else if (!isBlank(resolvedAwb)) {
-                order.setOrderStatus("awb_assigned");
-                order.setShiprocketStatus("awb_assigned");
-                mappedOrderStatus = "awb_assigned";
+                order.setOrderStatus("processing");
+                order.setShiprocketStatus("processing");
+                mappedOrderStatus = "processing";
             } else if (!isBlank(currentStatus)) {
                 order.setShiprocketStatus(currentStatus);
             }
 
             order.setShiprocketSyncedAt(LocalDateTime.now());
             orderRepository.save(order);
+            syncOrderItemsStatus(order.getId(), order.getOrderStatus());
             orderRepository.updateShipment(
                     order.getOrderNumber(),
                     order.getShiprocketAwbCode(),
@@ -307,22 +320,38 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
             return null;
         }
         String normalized = normalize(sourceStatus);
+        if (normalized.matches("^\\d+$")) {
+            return switch (normalized) {
+                case "5", "8", "16", "45" -> "cancelled";
+                case "7", "23", "26" -> "delivered";
+                case "9", "10", "14", "46" -> "returned";
+                case "6", "12", "13", "15", "17", "18", "19", "20", "21", "22",
+                        "24", "25", "38", "39", "40", "41", "42", "43" -> "shipped";
+                case "1", "2", "3", "4" -> "processing";
+                default -> "shipped";
+            };
+        }
+        // Only values allowed by orders.order_status MySQL ENUM.
         return switch (normalized) {
-            case "new" -> "new";
-            case "confirmed" -> "confirmed";
-            case "processing" -> "processing";
-            case "packed" -> "packed";
-            case "awb_assigned", "awbassigned" -> "awb_assigned";
-            case "pickup_scheduled", "pickup_generated", "pickup_queued" -> "pickup_scheduled";
-            case "picked_up", "shipped" -> "picked_up";
-            case "in_transit", "intransit" -> "in_transit";
-            case "out_for_delivery", "ofd" -> "out_for_delivery";
-            case "delivered" -> "delivered";
+            case "new", "confirmed", "processing", "packed", "awb_assigned", "awbassigned",
+                    "pickup_scheduled", "pickup_generated", "pickup_queued", "label_generated"
+                    -> "processing";
+            case "picked_up", "shipped", "in_transit", "intransit", "out_for_delivery", "ofd"
+                    -> "shipped";
+            case "delivered", "fulfilled", "completed" -> "delivered";
             case "cancelled", "canceled" -> "cancelled";
-            case "rto_initiated", "rto_in_transit" -> "rto_initiated";
-            case "rto_delivered" -> "rto_delivered";
-            case "return_initiated", "returned" -> "returned";
-            default -> null;
+            case "rto_initiated", "rto_in_transit", "rto_delivered", "return_initiated", "returned"
+                    -> "returned";
+            default -> {
+                if (normalized.contains("deliver")) yield "delivered";
+                if (normalized.contains("rto") || normalized.contains("return")) yield "returned";
+                if (normalized.contains("cancel")) yield "cancelled";
+                if (normalized.contains("transit") || normalized.contains("ship")
+                        || normalized.contains("pick") || normalized.contains("ofd")) yield "shipped";
+                if (normalized.contains("awb") || normalized.contains("process")
+                        || normalized.contains("pack")) yield "processing";
+                yield null;
+            }
         };
     }
 
@@ -336,10 +365,11 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
                  "awb_assigned",
                  "pickup_scheduled",
                  "picked_up",
-                 "in_transit" -> OrderStatus.CONFIRMED;
+                 "in_transit",
+                 "shipped" -> OrderStatus.CONFIRMED;
             case "out_for_delivery" -> OrderStatus.OUT_FOR_DELIVERY;
-            case "delivered" -> OrderStatus.DELIVERED;
-            case "cancelled", "rto_initiated", "rto_delivered" -> OrderStatus.CANCELLED;
+            case "delivered", "completed" -> OrderStatus.DELIVERED;
+            case "cancelled", "canceled", "rto_initiated", "rto_delivered" -> OrderStatus.CANCELLED;
             case "returned" -> OrderStatus.RETURNED;
             default -> null;
         };
@@ -357,5 +387,20 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    /** Keep order_items in sync so seller/admin/user line UIs match header status. */
+    private void syncOrderItemsStatus(Long orderId, String status) {
+        if (orderId == null || isBlank(status)) {
+            return;
+        }
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+        if (items.isEmpty()) {
+            return;
+        }
+        for (OrderItem item : items) {
+            item.setStatus(status.trim().toLowerCase(Locale.ROOT));
+        }
+        orderItemRepository.saveAll(items);
     }
 }

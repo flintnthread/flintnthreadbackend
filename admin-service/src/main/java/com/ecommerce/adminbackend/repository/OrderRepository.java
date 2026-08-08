@@ -15,7 +15,34 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("""
             SELECT o FROM Order o
-            WHERE (:status IS NULL OR :status = '' OR LOWER(o.orderStatus) = LOWER(:status))
+            WHERE (
+                   :status IS NULL OR :status = ''
+                   OR (
+                        LOWER(:status) IN ('delivered', 'completed')
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('delivered', 'completed')
+                   )
+                   OR (
+                        LOWER(:status) IN ('cancelled', 'canceled')
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('cancelled', 'canceled')
+                   )
+                   OR (
+                        LOWER(:status) = 'returned'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('returned', 'refunded', 'rto_delivered', 'rto_initiated', 'replacement')
+                   )
+                   OR (
+                        LOWER(:status) = 'shipped'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('shipped', 'in_transit', 'out_for_delivery', 'picked_up', 'ready_to_ship')
+                   )
+                   OR (
+                        LOWER(:status) = 'processing'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('processing', 'confirmed', 'packed', 'awb_assigned', 'pickup_scheduled', 'accepted')
+                   )
+                   OR (
+                        LOWER(:status) = 'pending'
+                        AND LOWER(COALESCE(o.orderStatus, '')) IN ('pending', 'awaiting_payment', 'awaiting_processing', 'sent_to_seller', 'new', 'placed')
+                   )
+                   OR LOWER(COALESCE(o.orderStatus, '')) = LOWER(:status)
+              )
               AND (:paymentStatus IS NULL OR :paymentStatus = '' OR LOWER(o.paymentStatus) = LOWER(:paymentStatus))
               AND (:paymentMethod IS NULL OR :paymentMethod = '' OR
                    LOWER(COALESCE(o.paymentMethod, '')) LIKE LOWER(CONCAT('%', :paymentMethod, '%')))
@@ -81,71 +108,208 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     List<Order> findTop10ByOrderByCreatedAtDesc();
 
-    @Query("""
-            SELECT o FROM Order o
-            WHERE o.sellerPaymentStatus IS NOT NULL
+    /**
+     * Seller Payments: delivered/completed orders only (null seller_payment_status = pending).
+     * Reminder day counts use delivery reference = COALESCE(shiprocket_synced_at, updated_at).
+     */
+    @Query(value = """
+            SELECT * FROM orders o
+            WHERE (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
               AND (
                 :status IS NULL OR :status = ''
-                OR (LOWER(:status) = 'paid-cancelled' AND LOWER(o.sellerPaymentStatus) IN ('paid', 'cancelled'))
-                OR (LOWER(:status) <> 'paid-cancelled' AND LOWER(o.sellerPaymentStatus) = LOWER(:status))
+                OR (
+                  LOWER(:status) = 'pending'
+                  AND (o.seller_payment_status IS NULL OR LOWER(o.seller_payment_status) = 'pending')
+                )
+                OR (
+                  LOWER(:status) = 'paid-cancelled'
+                  AND LOWER(COALESCE(o.seller_payment_status, '')) IN ('paid', 'cancelled')
+                )
+                OR (
+                  LOWER(:status) NOT IN ('pending', 'paid-cancelled')
+                  AND LOWER(COALESCE(o.seller_payment_status, '')) = LOWER(:status)
+                )
               )
             ORDER BY
               CASE
-                WHEN LOWER(o.sellerPaymentStatus) = 'pending' THEN 0
-                WHEN LOWER(o.sellerPaymentStatus) = 'paid' THEN 1
+                WHEN o.seller_payment_status IS NULL OR LOWER(o.seller_payment_status) = 'pending' THEN 0
+                WHEN LOWER(o.seller_payment_status) = 'paid' THEN 1
                 ELSE 2
               END,
-              o.updatedAt ASC,
+              COALESCE(o.shiprocket_synced_at, o.updated_at) ASC,
               o.id DESC
-            """)
+            """,
+            countQuery = """
+            SELECT COUNT(*) FROM orders o
+            WHERE (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND (
+                :status IS NULL OR :status = ''
+                OR (
+                  LOWER(:status) = 'pending'
+                  AND (o.seller_payment_status IS NULL OR LOWER(o.seller_payment_status) = 'pending')
+                )
+                OR (
+                  LOWER(:status) = 'paid-cancelled'
+                  AND LOWER(COALESCE(o.seller_payment_status, '')) IN ('paid', 'cancelled')
+                )
+                OR (
+                  LOWER(:status) NOT IN ('pending', 'paid-cancelled')
+                  AND LOWER(COALESCE(o.seller_payment_status, '')) = LOWER(:status)
+                )
+              )
+            """,
+            nativeQuery = true)
     Page<Order> findSellerPayments(@Param("status") String status, Pageable pageable);
-
-    long countBySellerPaymentStatusIgnoreCase(String sellerPaymentStatus);
-
-    @Query("""
-            SELECT COALESCE(SUM(o.totalAmount), 0) FROM Order o
-            WHERE LOWER(o.sellerPaymentStatus) = 'paid'
-            """)
-    BigDecimal sumPaidSellerPaymentAmount();
 
     @Query(value = """
             SELECT COUNT(*) FROM orders o
-            WHERE LOWER(o.seller_payment_status) = 'pending'
-              AND DATEDIFF(CURDATE(), DATE(o.updated_at)) <= :maxDays
+            WHERE (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND (
+                (:sellerPaymentStatus = 'pending'
+                  AND (o.seller_payment_status IS NULL OR LOWER(o.seller_payment_status) = 'pending'))
+                OR (:sellerPaymentStatus <> 'pending'
+                  AND LOWER(COALESCE(o.seller_payment_status, '')) = LOWER(:sellerPaymentStatus))
+              )
+            """, nativeQuery = true)
+    long countDeliveredSellerPaymentsByStatus(@Param("sellerPaymentStatus") String sellerPaymentStatus);
+
+    @Query(value = """
+            SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o
+            WHERE LOWER(COALESCE(o.seller_payment_status, '')) = 'paid'
+              AND (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+            """, nativeQuery = true)
+    BigDecimal sumPaidDeliveredSellerPaymentAmount();
+
+    @Query(value = """
+            SELECT COUNT(*) FROM orders o
+            WHERE (
+                o.seller_payment_status IS NULL OR LOWER(o.seller_payment_status) = 'pending'
+              )
+              AND (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.shiprocket_synced_at, o.updated_at))) <= :maxDays
             """, nativeQuery = true)
     long countPendingSellerPaymentsWithinDays(@Param("maxDays") int maxDays);
 
     @Query(value = """
             SELECT COUNT(*) FROM orders o
-            WHERE LOWER(o.seller_payment_status) = 'pending'
-              AND DATEDIFF(CURDATE(), DATE(o.updated_at)) BETWEEN :minDays AND :maxDays
+            WHERE (
+                o.seller_payment_status IS NULL OR LOWER(o.seller_payment_status) = 'pending'
+              )
+              AND (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.shiprocket_synced_at, o.updated_at))) BETWEEN :minDays AND :maxDays
             """, nativeQuery = true)
     long countPendingSellerPaymentsDaysBetween(@Param("minDays") int minDays, @Param("maxDays") int maxDays);
 
     @Query(value = """
             SELECT COUNT(*) FROM orders o
-            WHERE LOWER(o.seller_payment_status) = 'pending'
-              AND DATEDIFF(CURDATE(), DATE(o.updated_at)) >= :minDays
+            WHERE (
+                o.seller_payment_status IS NULL OR LOWER(o.seller_payment_status) = 'pending'
+              )
+              AND (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.shiprocket_synced_at, o.updated_at))) >= :minDays
             """, nativeQuery = true)
     long countPendingSellerPaymentsAtLeastDays(@Param("minDays") int minDays);
 
     @Query(value = """
             SELECT COUNT(*) FROM orders o
-            WHERE LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
+            WHERE (
+                o.seller_payment_status IS NULL OR LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
+              )
               AND LOWER(COALESCE(o.payment_status, '')) IN ('paid', 'success', 'captured', 'completed')
-              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.created_at, o.updated_at))) >= :minDays
+              AND (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.shiprocket_synced_at, o.updated_at, o.created_at))) >= :minDays
             """, nativeQuery = true)
     long countOverdueSellerPayoutsAfterCustomerPaid(@Param("minDays") int minDays);
 
     @Query(value = """
             SELECT * FROM orders o
-            WHERE LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
+            WHERE (
+                o.seller_payment_status IS NULL OR LOWER(COALESCE(o.seller_payment_status, '')) = 'pending'
+              )
               AND LOWER(COALESCE(o.payment_status, '')) IN ('paid', 'success', 'captured', 'completed')
-              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.created_at, o.updated_at))) >= :minDays
-            ORDER BY o.created_at ASC
+              AND (
+                LOWER(CAST(o.order_status AS CHAR)) IN ('delivered', 'completed')
+                OR LOWER(COALESCE(o.shiprocket_status, '')) IN ('7', '23', '26', 'delivered', 'completed', 'fulfilled')
+              )
+              AND LOWER(CAST(COALESCE(o.order_status, 'pending') AS CHAR)) NOT IN (
+                   'cancelled', 'canceled', 'returned', 'refunded',
+                   'rto_delivered', 'rto_initiated', 'replacement'
+              )
+              AND DATEDIFF(CURDATE(), DATE(COALESCE(o.shiprocket_synced_at, o.updated_at, o.created_at))) >= :minDays
+            ORDER BY COALESCE(o.shiprocket_synced_at, o.updated_at) ASC
             """, nativeQuery = true)
     List<Order> findOverdueSellerPayoutsAfterCustomerPaid(@Param("minDays") int minDays, Pageable pageable);
 
     @Query("SELECT MIN(o.id) FROM Order o WHERE LOWER(o.shippingEmail) = LOWER(:email)")
     java.util.Optional<Long> findMinIdByShippingEmailIgnoreCase(@Param("email") String email);
+
+    @Query("""
+            SELECT o FROM Order o
+            WHERE (o.shiprocketShipmentId IS NOT NULL OR o.shiprocketOrderId IS NOT NULL OR o.shiprocketAwbCode IS NOT NULL)
+              AND (o.orderStatus IS NULL OR LOWER(o.orderStatus) NOT IN ('delivered', 'completed', 'cancelled', 'returned', 'rto_delivered'))
+              AND o.createdAt >= :createdAfter
+              AND (o.shiprocketSyncedAt IS NULL OR o.shiprocketSyncedAt <= :syncedBefore)
+            ORDER BY o.createdAt DESC
+            """)
+    List<Order> findShiprocketStatusSyncCandidates(
+            @Param("createdAfter") LocalDateTime createdAfter,
+            @Param("syncedBefore") LocalDateTime syncedBefore,
+            Pageable pageable
+    );
 }

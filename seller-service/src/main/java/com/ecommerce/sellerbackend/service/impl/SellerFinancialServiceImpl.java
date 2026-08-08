@@ -531,24 +531,64 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public ShiprocketSyncResponse getTracking(Long sellerId, String orderKey) {
+        // Same as sync: pull live Shiprocket tracking and persist order_status.
+        // (Previously readOnly=true blocked saves, so timeline looked correct but list stayed Processing.)
+        return syncShiprocket(sellerId, orderKey);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> syncAllShiprocket(Long sellerId, int limit) {
         SellerContext ctx = loadContext(sellerId);
-        Long orderId = resolveOrderId(ctx, orderKey)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderKey));
-        List<OrderItem> sellerItems = ctx.items().stream()
-                .filter(i -> orderId.equals(i.getOrderId()))
-                .toList();
-        if (sellerItems.isEmpty()) {
-            throw new ResourceNotFoundException("Order not found for seller: " + orderKey);
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+
+        List<OrderItem> items = ctx.items();
+        java.util.LinkedHashSet<Long> uniqueOrderIds = new java.util.LinkedHashSet<>();
+        for (OrderItem item : items) {
+            if (item.getOrderId() != null) {
+                uniqueOrderIds.add(item.getOrderId());
+            }
+            if (uniqueOrderIds.size() >= safeLimit) {
+                break;
+            }
         }
-        Order order = ctx.order(orderId);
-        if (order == null) {
-            order = buildSyntheticOrder(orderId, sellerItems);
+
+        int success = 0;
+        int failed = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (Long orderId : uniqueOrderIds) {
+            Order order = ctx.order(orderId);
+            if (order == null) {
+                List<OrderItem> sellerItems = items.stream()
+                        .filter(i -> orderId.equals(i.getOrderId()))
+                        .toList();
+                if (sellerItems.isEmpty()) continue;
+                order = buildSyntheticOrder(orderId, sellerItems);
+            }
+            try {
+                shiprocketService.syncTracking(order);
+                success++;
+            } catch (Exception ex) {
+                failed++;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("orderId", orderId);
+                row.put("orderNumber", order.getOrderNumber());
+                row.put("error", ex.getMessage());
+                failures.add(row);
+            }
         }
-        
-        // Return tracking from order's Shiprocket fields (single source of truth from database)
-        return shiprocketService.syncTracking(order);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("success", true);
+        out.put("message", "Seller Shiprocket sync-all completed");
+        out.put("requestedLimit", safeLimit);
+        out.put("candidates", uniqueOrderIds.size());
+        out.put("synced", success);
+        out.put("failed", failed);
+        out.put("failures", failures);
+        return out;
     }
 
     private Order buildSyntheticOrder(Long orderId, List<OrderItem> items) {
@@ -772,7 +812,7 @@ public class SellerFinancialServiceImpl implements SellerFinancialService {
     private boolean isSellerPaymentPending(Order order) {
         if (order == null) return true;
         String status = nullToEmpty(order.getSellerPaymentStatus()).toLowerCase(Locale.ROOT);
-        return status.isBlank() || status.contains("pending");
+        return status.isBlank() || status.contains("pending") || !(status.contains("completed") || status.contains("paid"));
     }
 
     private double itemTotal(OrderItem item) {

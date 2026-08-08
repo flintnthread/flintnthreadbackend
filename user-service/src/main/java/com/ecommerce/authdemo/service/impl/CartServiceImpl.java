@@ -305,7 +305,20 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
             dto.setImageUrl(getProductImageUrl(cart.getProductId()));
             dto.setQuantity(cart.getQuantity());
             dto.setTotal(unitCustomer.multiply(BigDecimal.valueOf(cart.getQuantity())));
-
+            Product productForPayment =
+                    productForStrike != null
+                            ? productForStrike
+                            : productRepository.findById(cart.getProductId()).orElse(null);
+            if (productForPayment != null) {
+                // Explicit booleans so checkout never treats "missing" as COD-allowed.
+                dto.setAcceptCod(productForPayment.getAcceptCod() == null
+                        || Boolean.TRUE.equals(productForPayment.getAcceptCod()));
+                dto.setAcceptPrepaid(productForPayment.getAcceptPrepaid() == null
+                        || Boolean.TRUE.equals(productForPayment.getAcceptPrepaid()));
+            } else {
+                dto.setAcceptCod(true);
+                dto.setAcceptPrepaid(true);
+            }
             if (variant != null) {
                 dto.setSize(sizeColorMapper.getSizeName(variant.getSize()));
                 dto.setColor(sizeColorMapper.getColorName(variant.getColor()));
@@ -313,6 +326,7 @@ public CartResponseDTO updateQuantity(Long itemId, Integer change) {
             }
 
             itemDTOs.add(dto);
+            
         }
 
         BigDecimal subtotal = cartItems.stream()

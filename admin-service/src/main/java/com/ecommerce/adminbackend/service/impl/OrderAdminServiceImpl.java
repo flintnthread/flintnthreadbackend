@@ -270,6 +270,16 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         orderItemRepository.saveAll(items);
 
         order.setOrderStatus(dbStatus);
+        if ("cancelled".equalsIgnoreCase(dbStatus)) {
+            boolean cancelledRemote = adminShiprocketService.cancelRemoteShipment(order.getShiprocketOrderId());
+            order.setShiprocketStatus(cancelledRemote ? "cancelled" : "cancel_failed");
+        } else if ("shipped".equalsIgnoreCase(dbStatus)
+                || "delivered".equalsIgnoreCase(dbStatus)
+                || "returned".equalsIgnoreCase(dbStatus)
+                || "processing".equalsIgnoreCase(dbStatus)
+                || "confirmed".equalsIgnoreCase(dbStatus)) {
+            order.setShiprocketStatus(dbStatus.toLowerCase(java.util.Locale.ENGLISH));
+        }
         order.setUpdatedAt(now);
         orderRepository.save(order);
 
@@ -618,6 +628,82 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         }
     }
 
+    @Override
+    @Transactional
+    public Map<String, Object> syncAllFromShiprocket(int limit, int lookbackHours, int minSyncAgeMinutes) {
+        // Up to 2 years by default; allow up to 3 years for catch-up of historical deliveries.
+        int safeLimit = Math.max(1, Math.min(limit, 5000));
+        int safeLookback = Math.max(24, Math.min(lookbackHours, 24 * 365 * 3));
+        int safeMinAge = Math.max(0, Math.min(minSyncAgeMinutes, 24 * 60));
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime createdAfter = now.minusHours(safeLookback);
+        LocalDateTime syncedBefore = safeMinAge == 0 ? now.plusMinutes(1) : now.minusMinutes(safeMinAge);
+
+        List<Order> allCandidates = new ArrayList<>();
+        java.util.Set<Long> seenIds = new java.util.HashSet<>();
+        int page = 0;
+        int pageSize = 200;
+        while (allCandidates.size() < safeLimit) {
+            int batchSize = Math.min(pageSize, safeLimit - allCandidates.size());
+            List<Order> batch = orderRepository.findShiprocketStatusSyncCandidates(
+                    createdAfter,
+                    syncedBefore,
+                    PageRequest.of(page, batchSize)
+            );
+            if (batch.isEmpty()) {
+                break;
+            }
+            for (Order order : batch) {
+                if (order.getId() != null && seenIds.add(order.getId())) {
+                    allCandidates.add(order);
+                    if (allCandidates.size() >= safeLimit) {
+                        break;
+                    }
+                }
+            }
+            if (batch.size() < batchSize) {
+                break;
+            }
+            page++;
+        }
+
+        int success = 0;
+        int failed = 0;
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (Order order : allCandidates) {
+            try {
+                adminShiprocketService.syncShipment(order);
+                success++;
+            } catch (Exception ex) {
+                failed++;
+                if (failures.size() < 50) {
+                    Map<String, Object> failure = new LinkedHashMap<>();
+                    failure.put("orderId", order.getId());
+                    failure.put("orderNumber", order.getOrderNumber());
+                    failure.put("error", friendlyShiprocketError(ex));
+                    failures.add(failure);
+                }
+                log.warn("Admin Shiprocket bulk sync failed orderId={} orderNumber={} msg={}",
+                        order.getId(), order.getOrderNumber(), ex.getMessage());
+            }
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", true);
+        response.put("message", "Shiprocket bulk status sync completed (lookback up to "
+                + (safeLookback / 24) + " days)");
+        response.put("requestedLimit", safeLimit);
+        response.put("lookbackHours", safeLookback);
+        response.put("lookbackDays", safeLookback / 24);
+        response.put("minSyncAgeMinutes", safeMinAge);
+        response.put("candidates", allCandidates.size());
+        response.put("synced", success);
+        response.put("failed", failed);
+        response.put("failures", failures);
+        return response;
+    }
+
     private static String friendlyShiprocketError(Throwable e) {
         String raw = rootMessage(e);
         String lower = raw.toLowerCase(Locale.ENGLISH);
@@ -911,7 +997,9 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("id", order.getId());
         summary.put("orderNumber", order.getOrderNumber());
-        summary.put("orderStatus", order.getOrderStatus());
+        String resolvedStatus = resolveDisplayOrderStatus(order);
+        summary.put("orderStatus", resolvedStatus);
+        summary.put("dbOrderStatus", order.getOrderStatus());
         summary.put("paymentStatus", order.getPaymentStatus());
         summary.put("paymentMethod", order.getPaymentMethod());
         summary.put("totalAmount", order.getTotalAmount());
@@ -929,7 +1017,40 @@ public class OrderAdminServiceImpl extends BaseAdminService implements OrderAdmi
         summary.put("shiprocketAwbCode", order.getShiprocketAwbCode());
         summary.put("shiprocketCourierName", order.getShiprocketCourierName());
         summary.put("shiprocketTrackingUrl", order.getShiprocketTrackingUrl());
+        summary.put("shiprocketStatus", order.getShiprocketStatus());
         return summary;
+    }
+
+    /**
+     * Prefer Shiprocket logistics status when it is further along than the stored order_status,
+     * so All / Completed tabs stay consistent with Shiprocket delivered counts.
+     */
+    private String resolveDisplayOrderStatus(Order order) {
+        String current = order.getOrderStatus() != null ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH) : "";
+        if (current.contains("cancel")) {
+            return order.getOrderStatus();
+        }
+        String fromShiprocket = AdminShiprocketService.mapShiprocketToOrderStatus(
+                order.getShiprocketStatus(),
+                order.getShiprocketAwbCode()
+        );
+        if (fromShiprocket == null || fromShiprocket.isBlank()) {
+            return order.getOrderStatus();
+        }
+        int currentRank = statusRank(current);
+        int shipRank = statusRank(fromShiprocket);
+        return shipRank >= currentRank ? fromShiprocket : order.getOrderStatus();
+    }
+
+    private static int statusRank(String status) {
+        if (status == null || status.isBlank()) return 0;
+        String s = status.trim().toLowerCase(Locale.ENGLISH);
+        if (s.contains("cancel")) return 50;
+        if (s.contains("return") || s.contains("rto") || s.contains("refund")) return 40;
+        if (s.contains("deliver") || s.equals("completed")) return 30;
+        if (s.contains("ship") || s.contains("transit") || s.contains("ofd") || s.contains("picked")) return 20;
+        if (s.contains("process") || s.contains("confirm") || s.contains("awb") || s.contains("pack")) return 10;
+        return 0;
     }
 
     private void enrichOrderDocumentFlags(

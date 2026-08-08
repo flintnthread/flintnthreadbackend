@@ -4,6 +4,7 @@ import com.ecommerce.authdemo.entity.Order;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -157,6 +158,20 @@ WHERE o.shiprocketAwbCode = :awb
 
             @Param("status")
             String status
+    );
+
+    @Query("""
+            SELECT o FROM Order o
+            WHERE (o.shiprocketShipmentId IS NOT NULL OR o.shiprocketOrderId IS NOT NULL OR o.shiprocketAwbCode IS NOT NULL)
+              AND (o.orderStatus IS NULL OR LOWER(o.orderStatus) NOT IN ('delivered', 'cancelled', 'returned', 'rto_delivered'))
+              AND o.createdAt >= :createdAfter
+              AND (o.shiprocketSyncedAt IS NULL OR o.shiprocketSyncedAt <= :syncedBefore)
+            ORDER BY o.createdAt DESC
+            """)
+    List<Order> findShiprocketStatusSyncCandidates(
+            @Param("createdAfter") java.time.LocalDateTime createdAfter,
+            @Param("syncedBefore") java.time.LocalDateTime syncedBefore,
+            Pageable pageable
     );
 
 }

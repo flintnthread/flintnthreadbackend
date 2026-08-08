@@ -13,8 +13,10 @@ import com.ecommerce.sellerbackend.repository.SellerRepository;
 import com.ecommerce.sellerbackend.service.AuthService;
 import com.ecommerce.sellerbackend.service.JwtService;
 import com.ecommerce.sellerbackend.service.MailService;
+import com.ecommerce.sellerbackend.util.RegistrationGraceHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +45,55 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final MailService mailService;
+
+    @Value("${app.registration.grace.months:3}")
+    private int registrationGraceMonths;
+
+    @Value("${app.registration.existing-grace.months:12}")
+    private int existingSellerGraceMonths;
+
+    @Value("${app.registration.new-seller-after:2026-08-06T00:00:00}")
+    private String newSellerAfterRaw;
+
+    private int graceMonthsFor(Seller seller) {
+        LocalDateTime cutoff;
+        try {
+            cutoff = LocalDateTime.parse(newSellerAfterRaw.trim());
+        } catch (Exception ex) {
+            cutoff = LocalDateTime.of(2026, 8, 6, 0, 0);
+        }
+        return RegistrationGraceHelper.resolveGraceMonths(
+                seller.getCreatedAt(),
+                cutoff,
+                registrationGraceMonths,
+                existingSellerGraceMonths);
+    }
+
+    private boolean resolveSubscriptionActive(Seller seller) {
+        boolean profileCompleted = Boolean.TRUE.equals(seller.getProfileCompleted());
+        boolean subscriptionRowActive = registrationPaymentRepository.isSubscriptionActive(seller.getId());
+        boolean hasEverPaid = registrationPaymentRepository.hasEverPaid(seller.getId());
+        RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
+                seller.getCreatedAt(),
+                graceMonthsFor(seller),
+                hasEverPaid,
+                LocalDateTime.now());
+        return RegistrationGraceHelper.resolveSubscriptionActive(
+                profileCompleted, subscriptionRowActive, grace.graceActive());
+    }
+
+    private boolean resolvePaymentPending(Seller seller, boolean subscriptionActive) {
+        boolean profileCompleted = Boolean.TRUE.equals(seller.getProfileCompleted());
+        boolean subscriptionRowActive = registrationPaymentRepository.isSubscriptionActive(seller.getId());
+        boolean hasEverPaid = registrationPaymentRepository.hasEverPaid(seller.getId());
+        RegistrationGraceHelper.GraceSnapshot grace = RegistrationGraceHelper.compute(
+                seller.getCreatedAt(),
+                graceMonthsFor(seller),
+                hasEverPaid,
+                LocalDateTime.now());
+        return RegistrationGraceHelper.resolvePaymentPending(
+                profileCompleted, subscriptionRowActive, hasEverPaid, grace.firstPaymentDue());
+    }
 
     @Override
     @Transactional
@@ -98,22 +149,6 @@ public class AuthServiceImpl implements AuthService {
                 .accessToken(accessToken)
                 .expiresIn(jwtService.getExpirySeconds())
                 .build();
-    }
-
-    private boolean resolveSubscriptionActive(Seller seller) {
-        if (!Boolean.TRUE.equals(seller.getProfileCompleted())) {
-            return true;
-        }
-
-        return registrationPaymentRepository.isSubscriptionActive(seller.getId());
-    }
-
-    private boolean resolvePaymentPending(Seller seller, boolean subscriptionActive) {
-        if (!Boolean.TRUE.equals(seller.getProfileCompleted())) {
-            return false;
-        }
-
-        return registrationPaymentRepository.hasEverPaid(seller.getId()) && !subscriptionActive;
     }
 
     private String resolveSubscriptionExpiresAt(Long sellerId) {

@@ -18,6 +18,8 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Integer> {
 
     List<OrderItem> findBySellerIdAndOrderId(Long sellerId, Long orderId);
 
+    List<OrderItem> findByOrderId(Long orderId);
+
     @Query("""
             SELECT oi.productId, SUM(COALESCE(oi.quantity, 0))
             FROM OrderItem oi
