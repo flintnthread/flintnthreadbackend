@@ -753,8 +753,16 @@ public class AdminShiprocketService {
     }
 
     private void tryCancelShiprocketOrder(String shiprocketOrderId) {
+        cancelRemoteShipment(shiprocketOrderId);
+    }
+
+    /**
+     * Cancel a linked Shiprocket order (admin Mark as Cancelled / recreate cleanup).
+     * @return true when cancel API succeeded or there was nothing to cancel
+     */
+    public boolean cancelRemoteShipment(String shiprocketOrderId) {
         if (isBlank(shiprocketOrderId) || !shiprocketOrderId.trim().matches("^\\d+$")) {
-            return;
+            return true;
         }
         try {
             String token = getToken();
@@ -765,11 +773,13 @@ public class AdminShiprocketService {
                     new HttpEntity<>(body, authHeaders(token)),
                     Map.class
             );
-            log.info("Shiprocket cancel before recreate orderId={} body={}",
+            log.info("Shiprocket cancel orderId={} body={}",
                     shiprocketOrderId, response.getBody());
+            return response.getStatusCode().is2xxSuccessful();
         } catch (Exception e) {
-            log.warn("Shiprocket cancel before recreate failed orderId={}: {}",
+            log.warn("Shiprocket cancel failed orderId={}: {}",
                     shiprocketOrderId, e.getMessage());
+            return false;
         }
     }
 

@@ -250,14 +250,30 @@ public class OrderServiceImpl implements OrderService {
         }
         orderItemRepository.saveAll(items);
 
+        // Cancel is order-wide: flip every line so admin/user views match immediately.
+        if ("cancelled".equalsIgnoreCase(dbStatus)) {
+            List<OrderItem> allItems = orderItemRepository.findByOrderId(orderId);
+            for (OrderItem item : allItems) {
+                item.setStatus("cancelled");
+            }
+            if (!allItems.isEmpty()) {
+                orderItemRepository.saveAll(allItems);
+            }
+        }
+
         Order order = resolveOrder(orderId, items);
         order.setOrderStatus(dbStatus);
+        if ("cancelled".equalsIgnoreCase(dbStatus)) {
+            // Optimistic local flag so admin/user UIs flip immediately; async call confirms SR.
+            order.setShiprocketStatus("cancelled");
+        }
         order.setUpdatedAt(now);
         orderRepository.save(order);
 
         recordStatusHistory(orderId, historyStatus, comment, sellerId, now);
 
         maybePushToShiprocketAfterSellerConfirm(order, dbStatus);
+        maybeCancelShiprocketAfterSellerCancel(order, dbStatus);
 
         return toDetail(order, items);
     }
@@ -290,6 +306,18 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
         userServiceShiprocketClient.pushOrderAsync(order.getId());
+    }
+
+    /** When seller marks Cancelled, cancel linked Shiprocket order so admin/user stay in sync. */
+    private void maybeCancelShiprocketAfterSellerCancel(Order order, String newDbStatus) {
+        if (order == null || order.getId() == null) {
+            return;
+        }
+        String normalized = newDbStatus != null ? newDbStatus.trim().toLowerCase(Locale.ROOT) : "";
+        if (!"cancelled".equals(normalized) && !"canceled".equals(normalized)) {
+            return;
+        }
+        userServiceShiprocketClient.cancelOrderAsync(order.getId());
     }
 
     private void recordStatusHistory(

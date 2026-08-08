@@ -10,6 +10,7 @@ import com.ecommerce.authdemo.dto.VerifyPaymentRequestDTO;
 import com.ecommerce.authdemo.entity.Order;
 
 import java.util.List;
+import java.util.Map;
 
 public interface OrderService {
 
@@ -65,6 +66,12 @@ public interface OrderService {
 
     /** Pull latest AWB/courier/tracking from Shiprocket for an already-linked order. */
     ShiprocketShipmentResult syncOrderToShiprocket(Long orderId);
+
+    /**
+     * Cancel linked Shiprocket shipment and mark order/items cancelled.
+     * Used by seller/admin via internal API when they set status to Cancelled.
+     */
+    Map<String, Object> cancelOrderInShiprocket(Long orderId);
 
     void updateShipment(String orderNumber, String awb, String courier, String trackingUrl, String shiprocketStatus);
 

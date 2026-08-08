@@ -136,10 +136,22 @@ public class ShiprocketServiceImpl implements ShiprocketService {
         order.setShiprocketSyncedAt(syncedAt);
 
         // Must be values allowed by orders.order_status MySQL ENUM.
+        // Never overwrite a local Cancelled with a stale live Shiprocket status.
         String mappedOrderStatus = mapShiprocketToOrderStatus(status, awb);
+        String currentStatus = order.getOrderStatus() != null
+                ? order.getOrderStatus().trim().toLowerCase(Locale.ROOT)
+                : "";
+        boolean locallyCancelled = currentStatus.contains("cancel");
+        boolean mappedCancelled = mappedOrderStatus != null
+                && mappedOrderStatus.toLowerCase(Locale.ROOT).contains("cancel");
         if (mappedOrderStatus != null && !mappedOrderStatus.isBlank()) {
-            order.setOrderStatus(mappedOrderStatus);
-            syncOrderItemsStatus(order.getId(), mappedOrderStatus);
+            if (!locallyCancelled || mappedCancelled) {
+                order.setOrderStatus(mappedOrderStatus);
+                syncOrderItemsStatus(order.getId(), mappedOrderStatus);
+            }
+        } else if (locallyCancelled) {
+            // Keep cancelled; still refresh SR fields above.
+            order.setShiprocketStatus("cancelled");
         }
 
         if (order.getId() != null && orderRepository.existsById(order.getId())) {

@@ -86,6 +86,34 @@ public class InternalShiprocketController {
         }
     }
 
+    @PostMapping("/orders/{orderId}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelOrderInShiprocket(
+            @PathVariable Long orderId,
+            @RequestHeader(value = "X-Internal-Service-Key", required = false) String key) {
+        if (!isAuthorized(key)) {
+            log.warn("[INTERNAL:SHIPROCKET] cancel FORBIDDEN orderId={} (internal key mismatch or blank)", orderId);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorBody(
+                    "Forbidden: internal service key mismatch. Set the same INTERNAL_SERVICE_KEY on user and seller/admin."
+            ));
+        }
+        log.info("[INTERNAL:SHIPROCKET] cancel orderId={}", orderId);
+        try {
+            Map<String, Object> result = orderService.cancelOrderInShiprocket(orderId);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", true);
+            body.put("message", "Order cancelled and Shiprocket notified");
+            body.putAll(result);
+            return ResponseEntity.ok(body);
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(safeMsg(e, "Order not found")));
+        } catch (OrderException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(safeMsg(e, "Invalid order for Shiprocket cancel")));
+        } catch (Exception e) {
+            log.error("[INTERNAL:SHIPROCKET] cancel FAILED orderId={}", orderId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorBodyWithDetail(e));
+        }
+    }
+
     private boolean isAuthorized(String key) {
         return internalServiceKey != null
                 && !internalServiceKey.isBlank()

@@ -120,7 +120,16 @@ public class ShiprocketWebhookServiceImpl implements ShiprocketWebhookService {
             }
 
             String mappedOrderStatus = mapToOrderStatusForOrderTable(currentStatus);
-            if (!isBlank(mappedOrderStatus)) {
+            String existing = order.getOrderStatus() != null
+                    ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                    : "";
+            boolean locallyCancelled = existing.contains("cancel");
+            boolean mappedCancelled = !isBlank(mappedOrderStatus)
+                    && mappedOrderStatus.toLowerCase(Locale.ENGLISH).contains("cancel");
+            if (locallyCancelled && !mappedCancelled) {
+                order.setShiprocketStatus("cancelled");
+                mappedOrderStatus = "cancelled";
+            } else if (!isBlank(mappedOrderStatus)) {
                 order.setOrderStatus(mappedOrderStatus);
                 order.setShiprocketStatus(mappedOrderStatus);
             } else if (!isBlank(resolvedAwb)) {

@@ -1775,11 +1775,20 @@ import java.util.Locale;
             String mappedStatus = mapWebhookStatusToOrderStatus(status);
             if (!isBlank(mappedStatus)) {
                 order.setShiprocketStatus(mappedStatus);
-                if (isEarlyFulfillmentStatus(order.getOrderStatus())
+                String current = order.getOrderStatus() != null
+                        ? order.getOrderStatus().trim().toLowerCase(Locale.ENGLISH)
+                        : "";
+                boolean locallyCancelled = current.contains("cancel");
+                boolean mappedCancelled = mappedStatus.toLowerCase(Locale.ENGLISH).contains("cancel");
+                if (locallyCancelled && !mappedCancelled) {
+                    // Keep Cancelled — do not revive from stale SR tracking.
+                    order.setShiprocketStatus("cancelled");
+                } else if (isEarlyFulfillmentStatus(order.getOrderStatus())
                         || "processing".equalsIgnoreCase(mappedStatus)
                         || "shipped".equalsIgnoreCase(mappedStatus)
                         || "delivered".equalsIgnoreCase(mappedStatus)
-                        || "returned".equalsIgnoreCase(mappedStatus)) {
+                        || "returned".equalsIgnoreCase(mappedStatus)
+                        || mappedCancelled) {
                     order.setOrderStatus(mappedStatus);
                 }
             } else if (!isBlank(resolvedAwb) && isEarlyFulfillmentStatus(order.getOrderStatus())) {
