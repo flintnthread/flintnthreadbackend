@@ -179,7 +179,7 @@ public class ProductMapper {
                         vd.setStock(stock);
                         vd.setInStock(inStock);
 
-                        vd.setVideoPath(v.getVideoPath());
+                        vd.setVideoPath(resolveImageUrl(v.getVideoPath()));
                         vd.setWeight(v.getWeight());
 
                         return vd;

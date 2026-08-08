@@ -687,6 +687,11 @@ public class ProductAdminServiceImpl extends BaseAdminService implements Product
         row.put("totalPriceMetroMetro", pricing.totalPriceMetroMetro());
         row.put("customerPrice", pricing.displayPrice());
         row.put("imageUrl", resolveVariantImage(images, variant.getId(), fallbackImage));
+        String videoPath = variant.getVideoPath();
+        row.put("videoPath", videoPath);
+        String videoUri = mediaUrlHelper.toPublicUrl(videoPath, "products");
+        row.put("videoUri", videoUri);
+        row.put("videoUrl", videoUri);
         row.put("weight", variant.getWeight());
         return row;
     }
