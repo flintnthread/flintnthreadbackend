@@ -108,4 +108,52 @@ class ProductMediaStorageServiceTest {
                 url
         );
     }
+
+    @Test
+    void uploadSellerDocument_image_returnsCloudinarySecureUrl() throws Exception {
+        when(cloudinary.uploader()).thenReturn(uploader);
+        when(uploader.upload(any(byte[].class), anyMap())).thenReturn(Map.of(
+                "secure_url",
+                "https://res.cloudinary.com/dnce88bry/image/upload/v1/flintnthread/sellers/documents/aadhar_front/abc.jpg"
+        ));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "aadhar.jpg",
+                "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x00, 0x01, 0x02}
+        );
+
+        String url = service.uploadSellerDocument(file, "aadhar_front");
+
+        assertEquals(
+                "https://res.cloudinary.com/dnce88bry/image/upload/v1/flintnthread/sellers/documents/aadhar_front/abc.jpg",
+                url
+        );
+        verify(uploader).upload(any(byte[].class), anyMap());
+    }
+
+    @Test
+    void uploadSellerDocument_pdf_usesRawResourceType() throws Exception {
+        when(cloudinary.uploader()).thenReturn(uploader);
+        when(uploader.upload(any(byte[].class), anyMap())).thenReturn(Map.of(
+                "secure_url",
+                "https://res.cloudinary.com/dnce88bry/raw/upload/v1/flintnthread/sellers/documents/pan_card/doc.pdf"
+        ));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "pan.pdf",
+                "application/pdf",
+                new byte[]{0x25, 0x50, 0x44, 0x46, 0x2D}
+        );
+
+        String url = service.uploadSellerDocument(file, "pan_card");
+
+        assertTrue(url.contains("/raw/upload/"));
+        assertEquals(
+                "https://res.cloudinary.com/dnce88bry/raw/upload/v1/flintnthread/sellers/documents/pan_card/doc.pdf",
+                url
+        );
+    }
 }

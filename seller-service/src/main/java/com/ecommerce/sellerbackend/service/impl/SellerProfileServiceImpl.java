@@ -300,11 +300,19 @@ public class SellerProfileServiceImpl implements SellerProfileService {
     public DocumentUploadResponse uploadDocument(Long sellerId, SellerDocumentType type, MultipartFile file)
             throws IOException {
         Seller seller = requireSeller(sellerId);
+        // Uploads to Cloudinary; DB columns store the absolute secure_url.
         MediaStorageService.StoredFile stored = mediaStorageService.storeSellerDocument(sellerId, type, file);
-        applyDocument(seller, type, stored.fileName());
+        String cloudUrl = stored.publicUrl();
+        if (cloudUrl == null || cloudUrl.isBlank()) {
+            cloudUrl = stored.fileName();
+        }
+        if (cloudUrl == null || cloudUrl.isBlank() || !cloudUrl.toLowerCase(Locale.ROOT).contains("res.cloudinary.com")) {
+            throw new IllegalStateException("Seller document upload did not return a Cloudinary URL.");
+        }
+        applyDocument(seller, type, cloudUrl);
 
         if (type == SellerDocumentType.LIVE_SELFIE) {
-            saveKycSelfie(sellerId, stored.fileName());
+            saveKycSelfie(sellerId, cloudUrl);
         }
 
         touchProfile(seller);
@@ -312,8 +320,8 @@ public class SellerProfileServiceImpl implements SellerProfileService {
 
         return DocumentUploadResponse.builder()
                 .documentType(type.name())
-                .fileName(stored.fileName())
-                .url(stored.publicUrl())
+                .fileName(cloudUrl)
+                .url(cloudUrl)
                 .build();
     }
 

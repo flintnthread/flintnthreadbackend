@@ -156,12 +156,28 @@ public class CategoryAdminServiceImpl extends BaseAdminService implements Catego
     public Category uploadImages(Integer id, MultipartFile image, MultipartFile mobileImage, MultipartFile bannerImage) {
         Category category = getCategory(id);
         boolean changed = false;
-        if (image != null && !image.isEmpty()) {
-            category.setCategoryImage(catalogImageStorageService.storeCategoryImage(image));
+
+        // Prefer explicit fields; if only one of image/mobileImage is sent, mirror to both
+        // so admin UI (which prefers mobileImage) and desktop categoryImage stay in sync.
+        MultipartFile desktop = image != null && !image.isEmpty() ? image : null;
+        MultipartFile mobile = mobileImage != null && !mobileImage.isEmpty() ? mobileImage : null;
+        if (desktop != null && mobile == null) {
+            mobile = desktop;
+        } else if (mobile != null && desktop == null) {
+            desktop = mobile;
+        }
+
+        if (desktop != null) {
+            category.setCategoryImage(catalogImageStorageService.storeCategoryImage(desktop));
             changed = true;
         }
-        if (mobileImage != null && !mobileImage.isEmpty()) {
-            category.setMobileImage(catalogImageStorageService.storeCategoryImage(mobileImage));
+        if (mobile != null) {
+            // Re-upload when different from desktop so both DB columns get Cloudinary URLs.
+            if (mobile == desktop && category.getCategoryImage() != null) {
+                category.setMobileImage(category.getCategoryImage());
+            } else {
+                category.setMobileImage(catalogImageStorageService.storeCategoryImage(mobile));
+            }
             changed = true;
         }
         if (bannerImage != null && !bannerImage.isEmpty()) {

@@ -58,7 +58,7 @@ public class MediaUrlHelper {
         String trimmed = path.trim();
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
             String lower = trimmed.toLowerCase();
-            if (lower.contains("res.cloudinary.com/")) {
+            if (lower.contains("res.cloudinary.com/") || lower.contains("cloudinary.com/")) {
                 return trimmed;
             }
             int idx = trimmed.indexOf("/uploads/");

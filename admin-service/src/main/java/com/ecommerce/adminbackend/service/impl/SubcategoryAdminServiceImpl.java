@@ -119,12 +119,25 @@ public class SubcategoryAdminServiceImpl implements SubcategoryAdminService {
     public Subcategory uploadImages(Integer id, MultipartFile image, MultipartFile mobileImage) {
         Subcategory subcategory = getSubcategory(id);
         boolean changed = false;
-        if (image != null && !image.isEmpty()) {
-            subcategory.setSubcategoryImage(catalogImageStorageService.storeSubcategoryImage(image));
+
+        MultipartFile desktop = image != null && !image.isEmpty() ? image : null;
+        MultipartFile mobile = mobileImage != null && !mobileImage.isEmpty() ? mobileImage : null;
+        if (desktop != null && mobile == null) {
+            mobile = desktop;
+        } else if (mobile != null && desktop == null) {
+            desktop = mobile;
+        }
+
+        if (desktop != null) {
+            subcategory.setSubcategoryImage(catalogImageStorageService.storeSubcategoryImage(desktop));
             changed = true;
         }
-        if (mobileImage != null && !mobileImage.isEmpty()) {
-            subcategory.setMobileImage(catalogImageStorageService.storeSubcategoryImage(mobileImage));
+        if (mobile != null) {
+            if (mobile == desktop && subcategory.getSubcategoryImage() != null) {
+                subcategory.setMobileImage(subcategory.getSubcategoryImage());
+            } else {
+                subcategory.setMobileImage(catalogImageStorageService.storeSubcategoryImage(mobile));
+            }
             changed = true;
         }
         if (!changed) {
